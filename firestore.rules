@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Apenas o backend (Firebase Admin SDK) acessa diretamente
+    // O frontend sempre passa pelo backend (Functions)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
