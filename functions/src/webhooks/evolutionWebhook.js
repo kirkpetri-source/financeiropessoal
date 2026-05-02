@@ -81,6 +81,17 @@ function isCommand(message) {
 async function handleEvolutionWebhook(req, res) {
   res.status(200).json({ received: true });
 
+  // Diagnóstico: salva todo payload bruto para depuração
+  try {
+    await db.collection('webhookDiagnostics').add({
+      payload: req.body,
+      event: req.body?.event || req.body?.data?.event || 'unknown',
+      receivedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('[Diag] Erro ao salvar diagnóstico:', e.message);
+  }
+
   try {
     const { messageId, groupId, sender, content, messageType } = extractMessageData(req.body);
     const userConfig = await findUserByGroup(groupId);
