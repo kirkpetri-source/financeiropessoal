@@ -12,7 +12,8 @@ const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
+app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
 if (process.env.NODE_ENV !== 'production') {
