@@ -42,65 +42,88 @@ async function resolvePaymentMethodId(userId, methodName) {
 
 /**
  * Processa uma mensagem buscada via polling (fromMe: true).
+ * Suporta múltiplas transações por mensagem (uma por linha).
+ * Retorna a quantidade de transações criadas.
  */
 async function processPolledMessage(msg, userId) {
   const messageId = msg.key?.id;
-  const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || null;
+  const rawContent = msg.message?.conversation
+    || msg.message?.extendedTextMessage?.text
+    || msg.message?.ephemeralMessage?.message?.conversation
+    || null;
+
   const messageTimestamp = msg.messageTimestamp;
   const groupId = msg.key?.remoteJid;
 
-  if (!content || !looksLikeFinancialMessage(content)) return null;
+  if (!rawContent) return 0;
 
-  const logRef = await db.collection('whatsappLogs').add({
-    userId,
-    messageId,
-    groupId,
-    sender: 'você (polling)',
-    messageType: 'TEXT',
-    content,
-    processingStatus: 'PENDING',
-    rawPayload: msg,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  // Divide por linha — suporta múltiplos lançamentos em uma mensagem
+  const lines = rawContent.split('\n').map(l => l.trim()).filter(Boolean);
+  const financialLines = lines.filter(looksLikeFinancialMessage);
 
-  const parsed = parseFinancialMessage(content);
-  if (!parsed) {
-    await logRef.update({
-      processingStatus: 'ERROR',
-      errorMessage: `Não foi possível interpretar: "${content}"`,
-    });
-    return null;
-  }
+  if (!financialLines.length) return 0;
 
-  const [categoryId, paymentMethodId] = await Promise.all([
-    resolveCategoryId(userId, parsed.categoryName),
-    resolvePaymentMethodId(userId, parsed.paymentMethodName),
-  ]);
-
-  if (!categoryId || !paymentMethodId) {
-    await logRef.update({ processingStatus: 'ERROR', errorMessage: 'Categoria ou forma de pagamento não encontrada.' });
-    return null;
-  }
-
-  // Usa timestamp da mensagem original se disponível
   const txDate = messageTimestamp
     ? new Date(messageTimestamp * 1000).toISOString()
-    : parsed.date.toISOString();
+    : new Date().toISOString();
 
-  const transaction = await createTransaction(userId, {
-    type: parsed.type,
-    description: parsed.description,
-    amount: parsed.amount,
-    categoryId,
-    paymentMethodId,
-    date: txDate,
-    notes: 'Via WhatsApp (polling do grupo)',
-    origin: 'WHATSAPP',
-    status: 'CONFIRMED',
-  });
+  let created = 0;
 
-  await logRef.update({ processingStatus: 'PROCESSED', transactionId: transaction.id });
-  return transaction;
+  for (let i = 0; i < financialLines.length; i++) {
+    const line = financialLines[i];
+    // ID único por linha para deduplicação
+    const lineMessageId = financialLines.length > 1 ? `${messageId}_line${i}` : messageId;
+
+    if (await isAlreadyProcessed(lineMessageId)) continue;
+
+    const logRef = await db.collection('whatsappLogs').add({
+      userId,
+      messageId: lineMessageId,
+      groupId,
+      sender: 'você (polling)',
+      messageType: 'TEXT',
+      content: line,
+      processingStatus: 'PENDING',
+      rawPayload: msg,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const parsed = parseFinancialMessage(line);
+    if (!parsed) {
+      await logRef.update({
+        processingStatus: 'ERROR',
+        errorMessage: `Não foi possível interpretar: "${line}"`,
+      });
+      continue;
+    }
+
+    const [categoryId, paymentMethodId] = await Promise.all([
+      resolveCategoryId(userId, parsed.categoryName),
+      resolvePaymentMethodId(userId, parsed.paymentMethodName),
+    ]);
+
+    if (!categoryId || !paymentMethodId) {
+      await logRef.update({ processingStatus: 'ERROR', errorMessage: 'Categoria ou forma de pagamento não encontrada.' });
+      continue;
+    }
+
+    const transaction = await createTransaction(userId, {
+      type: parsed.type,
+      description: parsed.description,
+      amount: parsed.amount,
+      categoryId,
+      paymentMethodId,
+      date: txDate,
+      notes: 'Via WhatsApp (polling do grupo)',
+      origin: 'WHATSAPP',
+      status: 'CONFIRMED',
+    });
+
+    await logRef.update({ processingStatus: 'PROCESSED', transactionId: transaction.id });
+    created++;
+  }
+
+  return created;
 }
 
 /**
@@ -111,24 +134,22 @@ async function pollForUser(userId, config) {
   const results = { checked: 0, processed: 0, skipped: 0, errors: 0 };
 
   try {
-    const messages = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 30 });
+    const messages = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 });
     results.checked = messages.length;
 
-    // Filtra apenas mensagens dos últimos 10 minutos para evitar reprocessar histórico
-    const tenMinutesAgo = Math.floor(Date.now() / 1000) - 10 * 60;
+    // Processa apenas mensagens das últimas 2 horas
+    const twoHoursAgo = Math.floor(Date.now() / 1000) - 2 * 60 * 60;
 
     for (const msg of messages) {
       const messageId = msg.key?.id;
       const timestamp = msg.messageTimestamp || 0;
 
-      if (timestamp && timestamp < tenMinutesAgo) { results.skipped++; continue; }
-
+      if (timestamp && timestamp < twoHoursAgo) { results.skipped++; continue; }
       if (await isAlreadyProcessed(messageId)) { results.skipped++; continue; }
 
       try {
-        const tx = await processPolledMessage(msg, userId);
-        if (tx) results.processed++;
-        else results.skipped++;
+        const txs = await processPolledMessage(msg, userId);
+        results.processed += txs;
       } catch (err) {
         console.error('[Polling] Erro ao processar mensagem:', err.message);
         results.errors++;
