@@ -156,8 +156,8 @@ async function handleEvolutionWebhook(req, res) {
     const log = await createLog(logBase);
 
     // Passa lista de pagadores configurados para o parser detectar nome no final
-    const payers = userConfig.payers || [];
-    const parsed = parseFinancialMessage(content, payers);
+    const configPayers = userConfig.payers || [];
+    const parsed = parseFinancialMessage(content, configPayers);
     if (!parsed) {
       await updateLog(log.id, {
         processingStatus: 'ERROR',
@@ -177,8 +177,7 @@ async function handleEvolutionWebhook(req, res) {
     }
 
     // Resolve paidBy: 1) nome no final da msg, 2) telefone configurado, 3) pushName
-    const payers = userConfig.payers || [];
-    const paidBy = resolvePayerName(parsed.paidBy, senderJid, pushName, payers);
+    const paidBy = resolvePayerName(parsed.paidBy, senderJid, pushName, configPayers);
 
     const transaction = await createTransaction(userId, {
       type: parsed.type,
