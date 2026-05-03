@@ -165,8 +165,8 @@ async function pollForUser(userId, config) {
     // 2. Polling da AUTO-CONVERSA ("Mensagens para mim")
     const ownJid = await fetchOwnJid(config);
     if (ownJid) {
-      // Na auto-conversa todas as mensagens são fromMe, buscar sem filtro
-      const selfMessages = await fetchGroupMessages(config, ownJid, { fromMe: true, limit: 30 });
+      // Sem filtro fromMe para garantir que pega mensagens recentes sem delay de indexação
+      const selfMessages = await fetchGroupMessages(config, ownJid, { fromMe: undefined, limit: 50 });
       results.checked += selfMessages.length;
       const selfResult = await processMessages(selfMessages, userId);
       results.processed += selfResult.processed;

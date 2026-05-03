@@ -19,12 +19,14 @@ async function evFetch(url, apiKey, body) {
 }
 
 async function fetchGroupMessages(config, remoteJid, options = {}) {
-  const { fromMe = true, limit = 50 } = options;
+  const { fromMe, limit = 50 } = options;
   if (!config.evolutionApiUrl || !config.instanceName || !config.apiKey) {
     throw new Error('Configuração da Evolution API incompleta.');
   }
   const url = `${BASE(config)}/chat/findMessages/${config.instanceName}`;
-  return evFetch(url, config.apiKey, { where: { key: { remoteJid, fromMe } }, limit });
+  // Se fromMe for undefined, não filtra por direção (pega todas as mensagens do chat)
+  const keyFilter = fromMe !== undefined ? { remoteJid, fromMe } : { remoteJid };
+  return evFetch(url, config.apiKey, { where: { key: keyFilter }, limit });
 }
 
 /**
