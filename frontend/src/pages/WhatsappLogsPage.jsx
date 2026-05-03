@@ -7,10 +7,11 @@ import { formatDateTime, formatCurrency } from '../utils/formatters';
 import toast from 'react-hot-toast';
 
 const STATUS_CONFIG = {
-  PROCESSED: { label: 'Processado', icon: CheckCircle2, cls: 'text-green-600', dot: 'bg-green-500' },
-  PENDING:   { label: 'Pendente',   icon: Clock,        cls: 'text-yellow-600', dot: 'bg-yellow-400' },
-  ERROR:     { label: 'Erro',       icon: AlertCircle,  cls: 'text-red-500',    dot: 'bg-red-500' },
-  IGNORED:   { label: 'Ignorado',   icon: XCircle,      cls: 'text-gray-400',   dot: 'bg-gray-300' },
+  PROCESSED:  { label: 'Processado', icon: CheckCircle2, cls: 'text-green-600',  dot: 'bg-green-500' },
+  PENDING:    { label: 'Pendente',   icon: Clock,        cls: 'text-yellow-600', dot: 'bg-yellow-400' },
+  ERROR:      { label: 'Erro',       icon: AlertCircle,  cls: 'text-red-500',    dot: 'bg-red-500' },
+  IGNORED:    { label: 'Ignorado',   icon: XCircle,      cls: 'text-gray-400',   dot: 'bg-gray-300' },
+  CANCELLED:  { label: 'Cancelado',  icon: XCircle,      cls: 'text-gray-300',   dot: 'bg-gray-200' },
 };
 
 const TYPE_LABELS = { TEXT: 'Texto', IMAGE: 'Imagem', AUDIO: 'Áudio', DOCUMENT: 'Doc', STICKER: 'Sticker' };
@@ -28,8 +29,12 @@ export default function WhatsappLogsPage() {
     try {
       const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== ''));
       const { data } = await api.get('/whatsapp/logs', { params });
-      setLogs(data.logs);
-      setTotal(data.total);
+      // Esconde cancelados por padrão (a menos que filtro explícito)
+      const visible = filters.status === 'CANCELLED'
+        ? data.logs
+        : data.logs.filter(l => l.processingStatus !== 'CANCELLED');
+      setLogs(visible);
+      setTotal(visible.length);
     } catch {
       toast.error('Erro ao carregar logs.');
     } finally {
@@ -38,11 +43,11 @@ export default function WhatsappLogsPage() {
   }
 
   async function handleDelete(logId) {
-    if (!confirm('Excluir esta mensagem e o lançamento vinculado?')) return;
+    if (!confirm('Cancelar este lançamento? O sistema não vai reprocessar esta mensagem.\n\nVocê pode reenviar a mensagem corrigida no grupo.')) return;
     setDeletingId(logId);
     try {
       await api.delete(`/whatsapp/logs/${logId}`);
-      toast.success('Mensagem e lançamento excluídos.');
+      toast.success('Lançamento cancelado. Reenvie a mensagem corrigida no grupo.');
       fetchLogs();
     } catch {
       toast.error('Erro ao excluir.');

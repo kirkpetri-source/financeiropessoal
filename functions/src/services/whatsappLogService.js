@@ -49,9 +49,14 @@ async function deleteLog(userId, logId) {
 
   const transactionId = doc.data().transactionId;
 
-  // Deleta o log e a transação vinculada em paralelo
+  // IMPORTANTE: não apaga o log — marca como CANCELADO para manter a deduplicação.
+  // Se apagássemos o log, o polling re-processaria a mesma mensagem do histórico do WhatsApp.
   await Promise.all([
-    ref.delete(),
+    ref.update({
+      processingStatus: 'CANCELLED',
+      transactionId: null,
+      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+    }),
     transactionId ? db.collection('transactions').doc(transactionId).delete() : Promise.resolve(),
   ]);
 }
