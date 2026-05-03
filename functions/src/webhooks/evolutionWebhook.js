@@ -151,7 +151,9 @@ async function handleEvolutionWebhook(req, res) {
 
     const log = await createLog(logBase);
 
-    const parsed = parseFinancialMessage(content);
+    // Passa lista de pagadores configurados para o parser detectar nome no final
+    const payers = userConfig.payers || [];
+    const parsed = parseFinancialMessage(content, payers);
     if (!parsed) {
       await updateLog(log.id, {
         processingStatus: 'ERROR',
@@ -170,6 +172,9 @@ async function handleEvolutionWebhook(req, res) {
       return;
     }
 
+    // paidBy: usa o nome detectado no parser OU o nome de quem enviou a mensagem
+    const paidBy = parsed.paidBy || sender || null;
+
     const transaction = await createTransaction(userId, {
       type: parsed.type,
       description: parsed.description,
@@ -177,9 +182,10 @@ async function handleEvolutionWebhook(req, res) {
       categoryId,
       paymentMethodId,
       date: parsed.date.toISOString(),
-      notes: `Via WhatsApp (${origem}). Remetente: ${sender || 'você'}`,
+      notes: `Via WhatsApp (${origem}). Enviado por: ${sender || 'você'}`,
       origin: 'WHATSAPP',
       status: 'CONFIRMED',
+      paidBy,
     });
 
     await updateLog(log.id, { processingStatus: 'PROCESSED', transactionId: transaction.id });

@@ -4,6 +4,7 @@ import { TrendingUp, TrendingDown, DollarSign, Tag, Plus, ArrowRight } from 'luc
 import { useTransactions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
+import { useWhatsappConfig } from '../hooks/useWhatsappConfig';
 import ExpenseChart from '../components/charts/ExpenseChart';
 import IncomeExpenseChart from '../components/charts/IncomeExpenseChart';
 import Modal from '../components/ui/Modal';
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   const { summary, fetchSummary, createTransaction } = useTransactions();
   const { categories, fetchCategories } = useCategories();
   const { paymentMethods, fetchPaymentMethods } = usePaymentMethods();
+  const { payers, fetchPayers } = useWhatsappConfig();
 
   const months = monthsList(12);
 
@@ -45,7 +47,8 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchCategories();
     fetchPaymentMethods();
-  }, [fetchCategories, fetchPaymentMethods]);
+    fetchPayers();
+  }, [fetchCategories, fetchPaymentMethods, fetchPayers]);
 
   async function handleCreateTransaction(data) {
     setSaving(true);
@@ -60,7 +63,19 @@ export default function DashboardPage() {
     }
   }
 
-  const balance = summary ? summary.balance : 0;
+  const [filterPayer, setFilterPayer] = useState('');
+  const allPayers = summary?.byPayer?.filter(p => p.name !== 'Sem identificação') || [];
+
+  // Filtra os dados do summary pelo pagador selecionado
+  const filteredSummary = summary ? (() => {
+    if (!filterPayer) return summary;
+    const payer = summary.byPayer?.find(p => p.name === filterPayer);
+    const income = payer?.income || 0;
+    const expense = payer?.expense || 0;
+    return { ...summary, totalIncome: income, totalExpense: expense, balance: income - expense };
+  })() : null;
+
+  const balance = filteredSummary ? filteredSummary.balance : 0;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -70,7 +85,7 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500">Resumo financeiro de</p>
           <p className="text-lg font-bold text-gray-900">{capitalizeFirst(formatMonth(selectedMonth))}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
@@ -80,6 +95,19 @@ export default function DashboardPage() {
               <option key={m.value} value={m.value}>{capitalizeFirst(m.label)}</option>
             ))}
           </select>
+          {/* Filtro por pagador */}
+          {allPayers.length > 0 && (
+            <select
+              value={filterPayer}
+              onChange={(e) => setFilterPayer(e.target.value)}
+              className="input w-auto text-sm"
+            >
+              <option value="">👥 Todos</option>
+              {allPayers.map(p => (
+                <option key={p.name} value={p.name}>👤 {p.name}</option>
+              ))}
+            </select>
+          )}
           <button
             onClick={() => setModalOpen(true)}
             className="btn-primary flex items-center gap-2 whitespace-nowrap"
@@ -99,21 +127,21 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard
               icon={TrendingUp}
-              label="Receitas"
-              value={formatCurrency(summary.totalIncome)}
+              label={filterPayer ? `Receitas (${filterPayer})` : 'Receitas'}
+              value={formatCurrency(filteredSummary.totalIncome)}
               colorClass="text-green-600"
               bgClass="bg-green-50"
             />
             <SummaryCard
               icon={TrendingDown}
-              label="Despesas"
-              value={formatCurrency(summary.totalExpense)}
+              label={filterPayer ? `Despesas (${filterPayer})` : 'Despesas'}
+              value={formatCurrency(filteredSummary.totalExpense)}
               colorClass="text-red-500"
               bgClass="bg-red-50"
             />
             <SummaryCard
               icon={DollarSign}
-              label="Saldo"
+              label={filterPayer ? `Saldo (${filterPayer})` : 'Saldo'}
               value={formatCurrency(balance)}
               colorClass={balance >= 0 ? 'text-primary-600' : 'text-red-600'}
               bgClass={balance >= 0 ? 'bg-primary-50' : 'bg-red-50'}
@@ -126,6 +154,26 @@ export default function DashboardPage() {
               bgClass="bg-purple-50"
             />
           </div>
+
+          {/* Breakdown por pessoa — só aparece quando há mais de um pagador */}
+          {!filterPayer && summary.byPayer && summary.byPayer.filter(p => p.name !== 'Sem identificação').length > 1 && (
+            <div className="card">
+              <h2 className="text-sm font-semibold text-gray-900 mb-3">💰 Gastos por pessoa</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {summary.byPayer.filter(p => p.name !== 'Sem identificação').map((p) => (
+                  <button
+                    key={p.name}
+                    onClick={() => setFilterPayer(p.name)}
+                    className="text-left p-3 bg-gray-50 hover:bg-primary-50 rounded-xl transition-colors border border-transparent hover:border-primary-200"
+                  >
+                    <p className="text-xs text-gray-500 mb-1">{p.name}</p>
+                    <p className="text-sm font-bold text-red-500">{formatCurrency(p.expense)}</p>
+                    {p.income > 0 && <p className="text-xs text-green-600">+{formatCurrency(p.income)}</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Gráficos */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -186,6 +234,7 @@ export default function DashboardPage() {
                       <p className="text-sm font-medium text-gray-900 truncate">{t.description}</p>
                       <p className="text-xs text-gray-400">
                         {t.category?.name} · {formatDate(t.date)}
+                        {t.paidBy && <span className="ml-1 text-primary-500">· {t.paidBy}</span>}
                       </p>
                     </div>
                     <span
@@ -208,6 +257,7 @@ export default function DashboardPage() {
         <TransactionForm
           categories={categories}
           paymentMethods={paymentMethods}
+          payers={payers}
           onSubmit={handleCreateTransaction}
           isLoading={saving}
         />

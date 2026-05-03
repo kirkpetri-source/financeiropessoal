@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, Filter, ArrowUpCircle, ArrowDownCircle } from 'lu
 import { useTransactions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
+import { useWhatsappConfig } from '../hooks/useWhatsappConfig';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import TransactionForm from '../components/forms/TransactionForm';
@@ -21,7 +22,7 @@ const STATUS_COLORS = {
 };
 
 export default function TransactionsPage() {
-  const [filters, setFilters] = useState({ month: currentMonth(), type: '', categoryId: '', paymentMethodId: '', origin: '' });
+  const [filters, setFilters] = useState({ month: currentMonth(), type: '', categoryId: '', paymentMethodId: '', origin: '', paidBy: '' });
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -32,11 +33,12 @@ export default function TransactionsPage() {
   const { transactions, loading, fetchTransactions, createTransaction, updateTransaction, deleteTransaction } = useTransactions();
   const { categories, fetchCategories } = useCategories();
   const { paymentMethods, fetchPaymentMethods } = usePaymentMethods();
+  const { payers, fetchPayers } = useWhatsappConfig();
 
   const months = monthsList(12);
 
   useEffect(() => { fetchTransactions(filters); }, [filters]);
-  useEffect(() => { fetchCategories(); fetchPaymentMethods(); }, []);
+  useEffect(() => { fetchCategories(); fetchPaymentMethods(); fetchPayers(); }, []);
 
   function openCreate() { setEditingTransaction(null); setModalOpen(true); }
   function openEdit(t) { setEditingTransaction(t); setModalOpen(true); }
@@ -105,7 +107,7 @@ export default function TransactionsPage() {
 
       {/* Filtros expandidos */}
       {showFilters && (
-        <div className="card grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="card grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div>
             <label className="label text-xs">Tipo</label>
             <select className="input text-sm" value={filters.type} onChange={(e) => setFilters(f => ({ ...f, type: e.target.value }))}>
@@ -135,6 +137,15 @@ export default function TransactionsPage() {
               {Object.entries(ORIGIN_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
+          {payers.length > 0 && (
+            <div>
+              <label className="label text-xs">Pago por</label>
+              <select className="input text-sm" value={filters.paidBy} onChange={(e) => setFilters(f => ({ ...f, paidBy: e.target.value }))}>
+                <option value="">Todos</option>
+                {payers.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -180,7 +191,7 @@ export default function TransactionsPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Data', 'Descrição', 'Categoria', 'Pagamento', 'Origem', 'Status', 'Valor', ''].map(h => (
+                    {['Data', 'Descrição', 'Categoria', 'Pagamento', ...(payers.length > 0 ? ['Pago por'] : []), 'Status', 'Valor', ''].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
@@ -197,9 +208,15 @@ export default function TransactionsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{t.category?.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{t.paymentMethod?.name}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs text-gray-500">{ORIGIN_LABELS[t.origin] || t.origin}</span>
-                      </td>
+                      {payers.length > 0 && (
+                        <td className="px-4 py-3">
+                          {t.paidBy ? (
+                            <span className="text-xs bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full font-medium">{t.paidBy}</span>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[t.status]}`}>
                           {STATUS_LABELS[t.status]}
@@ -235,7 +252,10 @@ export default function TransactionsPage() {
                       <div className="w-2 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: t.category?.color || '#94a3b8' }} />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{t.description}</p>
-                        <p className="text-xs text-gray-400">{t.category?.name} · {formatDate(t.date)} · {t.paymentMethod?.name}</p>
+                        <p className="text-xs text-gray-400">
+                          {t.category?.name} · {formatDate(t.date)} · {t.paymentMethod?.name}
+                          {t.paidBy && <span className="ml-1 text-primary-500 font-medium">· {t.paidBy}</span>}
+                        </p>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -264,6 +284,7 @@ export default function TransactionsPage() {
         <TransactionForm
           categories={categories}
           paymentMethods={paymentMethods}
+          payers={payers}
           onSubmit={handleSubmit}
           initialData={editingTransaction}
           isLoading={saving}

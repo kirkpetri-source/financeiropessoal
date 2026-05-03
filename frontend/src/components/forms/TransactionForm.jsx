@@ -13,7 +13,7 @@ const STATUSES = [
   { value: 'PENDING', label: 'Pendente' },
 ];
 
-export default function TransactionForm({ onSubmit, initialData, categories, paymentMethods, isLoading }) {
+export default function TransactionForm({ onSubmit, initialData, categories, paymentMethods, isLoading, payers = [] }) {
   const {
     register,
     handleSubmit,
@@ -148,6 +148,17 @@ export default function TransactionForm({ onSubmit, initialData, categories, pay
         </select>
         {errors.paymentMethodId && <p className="text-xs text-red-500 mt-1">{errors.paymentMethodId.message}</p>}
       </div>
+
+      {/* Pago por */}
+      {payers.length > 0 && (
+        <div>
+          <label className="label">Pago por</label>
+          <select className="input" {...register('paidBy')}>
+            <option value="">Não identificado</option>
+            {payers.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Status e Origem */}
       <div className="grid grid-cols-2 gap-3">

@@ -3,6 +3,17 @@ const { fetchGroupMessages, fetchOwnJid } = require('./evolutionApiService');
 const { parseFinancialMessage } = require('../utils/financialParser');
 const { createTransaction } = require('./transactionService');
 
+// Cache simples de payers por userId para evitar múltiplas consultas por mensagem
+const _payersCache = {};
+async function getPayersForUser(userId) {
+  if (_payersCache[userId]) return _payersCache[userId];
+  const doc = await db.collection('whatsappConfigs').doc(userId).get();
+  const payers = doc.exists ? (doc.data().payers || []) : [];
+  _payersCache[userId] = payers;
+  setTimeout(() => { delete _payersCache[userId]; }, 5 * 60 * 1000); // cache 5min
+  return payers;
+}
+
 const FINANCIAL_KEYWORDS = ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando', 'receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'];
 
 function looksLikeFinancialMessage(text) {
@@ -90,7 +101,8 @@ async function processPolledMessage(msg, userId) {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    const parsed = parseFinancialMessage(line);
+    const payers = userId ? await getPayersForUser(userId) : [];
+    const parsed = parseFinancialMessage(line, payers);
     if (!parsed) {
       await logRef.update({
         processingStatus: 'ERROR',
@@ -109,6 +121,8 @@ async function processPolledMessage(msg, userId) {
       continue;
     }
 
+    const paidBy = parsed.paidBy || senderName || null;
+
     const transaction = await createTransaction(userId, {
       type: parsed.type,
       description: parsed.description,
@@ -119,6 +133,7 @@ async function processPolledMessage(msg, userId) {
       notes: `Via WhatsApp. Enviado por: ${senderName || 'Você'}`,
       origin: 'WHATSAPP',
       status: 'CONFIRMED',
+      paidBy,
     });
 
     await logRef.update({ processingStatus: 'PROCESSED', transactionId: transaction.id });

@@ -102,9 +102,10 @@ function suggestCategory(description, type) {
 /**
  * Parseia uma mensagem de texto em um objeto de lançamento financeiro.
  * @param {string} message - Texto da mensagem
- * @returns {{ type, description, amount, paymentMethodName, categoryName, date, referenceMonth } | null}
+ * @param {string[]} payers - Lista de nomes dos pagadores configurados (ex: ['Kirk', 'Raquel'])
+ * @returns {{ type, description, amount, paymentMethodName, categoryName, paidBy, date, referenceMonth } | null}
  */
-function parseFinancialMessage(message) {
+function parseFinancialMessage(message, payers = []) {
   if (!message || typeof message !== 'string') return null;
 
   const trimmed = message.trim();
@@ -117,6 +118,18 @@ function parseFinancialMessage(message) {
 
   // Remove a primeira palavra (tipo)
   let remainingWords = words.slice(1);
+
+  // Detecta pagador no final se houver nomes configurados
+  // Exemplo: "gasto mercado 84,90 pix raquel" → paidBy = "Raquel"
+  let paidBy = null;
+  if (payers.length > 0) {
+    const lastWord = remainingWords[remainingWords.length - 1]?.toLowerCase();
+    const matchedPayer = payers.find((p) => p.toLowerCase() === lastWord);
+    if (matchedPayer) {
+      paidBy = matchedPayer;
+      remainingWords = remainingWords.slice(0, -1);
+    }
+  }
 
   // Detecta forma de pagamento (última palavra)
   const { method: paymentMethodName, remainingWords: wordsAfterPayment } = detectPaymentMethod(remainingWords);
@@ -142,6 +155,7 @@ function parseFinancialMessage(message) {
     amount,
     paymentMethodName,
     categoryName,
+    paidBy,
     date,
     referenceMonth,
   };

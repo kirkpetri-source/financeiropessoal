@@ -28,6 +28,7 @@ export default function SettingsPage() {
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
   const [allowPrivateChat, setAllowPrivateChat] = useState(false);
+  const [payersInput, setPayersInput] = useState('');
 
   const profileForm = useForm({ defaultValues: { name: user?.name || '', email: user?.email || '' } });
   const passwordForm = useForm();
@@ -44,6 +45,7 @@ export default function SettingsPage() {
       });
       setWhatsappEnabled(data.enabled || false);
       setAllowPrivateChat(data.allowPrivateChat || false);
+      setPayersInput((data.payers || []).join(', '));
     }).catch(() => {});
   }, []);
 
@@ -80,7 +82,8 @@ export default function SettingsPage() {
   async function handleWhatsappSubmit(data) {
     setSavingWhatsapp(true);
     try {
-      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled, allowPrivateChat });
+      const payers = payersInput.split(',').map(p => p.trim()).filter(Boolean);
+      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled, allowPrivateChat, payers });
       toast.success('Configurações do WhatsApp salvas!');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao salvar configurações.');
@@ -205,6 +208,19 @@ export default function SettingsPage() {
             <label className="label">Mensagem de Confirmação</label>
             <input className="input" placeholder="✅ Lançamento registrado: {tipo} de R$ {valor}" {...whatsappForm.register('confirmationMessageTemplate')} />
             <p className="text-xs text-gray-400 mt-1">Use: {'{tipo}'} {'{valor}'} {'{categoria}'}</p>
+          </div>
+
+          <div>
+            <label className="label">Membros da família (pagadores)</label>
+            <input
+              className="input"
+              placeholder="Ex: Kirk, Raquel"
+              value={payersInput}
+              onChange={(e) => setPayersInput(e.target.value)}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Separe os nomes por vírgula. Use no final da mensagem: <code className="bg-gray-100 px-1 rounded">gasto mercado 84,90 pix raquel</code>
+            </p>
           </div>
 
           <div className="pt-1">

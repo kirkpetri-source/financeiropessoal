@@ -6,7 +6,7 @@ function buildReferenceMonth(dateStr) {
 }
 
 async function listTransactions(userId, filters = {}) {
-  const { month, type, categoryId, paymentMethodId, origin } = filters;
+  const { month, type, categoryId, paymentMethodId, origin, paidBy } = filters;
 
   let query = db.collection('transactions').where('userId', '==', userId);
 
@@ -16,12 +16,11 @@ async function listTransactions(userId, filters = {}) {
   const snap = await query.orderBy('date', 'desc').get();
   let results = snap.docs.map((d) => ({ id: d.id, ...d.data(), date: d.data().date?.toDate?.() || d.data().date }));
 
-  // Filtros adicionais aplicados em memória (evita necessidade de índices compostos extras)
   if (categoryId) results = results.filter((t) => t.categoryId === categoryId);
   if (paymentMethodId) results = results.filter((t) => t.paymentMethodId === paymentMethodId);
   if (origin) results = results.filter((t) => t.origin === origin);
+  if (paidBy) results = results.filter((t) => t.paidBy?.toLowerCase() === paidBy.toLowerCase());
 
-  // Enriquecer com nome de categoria e forma de pagamento
   return enrichTransactions(results);
 }
 
@@ -40,6 +39,7 @@ async function createTransaction(userId, data) {
     notes: data.notes || null,
     origin: data.origin || 'MANUAL',
     status: data.status || 'CONFIRMED',
+    paidBy: data.paidBy || null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -67,6 +67,7 @@ async function updateTransaction(userId, transactionId, data) {
   if (data.notes !== undefined) updateData.notes = data.notes;
   if (data.origin !== undefined) updateData.origin = data.origin;
   if (data.status !== undefined) updateData.status = data.status;
+  if (data.paidBy !== undefined) updateData.paidBy = data.paidBy;
 
   if (data.date !== undefined) {
     updateData.date = admin.firestore.Timestamp.fromDate(new Date(data.date));
@@ -127,7 +128,17 @@ async function getMonthlySummary(userId, month) {
     return db2 - da;
   }).slice(0, 10);
 
-  return { month, totalIncome, totalExpense, balance, topCategory, expenseByCategory: expenseByCategoryArr, recentTransactions };
+  // Breakdown por pagador
+  const byPayer = {};
+  enriched.filter((t) => t.status === 'CONFIRMED').forEach((t) => {
+    const payer = t.paidBy || 'Sem identificação';
+    if (!byPayer[payer]) byPayer[payer] = { name: payer, income: 0, expense: 0 };
+    if (t.type === 'INCOME') byPayer[payer].income += t.amount;
+    else byPayer[payer].expense += t.amount;
+  });
+  const byPayerArr = Object.values(byPayer).sort((a, b) => b.expense - a.expense);
+
+  return { month, totalIncome, totalExpense, balance, topCategory, expenseByCategory: expenseByCategoryArr, recentTransactions, byPayer: byPayerArr };
 }
 
 // Enriquece transações com nome/cor de categoria e nome de forma de pagamento
