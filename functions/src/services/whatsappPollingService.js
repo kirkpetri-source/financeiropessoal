@@ -137,14 +137,14 @@ async function pollForUser(userId, config) {
     const messages = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 });
     results.checked = messages.length;
 
-    // Processa apenas mensagens das últimas 2 horas
-    const twoHoursAgo = Math.floor(Date.now() / 1000) - 2 * 60 * 60;
+    // Processa mensagens das últimas 24 horas — cobre o dia inteiro
+    const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
 
     for (const msg of messages) {
       const messageId = msg.key?.id;
       const timestamp = msg.messageTimestamp || 0;
 
-      if (timestamp && timestamp < twoHoursAgo) { results.skipped++; continue; }
+      if (timestamp && timestamp < oneDayAgo) { results.skipped++; continue; }
       if (await isAlreadyProcessed(messageId)) { results.skipped++; continue; }
 
       try {
