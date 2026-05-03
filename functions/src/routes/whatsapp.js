@@ -14,6 +14,7 @@ router.use(authMiddleware);
 router.get('/config', whatsappConfigController.getConfig);
 router.put('/config', validate(whatsappConfigSchema), whatsappConfigController.updateConfig);
 router.get('/logs', whatsappLogController.list);
+router.delete('/logs/:id', whatsappLogController.remove);
 
 // Disparo manual do polling — chamado pelo botão Atualizar do frontend
 router.post('/poll', async (req, res, next) => {

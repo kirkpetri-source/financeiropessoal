@@ -124,6 +124,8 @@ function parseFinancialMessage(message, payers = []) {
   // Aceita payers como array de strings OU objetos {name, phone}
   let paidBy = null;
   const payerNames = payers.map((p) => (typeof p === 'string' ? p : p.name));
+
+  // Tenta detectar nome do pagador na última palavra (antes do pagamento)
   if (payerNames.length > 0) {
     const lastWord = remainingWords[remainingWords.length - 1]?.toLowerCase();
     const matchedPayer = payerNames.find((p) => p.toLowerCase() === lastWord);
@@ -142,8 +144,22 @@ function parseFinancialMessage(message, payers = []) {
   if (!amount) return null;
 
   // O que restou é a descrição
-  const description = wordsAfterAmount.join(' ').trim();
+  let description = wordsAfterAmount.join(' ').trim();
   if (!description) return null;
+
+  // Se o nome não foi encontrado antes, procura em QUALQUER posição da descrição
+  // Ex: "mercado café da manhã Raquel" → paidBy=Raquel, desc="mercado café da manhã"
+  if (!paidBy && payerNames.length > 0) {
+    const descWords = description.split(' ');
+    for (let i = 0; i < descWords.length; i++) {
+      const match = payerNames.find((p) => p.toLowerCase() === descWords[i].toLowerCase());
+      if (match) {
+        paidBy = match;
+        description = [...descWords.slice(0, i), ...descWords.slice(i + 1)].join(' ').trim();
+        break;
+      }
+    }
+  }
 
   const categoryName = suggestCategory(description, type);
 

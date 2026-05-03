@@ -39,4 +39,21 @@ async function updateLog(id, data) {
   await db.collection('whatsappLogs').doc(id).update(data);
 }
 
-module.exports = { listLogs, createLog, updateLog };
+async function deleteLog(userId, logId) {
+  const ref = db.collection('whatsappLogs').doc(logId);
+  const doc = await ref.get();
+
+  if (!doc.exists || doc.data().userId !== userId) {
+    throw Object.assign(new Error('Log não encontrado.'), { statusCode: 404 });
+  }
+
+  const transactionId = doc.data().transactionId;
+
+  // Deleta o log e a transação vinculada em paralelo
+  await Promise.all([
+    ref.delete(),
+    transactionId ? db.collection('transactions').doc(transactionId).delete() : Promise.resolve(),
+  ]);
+}
+
+module.exports = { listLogs, createLog, updateLog, deleteLog };

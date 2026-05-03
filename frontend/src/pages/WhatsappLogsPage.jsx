@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle } from 'lucide-react';
+import { MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Trash2 } from 'lucide-react';
 import api from '../services/api';
 import EmptyState from '../components/ui/EmptyState';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -20,6 +20,7 @@ export default function WhatsappLogsPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [filters, setFilters] = useState({ status: '', messageType: '', limit: 50 });
 
   async function fetchLogs() {
@@ -33,6 +34,20 @@ export default function WhatsappLogsPage() {
       toast.error('Erro ao carregar logs.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDelete(logId) {
+    if (!confirm('Excluir esta mensagem e o lançamento vinculado?')) return;
+    setDeletingId(logId);
+    try {
+      await api.delete(`/whatsapp/logs/${logId}`);
+      toast.success('Mensagem e lançamento excluídos.');
+      fetchLogs();
+    } catch {
+      toast.error('Erro ao excluir.');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -137,6 +152,16 @@ export default function WhatsappLogsPage() {
                       <p className="text-xs text-red-400 mt-0.5 truncate">{log.errorMessage}</p>
                     )}
                   </div>
+
+                  {/* Botão excluir */}
+                  <button
+                    onClick={() => handleDelete(log.id)}
+                    disabled={deletingId === log.id}
+                    className="flex-shrink-0 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-0.5"
+                    title="Excluir mensagem e lançamento"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               );
             })}
