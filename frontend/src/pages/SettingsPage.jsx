@@ -27,6 +27,7 @@ export default function SettingsPage() {
   const [showCurrentPwd, setShowCurrentPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
+  const [allowPrivateChat, setAllowPrivateChat] = useState(false);
 
   const profileForm = useForm({ defaultValues: { name: user?.name || '', email: user?.email || '' } });
   const passwordForm = useForm();
@@ -42,6 +43,7 @@ export default function SettingsPage() {
         confirmationMessageTemplate: data.confirmationMessageTemplate || '',
       });
       setWhatsappEnabled(data.enabled || false);
+      setAllowPrivateChat(data.allowPrivateChat || false);
     }).catch(() => {});
   }, []);
 
@@ -78,7 +80,7 @@ export default function SettingsPage() {
   async function handleWhatsappSubmit(data) {
     setSavingWhatsapp(true);
     try {
-      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled });
+      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled, allowPrivateChat });
       toast.success('Configurações do WhatsApp salvas!');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao salvar configurações.');
@@ -159,6 +161,23 @@ export default function SettingsPage() {
             className={`relative w-11 h-6 rounded-full transition-colors ${whatsappEnabled ? 'bg-primary-600' : 'bg-gray-300'}`}
           >
             <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${whatsappEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Aceitar mensagens privadas</p>
+            <p className="text-xs text-gray-500">
+              Processar lançamentos enviados diretamente para o número do bot.
+              Outros conteúdos (fotos, links, vídeos) são ignorados automaticamente.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAllowPrivateChat(!allowPrivateChat)}
+            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 ${allowPrivateChat ? 'bg-primary-600' : 'bg-gray-300'}`}
+          >
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${allowPrivateChat ? 'translate-x-5' : 'translate-x-0.5'}`} />
           </button>
         </div>
 

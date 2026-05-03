@@ -7,6 +7,7 @@ const whatsappConfigSchema = z.object({
   apiKey: z.string().max(500).optional().nullable(),
   groupId: z.string().max(100).optional().nullable(),
   confirmationMessageTemplate: z.string().max(500).optional().nullable(),
+  allowPrivateChat: z.boolean().default(false),
 });
 
 module.exports = { whatsappConfigSchema };

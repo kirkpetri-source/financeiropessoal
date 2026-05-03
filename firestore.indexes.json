@@ -28,6 +28,15 @@
       ]
     },
     {
+      "collectionGroup": "whatsappConfigs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "instanceName", "order": "ASCENDING" },
+        { "fieldPath": "allowPrivateChat", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "whatsappLogs",
       "queryScope": "COLLECTION",
       "fields": [
