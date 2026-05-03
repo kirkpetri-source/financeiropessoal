@@ -121,10 +121,12 @@ function parseFinancialMessage(message, payers = []) {
 
   // Detecta pagador no final se houver nomes configurados
   // Exemplo: "gasto mercado 84,90 pix raquel" → paidBy = "Raquel"
+  // Aceita payers como array de strings OU objetos {name, phone}
   let paidBy = null;
-  if (payers.length > 0) {
+  const payerNames = payers.map((p) => (typeof p === 'string' ? p : p.name));
+  if (payerNames.length > 0) {
     const lastWord = remainingWords[remainingWords.length - 1]?.toLowerCase();
-    const matchedPayer = payers.find((p) => p.toLowerCase() === lastWord);
+    const matchedPayer = payerNames.find((p) => p.toLowerCase() === lastWord);
     if (matchedPayer) {
       paidBy = matchedPayer;
       remainingWords = remainingWords.slice(0, -1);

@@ -28,7 +28,7 @@ export default function SettingsPage() {
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
   const [allowPrivateChat, setAllowPrivateChat] = useState(false);
-  const [payersInput, setPayersInput] = useState('');
+  const [payers, setPayers] = useState([{ name: '', phone: '' }]);
 
   const profileForm = useForm({ defaultValues: { name: user?.name || '', email: user?.email || '' } });
   const passwordForm = useForm();
@@ -45,7 +45,8 @@ export default function SettingsPage() {
       });
       setWhatsappEnabled(data.enabled || false);
       setAllowPrivateChat(data.allowPrivateChat || false);
-      setPayersInput((data.payers || []).join(', '));
+      const savedPayers = data.payers || [];
+      setPayers(savedPayers.length > 0 ? savedPayers : [{ name: '', phone: '' }]);
     }).catch(() => {});
   }, []);
 
@@ -82,8 +83,8 @@ export default function SettingsPage() {
   async function handleWhatsappSubmit(data) {
     setSavingWhatsapp(true);
     try {
-      const payers = payersInput.split(',').map(p => p.trim()).filter(Boolean);
-      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled, allowPrivateChat, payers });
+      const validPayers = payers.filter(p => p.name.trim());
+      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled, allowPrivateChat, payers: validPayers });
       toast.success('Configurações do WhatsApp salvas!');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao salvar configurações.');
@@ -211,15 +212,53 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="label">Membros da família (pagadores)</label>
-            <input
-              className="input"
-              placeholder="Ex: Kirk, Raquel"
-              value={payersInput}
-              onChange={(e) => setPayersInput(e.target.value)}
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              Separe os nomes por vírgula. Use no final da mensagem: <code className="bg-gray-100 px-1 rounded">gasto mercado 84,90 pix raquel</code>
+            <label className="label">Membros da família</label>
+            <p className="text-xs text-gray-400 mb-2">
+              Cadastre o nome e telefone de cada pessoa. O sistema identificará automaticamente quem pagou pelo número do remetente.
+            </p>
+            <div className="space-y-2">
+              {payers.map((payer, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <input
+                    className="input flex-1"
+                    placeholder="Nome (ex: Kirk)"
+                    value={payer.name}
+                    onChange={(e) => {
+                      const updated = [...payers];
+                      updated[idx] = { ...updated[idx], name: e.target.value };
+                      setPayers(updated);
+                    }}
+                  />
+                  <input
+                    className="input flex-1"
+                    placeholder="WhatsApp (ex: 5564999555364)"
+                    value={payer.phone || ''}
+                    onChange={(e) => {
+                      const updated = [...payers];
+                      updated[idx] = { ...updated[idx], phone: e.target.value.replace(/\D/g, '') };
+                      setPayers(updated);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPayers(payers.filter((_, i) => i !== idx))}
+                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                    title="Remover"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setPayers([...payers, { name: '', phone: '' }])}
+                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 mt-1"
+              >
+                + Adicionar membro
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Também pode indicar no final da mensagem: <code className="bg-gray-100 px-1 rounded">gasto mercado 84,90 pix raquel</code>
             </p>
           </div>
 

@@ -2,6 +2,7 @@ const { db } = require('../config/firebaseAdmin');
 const { parseFinancialMessage } = require('../utils/financialParser');
 const { createLog, updateLog } = require('../services/whatsappLogService');
 const { createTransaction } = require('../services/transactionService');
+const { resolvePayerName } = require('../utils/resolvePayerName');
 
 const FINANCIAL_KEYWORDS = ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando', 'receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'];
 
@@ -18,7 +19,10 @@ function extractMessageData(payload) {
     const messageId = data.key?.id || null;
     const remoteJid = data.key?.remoteJid || null;
     const fromMe = data.key?.fromMe || false;
-    const sender = data.pushName || data.key?.participant || null;
+    const pushName = data.pushName || null;
+    // JID do remetente — em grupos é data.key.participant, em privado é remoteJid
+    const senderJid = data.key?.participant || (fromMe ? null : remoteJid) || null;
+    const sender = pushName || senderJid || null;
     const instanceName = payload.instance || null;
 
     let content = null;
@@ -172,8 +176,9 @@ async function handleEvolutionWebhook(req, res) {
       return;
     }
 
-    // paidBy: usa o nome detectado no parser OU o nome de quem enviou a mensagem
-    const paidBy = parsed.paidBy || sender || null;
+    // Resolve paidBy: 1) nome no final da msg, 2) telefone configurado, 3) pushName
+    const payers = userConfig.payers || [];
+    const paidBy = resolvePayerName(parsed.paidBy, senderJid, pushName, payers);
 
     const transaction = await createTransaction(userId, {
       type: parsed.type,

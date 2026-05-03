@@ -7,7 +7,11 @@ export function useWhatsappConfig() {
   const fetchPayers = useCallback(async () => {
     try {
       const { data } = await api.get('/whatsapp/config');
-      setPayers(data.payers || []);
+      // Retorna apenas os nomes (strings) para usar nos filtros e formulários
+      const names = (data.payers || [])
+        .map(p => typeof p === 'string' ? p : p.name)
+        .filter(Boolean);
+      setPayers(names);
     } catch {
       // silencioso
     }

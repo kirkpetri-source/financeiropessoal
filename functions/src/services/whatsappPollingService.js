@@ -2,6 +2,7 @@ const { db, admin } = require('../config/firebaseAdmin');
 const { fetchGroupMessages, fetchOwnJid } = require('./evolutionApiService');
 const { parseFinancialMessage } = require('../utils/financialParser');
 const { createTransaction } = require('./transactionService');
+const { resolvePayerName } = require('../utils/resolvePayerName');
 
 // Cache simples de payers por userId para evitar múltiplas consultas por mensagem
 const _payersCache = {};
@@ -63,6 +64,8 @@ async function processPolledMessage(msg, userId) {
     || msg.message?.ephemeralMessage?.message?.conversation
     || null;
 
+  // JID do remetente para identificação por telefone
+  const senderJid = msg.key?.participant || msg.key?.remoteJid || null;
   // Usa o nome real do remetente se disponível, senão busca o perfil do usuário
   const senderName = msg.pushName || msg.verifiedBizName || null;
   const messageTimestamp = msg.messageTimestamp;
@@ -121,7 +124,8 @@ async function processPolledMessage(msg, userId) {
       continue;
     }
 
-    const paidBy = parsed.paidBy || senderName || null;
+    // Resolve paidBy: 1) nome no final da msg, 2) telefone configurado, 3) pushName
+    const paidBy = resolvePayerName(parsed.paidBy, senderJid, senderName, payers);
 
     const transaction = await createTransaction(userId, {
       type: parsed.type,
