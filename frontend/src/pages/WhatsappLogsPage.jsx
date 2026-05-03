@@ -19,6 +19,7 @@ export default function WhatsappLogsPage() {
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
   const [filters, setFilters] = useState({ status: '', messageType: '', limit: 50 });
 
   async function fetchLogs() {
@@ -35,6 +36,23 @@ export default function WhatsappLogsPage() {
     }
   }
 
+  async function handleRefresh() {
+    setPolling(true);
+    try {
+      const { data } = await api.post('/whatsapp/poll');
+      if (data.processed > 0) {
+        toast.success(`${data.processed} nova(s) mensagem(ns) processada(s)!`);
+      } else {
+        toast.success('Nenhuma mensagem nova encontrada.');
+      }
+    } catch {
+      toast.error('Erro ao verificar mensagens.');
+    } finally {
+      setPolling(false);
+      fetchLogs();
+    }
+  }
+
   useEffect(() => { fetchLogs(); }, [filters]);
 
   return (
@@ -43,6 +61,7 @@ export default function WhatsappLogsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <p className="text-sm text-gray-500">Total de {total} mensagens recebidas</p>
+          <p className="text-xs text-gray-400">Verificação automática a cada 2 minutos</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -61,8 +80,14 @@ export default function WhatsappLogsPage() {
             <option value="">Todos os tipos</option>
             {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          <button onClick={fetchLogs} className="btn-secondary p-2" title="Atualizar">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <button
+            onClick={handleRefresh}
+            disabled={polling || loading}
+            className="btn-secondary flex items-center gap-2 px-3 py-2 text-sm"
+            title="Verificar mensagens novas agora"
+          >
+            <RefreshCw className={`w-4 h-4 ${polling ? 'animate-spin' : ''}`} />
+            {polling ? 'Verificando...' : 'Verificar agora'}
           </button>
         </div>
       </div>
