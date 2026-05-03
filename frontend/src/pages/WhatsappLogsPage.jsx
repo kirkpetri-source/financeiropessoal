@@ -7,13 +7,13 @@ import { formatDateTime, formatCurrency } from '../utils/formatters';
 import toast from 'react-hot-toast';
 
 const STATUS_CONFIG = {
-  PROCESSED: { label: 'Processado', icon: CheckCircle2, cls: 'text-green-600 bg-green-50' },
-  PENDING: { label: 'Pendente', icon: Clock, cls: 'text-yellow-600 bg-yellow-50' },
-  ERROR: { label: 'Erro', icon: AlertCircle, cls: 'text-red-600 bg-red-50' },
-  IGNORED: { label: 'Ignorado', icon: XCircle, cls: 'text-gray-400 bg-gray-50' },
+  PROCESSED: { label: 'Processado', icon: CheckCircle2, cls: 'text-green-600', dot: 'bg-green-500' },
+  PENDING:   { label: 'Pendente',   icon: Clock,        cls: 'text-yellow-600', dot: 'bg-yellow-400' },
+  ERROR:     { label: 'Erro',       icon: AlertCircle,  cls: 'text-red-500',    dot: 'bg-red-500' },
+  IGNORED:   { label: 'Ignorado',   icon: XCircle,      cls: 'text-gray-400',   dot: 'bg-gray-300' },
 };
 
-const TYPE_LABELS = { TEXT: 'Texto', IMAGE: 'Imagem', AUDIO: 'Áudio', DOCUMENT: 'Documento', STICKER: 'Sticker' };
+const TYPE_LABELS = { TEXT: 'Texto', IMAGE: 'Imagem', AUDIO: 'Áudio', DOCUMENT: 'Doc', STICKER: 'Sticker' };
 
 export default function WhatsappLogsPage() {
   const [logs, setLogs] = useState([]);
@@ -56,110 +56,86 @@ export default function WhatsappLogsPage() {
   useEffect(() => { fetchLogs(); }, [filters]);
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto">
-      {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-gray-500">Total de {total} mensagens recebidas</p>
-          <p className="text-xs text-gray-400">Verificação automática a cada 2 minutos</p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="space-y-3 max-w-4xl mx-auto">
+      {/* Barra de controles */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-gray-400">
+          {total} mensagem(ns) · verificação automática a cada 2 min
+        </p>
+        <div className="flex items-center gap-2">
           <select
-            className="input w-auto text-sm"
+            className="input w-auto text-xs py-1.5"
             value={filters.status}
             onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))}
           >
             <option value="">Todos os status</option>
-            {Object.entries(STATUS_CONFIG).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
-          </select>
-          <select
-            className="input w-auto text-sm"
-            value={filters.messageType}
-            onChange={(e) => setFilters(f => ({ ...f, messageType: e.target.value }))}
-          >
-            <option value="">Todos os tipos</option>
-            {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {Object.entries(STATUS_CONFIG).map(([v, { label }]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
           </select>
           <button
             onClick={handleRefresh}
             disabled={polling || loading}
-            className="btn-secondary flex items-center gap-2 px-3 py-2 text-sm"
-            title="Verificar mensagens novas agora"
+            className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs"
           >
-            <RefreshCw className={`w-4 h-4 ${polling ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${polling ? 'animate-spin' : ''}`} />
             {polling ? 'Verificando...' : 'Verificar agora'}
           </button>
         </div>
       </div>
 
-      {/* Info box */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-        <p className="font-medium mb-1">Como funciona a integração com WhatsApp?</p>
-        <p className="text-blue-600 text-xs">
-          Configure a Evolution API nas <strong>Configurações</strong> e aponte o webhook para este servidor.
-          Mensagens do grupo configurado serão processadas automaticamente.
-          Formato aceito: <code className="bg-blue-100 px-1 rounded">gasto mercado 84,90 pix</code>
-        </p>
-      </div>
-
-      {/* Lista */}
+      {/* Lista compacta */}
       <div className="card p-0 overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-12"><LoadingSpinner size="lg" /></div>
+          <div className="flex justify-center py-10"><LoadingSpinner size="lg" /></div>
         ) : logs.length === 0 ? (
           <EmptyState
             icon={MessageSquare}
             title="Nenhuma mensagem recebida"
-            description="Configure a integração e envie mensagens pelo grupo do WhatsApp."
+            description={`Envie no grupo: gasto mercado 84,90 pix`}
           />
         ) : (
           <div className="divide-y divide-gray-50">
             {logs.map((log) => {
-              const statusCfg = STATUS_CONFIG[log.processingStatus] || STATUS_CONFIG.PENDING;
-              const StatusIcon = statusCfg.icon;
-
+              const st = STATUS_CONFIG[log.processingStatus] || STATUS_CONFIG.PENDING;
+              const StatusIcon = st.icon;
               return (
-                <div key={log.id} className="p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${statusCfg.cls}`}>
-                      <StatusIcon className="w-4 h-4" />
-                    </div>
+                <div key={log.id} className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50">
+                  {/* Ícone de status */}
+                  <div className="flex-shrink-0 mt-0.5">
+                    <StatusIcon className={`w-4 h-4 ${st.cls}`} />
+                  </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-gray-900">{log.sender || 'Desconhecido'}</span>
-                        <span className="text-xs text-gray-400">{formatDateTime(log.createdAt)}</span>
+                  {/* Conteúdo */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">
+                      <span className="text-xs font-medium text-gray-800">
+                        {log.sender || 'Desconhecido'}
+                      </span>
+                      <span className="text-xs text-gray-400">{formatDateTime(log.createdAt)}</span>
+                      <span className={`text-xs font-medium ${st.cls}`}>{st.label}</span>
+                      {log.messageType && log.messageType !== 'TEXT' && (
                         <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
                           {TYPE_LABELS[log.messageType] || log.messageType}
                         </span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${statusCfg.cls}`}>
-                          {statusCfg.label}
-                        </span>
-                      </div>
-
-                      {log.content && (
-                        <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2 font-mono mt-1">
-                          {log.content}
-                        </p>
-                      )}
-
-                      {log.errorMessage && (
-                        <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> {log.errorMessage}
-                        </p>
-                      )}
-
-                      {log.transaction && (
-                        <div className="mt-2 flex items-center gap-2 text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Lançamento criado: <strong>{log.transaction.description}</strong> — {formatCurrency(log.transaction.amount)}</span>
-                        </div>
-                      )}
-
-                      {log.groupId && (
-                        <p className="text-xs text-gray-400 mt-1">Grupo: {log.groupId}</p>
                       )}
                     </div>
+
+                    {log.content && (
+                      <p className="text-xs text-gray-600 font-mono mt-0.5 truncate max-w-lg">
+                        {log.content}
+                      </p>
+                    )}
+
+                    {log.transaction && (
+                      <p className="text-xs text-green-700 mt-0.5">
+                        ✅ {log.transaction.description} — {formatCurrency(log.transaction.amount)}
+                      </p>
+                    )}
+
+                    {log.errorMessage && (
+                      <p className="text-xs text-red-400 mt-0.5 truncate">{log.errorMessage}</p>
+                    )}
                   </div>
                 </div>
               );

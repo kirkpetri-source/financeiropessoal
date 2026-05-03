@@ -1,5 +1,5 @@
 const { db, admin } = require('../config/firebaseAdmin');
-const { fetchGroupMessages } = require('./evolutionApiService');
+const { fetchGroupMessages, fetchOwnJid } = require('./evolutionApiService');
 const { parseFinancialMessage } = require('../utils/financialParser');
 const { createTransaction } = require('./transactionService');
 
@@ -126,34 +126,52 @@ async function processPolledMessage(msg, userId) {
   return created;
 }
 
+async function processMessages(messages, userId) {
+  const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+  let processed = 0, skipped = 0, errors = 0;
+
+  for (const msg of messages) {
+    const messageId = msg.key?.id;
+    const timestamp = msg.messageTimestamp || 0;
+    if (timestamp && timestamp < oneDayAgo) { skipped++; continue; }
+    if (await isAlreadyProcessed(messageId)) { skipped++; continue; }
+    try {
+      const txs = await processPolledMessage(msg, userId);
+      processed += txs;
+    } catch (err) {
+      console.error('[Polling] Erro:', err.message);
+      errors++;
+    }
+  }
+  return { processed, skipped, errors };
+}
+
 /**
  * Executa o polling para um usuário específico.
- * Busca mensagens fromMe no grupo e processa as novas.
+ * Verifica: (1) grupo configurado, (2) auto-conversa ("Mensagens para mim").
  */
 async function pollForUser(userId, config) {
   const results = { checked: 0, processed: 0, skipped: 0, errors: 0 };
 
   try {
-    const messages = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 });
-    results.checked = messages.length;
+    // 1. Polling do GRUPO (mensagens fromMe enviadas no grupo)
+    const groupMessages = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 });
+    results.checked += groupMessages.length;
+    const groupResult = await processMessages(groupMessages, userId);
+    results.processed += groupResult.processed;
+    results.skipped += groupResult.skipped;
+    results.errors += groupResult.errors;
 
-    // Processa mensagens das últimas 24 horas — cobre o dia inteiro
-    const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
-
-    for (const msg of messages) {
-      const messageId = msg.key?.id;
-      const timestamp = msg.messageTimestamp || 0;
-
-      if (timestamp && timestamp < oneDayAgo) { results.skipped++; continue; }
-      if (await isAlreadyProcessed(messageId)) { results.skipped++; continue; }
-
-      try {
-        const txs = await processPolledMessage(msg, userId);
-        results.processed += txs;
-      } catch (err) {
-        console.error('[Polling] Erro ao processar mensagem:', err.message);
-        results.errors++;
-      }
+    // 2. Polling da AUTO-CONVERSA ("Mensagens para mim")
+    const ownJid = await fetchOwnJid(config);
+    if (ownJid) {
+      // Na auto-conversa todas as mensagens são fromMe, buscar sem filtro
+      const selfMessages = await fetchGroupMessages(config, ownJid, { fromMe: true, limit: 30 });
+      results.checked += selfMessages.length;
+      const selfResult = await processMessages(selfMessages, userId);
+      results.processed += selfResult.processed;
+      results.skipped += selfResult.skipped;
+      results.errors += selfResult.errors;
     }
 
     // Atualiza timestamp do último polling
