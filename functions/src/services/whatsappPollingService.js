@@ -147,14 +147,16 @@ async function processPolledMessage(msg, userId) {
   return created;
 }
 
-async function processMessages(messages, userId) {
+async function processMessages(messages, userId, lastResetAt = 0) {
   const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+  // Ignora mensagens anteriores ao último reset de dados
+  const minTimestamp = Math.max(oneDayAgo, lastResetAt);
   let processed = 0, skipped = 0, errors = 0;
 
   for (const msg of messages) {
     const messageId = msg.key?.id;
     const timestamp = msg.messageTimestamp || 0;
-    if (timestamp && timestamp < oneDayAgo) { skipped++; continue; }
+    if (timestamp && timestamp < minTimestamp) { skipped++; continue; }
     if (await isAlreadyProcessed(messageId)) { skipped++; continue; }
     try {
       const txs = await processPolledMessage(msg, userId);
@@ -169,16 +171,33 @@ async function processMessages(messages, userId) {
 
 /**
  * Executa o polling para um usuário específico.
- * Verifica: (1) grupo configurado, (2) auto-conversa ("Mensagens para mim").
+ * Usa lock distribuído para evitar execuções simultâneas (race condition).
  */
 async function pollForUser(userId, config) {
   const results = { checked: 0, processed: 0, skipped: 0, errors: 0 };
 
   try {
-    // 1. Polling do GRUPO (mensagens fromMe enviadas no grupo)
+    // LOCK: impede que dois polls rodem ao mesmo tempo para o mesmo usuário
+    const lockRef = db.collection('pollingLocks').doc(userId);
+    const lockDoc = await lockRef.get();
+    const lockAge = lockDoc.exists
+      ? (Math.floor(Date.now() / 1000) - (lockDoc.data().lockedAt || 0))
+      : 999;
+
+    if (lockAge < 60) {
+      // Outro poll rodou há menos de 60s — pula para evitar duplicação
+      console.log(`[Polling] Lock ativo para ${userId}, pulando.`);
+      return results;
+    }
+    await lockRef.set({ lockedAt: Math.floor(Date.now() / 1000) });
+
+    // Timestamp do último reset — só processa mensagens posteriores
+    const lastResetAt = config.lastResetAt || 0;
+
+    // 1. Polling do GRUPO
     const groupMessages = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 });
     results.checked += groupMessages.length;
-    const groupResult = await processMessages(groupMessages, userId);
+    const groupResult = await processMessages(groupMessages, userId, lastResetAt);
     results.processed += groupResult.processed;
     results.skipped += groupResult.skipped;
     results.errors += groupResult.errors;
@@ -186,16 +205,14 @@ async function pollForUser(userId, config) {
     // 2. Polling da AUTO-CONVERSA ("Mensagens para mim")
     const ownJid = await fetchOwnJid(config);
     if (ownJid) {
-      // Sem filtro fromMe para garantir que pega mensagens recentes sem delay de indexação
       const selfMessages = await fetchGroupMessages(config, ownJid, { fromMe: undefined, limit: 50 });
       results.checked += selfMessages.length;
-      const selfResult = await processMessages(selfMessages, userId);
+      const selfResult = await processMessages(selfMessages, userId, lastResetAt);
       results.processed += selfResult.processed;
       results.skipped += selfResult.skipped;
       results.errors += selfResult.errors;
     }
 
-    // Atualiza timestamp do último polling
     await db.collection('whatsappConfigs').doc(userId).update({
       lastPolledAt: admin.firestore.FieldValue.serverTimestamp(),
     });
