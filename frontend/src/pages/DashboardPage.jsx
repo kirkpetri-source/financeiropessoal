@@ -15,13 +15,13 @@ import toast from 'react-hot-toast';
 
 function SummaryCard({ icon: Icon, label, value, colorClass, bgClass }) {
   return (
-    <div className="card flex items-center gap-4">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${bgClass}`}>
-        <Icon className={`w-6 h-6 ${colorClass}`} />
+    <div className="card flex items-center gap-3 p-4">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${bgClass}`}>
+        <Icon className={`w-5 h-5 ${colorClass}`} />
       </div>
-      <div className="min-w-0">
-        <p className="text-sm text-gray-500">{label}</p>
-        <p className={`text-xl font-bold truncate ${colorClass}`}>{value}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-gray-500 leading-tight">{label}</p>
+        <p className={`text-base sm:text-lg font-bold leading-tight break-all ${colorClass}`}>{value}</p>
       </div>
     </div>
   );
@@ -78,14 +78,23 @@ export default function DashboardPage() {
   const balance = filteredSummary ? filteredSummary.balance : 0;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-4 max-w-7xl mx-auto">
       {/* Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <p className="text-sm text-gray-500">Resumo financeiro de</p>
-          <p className="text-lg font-bold text-gray-900">{capitalizeFirst(formatMonth(selectedMonth))}</p>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-500">Resumo financeiro de</p>
+            <p className="text-base font-bold text-gray-900">{capitalizeFirst(formatMonth(selectedMonth))}</p>
+          </div>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="btn-primary flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Novo</span>
+          </button>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
@@ -108,14 +117,6 @@ export default function DashboardPage() {
               ))}
             </select>
           )}
-          <button
-            onClick={() => setModalOpen(true)}
-            className="btn-primary flex items-center gap-2 whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Novo Lançamento</span>
-            <span className="sm:hidden">Novo</span>
-          </button>
         </div>
       </div>
 
@@ -148,7 +149,7 @@ export default function DashboardPage() {
             />
             <SummaryCard
               icon={Tag}
-              label="Maior Gasto"
+              label="Maior Categoria"
               value={summary.topCategory?.name || '—'}
               colorClass="text-purple-600"
               bgClass="bg-purple-50"

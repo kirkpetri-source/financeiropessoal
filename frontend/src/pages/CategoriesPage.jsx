@@ -125,10 +125,10 @@ export default function CategoriesPage() {
       <div className="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
         <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color || '#94a3b8' }} />
         <span className="text-sm text-gray-800 flex-1">{cat.name}</span>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[cat.type]}`}>
+        <span className={`hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[cat.type]}`}>
           {TYPE_LABELS[cat.type]}
         </span>
-        {!cat.userId && <span className="text-xs text-gray-400">padrão</span>}
+        {!cat.userId && <span className="hidden sm:inline text-xs text-gray-400">padrão</span>}
         <div className="flex gap-1">
           <button
             onClick={() => openEdit(cat)}
@@ -151,8 +151,8 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-1.5 flex-1 flex-wrap">
           {['', 'EXPENSE', 'INCOME'].map((type) => (
             <button
               key={type}
@@ -163,7 +163,7 @@ export default function CategoriesPage() {
             </button>
           ))}
         </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+        <button onClick={openCreate} className="btn-primary flex items-center gap-2 whitespace-nowrap">
           <Plus className="w-4 h-4" /> Nova Categoria
         </button>
       </div>

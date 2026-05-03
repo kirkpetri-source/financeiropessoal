@@ -150,24 +150,24 @@ export default function TransactionsPage() {
       )}
 
       {/* Totalizadores */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="card py-3 flex items-center gap-2">
-          <ArrowUpCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+      <div className="grid grid-cols-3 gap-2">
+        <div className="card p-3 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+          <ArrowUpCircle className="hidden sm:block w-5 h-5 text-green-500 flex-shrink-0" />
           <div>
             <p className="text-xs text-gray-500">Receitas</p>
-            <p className="text-sm font-bold text-green-600">{formatCurrency(totalIncome)}</p>
+            <p className="text-xs sm:text-sm font-bold text-green-600 break-all">{formatCurrency(totalIncome)}</p>
           </div>
         </div>
-        <div className="card py-3 flex items-center gap-2">
-          <ArrowDownCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+        <div className="card p-3 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+          <ArrowDownCircle className="hidden sm:block w-5 h-5 text-red-500 flex-shrink-0" />
           <div>
             <p className="text-xs text-gray-500">Despesas</p>
-            <p className="text-sm font-bold text-red-500">{formatCurrency(totalExpense)}</p>
+            <p className="text-xs sm:text-sm font-bold text-red-500 break-all">{formatCurrency(totalExpense)}</p>
           </div>
         </div>
-        <div className="card py-3">
+        <div className="card p-3">
           <p className="text-xs text-gray-500">Saldo</p>
-          <p className={`text-sm font-bold ${totalIncome - totalExpense >= 0 ? 'text-primary-600' : 'text-red-600'}`}>
+          <p className={`text-xs sm:text-sm font-bold break-all ${totalIncome - totalExpense >= 0 ? 'text-primary-600' : 'text-red-600'}`}>
             {formatCurrency(totalIncome - totalExpense)}
           </p>
         </div>
