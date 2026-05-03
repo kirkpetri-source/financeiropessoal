@@ -41,10 +41,14 @@ async function fetchOwnJid(config) {
     const data = await response.json();
     const instances = Array.isArray(data) ? data : [data];
     const instance = instances.find(i =>
-      i.instance?.instanceName === config.instanceName || i.instanceName === config.instanceName
+      i.name === config.instanceName ||
+      i.instanceName === config.instanceName ||
+      i.instance?.instanceName === config.instanceName
     );
-    const owner = instance?.instance?.owner || instance?.owner || null;
-    return owner; // ex: "556499555364@s.whatsapp.net"
+    // Evolution API v2 retorna 'ownerJid', outras versões podem usar 'owner'
+    const owner = instance?.ownerJid || instance?.owner || instance?.instance?.ownerJid || null;
+    console.log('[fetchOwnJid] JID encontrado:', owner);
+    return owner;
   } catch {
     return null;
   }
