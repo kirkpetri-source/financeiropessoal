@@ -210,7 +210,7 @@ export default function SettingsPage() {
           <div className="pt-1">
             <p className="text-xs font-medium text-gray-500 mb-2">URL do Webhook para configurar na Evolution API:</p>
             <div className="bg-gray-50 rounded-lg px-3 py-2 font-mono text-xs text-gray-700 break-all select-all">
-              {window.location.protocol}//{window.location.hostname}:3001/api/webhooks/evolution
+              {(import.meta.env.VITE_API_URL || '').replace('/api', '')}/api/webhooks/evolution
             </div>
           </div>
 
