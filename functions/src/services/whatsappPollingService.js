@@ -52,6 +52,8 @@ async function processPolledMessage(msg, userId) {
     || msg.message?.ephemeralMessage?.message?.conversation
     || null;
 
+  // Usa o nome real do remetente se disponível, senão busca o perfil do usuário
+  const senderName = msg.pushName || msg.verifiedBizName || null;
   const messageTimestamp = msg.messageTimestamp;
   const groupId = msg.key?.remoteJid;
 
@@ -80,7 +82,7 @@ async function processPolledMessage(msg, userId) {
       userId,
       messageId: lineMessageId,
       groupId,
-      sender: 'você (polling)',
+      sender: senderName || 'Você',
       messageType: 'TEXT',
       content: line,
       processingStatus: 'PENDING',
@@ -114,7 +116,7 @@ async function processPolledMessage(msg, userId) {
       categoryId,
       paymentMethodId,
       date: txDate,
-      notes: 'Via WhatsApp (polling do grupo)',
+      notes: `Via WhatsApp. Enviado por: ${senderName || 'Você'}`,
       origin: 'WHATSAPP',
       status: 'CONFIRMED',
     });
