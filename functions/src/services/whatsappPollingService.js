@@ -3,7 +3,7 @@ const { fetchGroupMessages, fetchOwnJid } = require('./evolutionApiService');
 const { parseFinancialMessage } = require('../utils/financialParser');
 const { createTransaction } = require('./transactionService');
 
-const FINANCIAL_KEYWORDS = ['gasto', 'despesa', 'paguei', 'gastei', 'receita', 'entrada', 'recebi', 'recebido'];
+const FINANCIAL_KEYWORDS = ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando', 'receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'];
 
 function looksLikeFinancialMessage(text) {
   if (!text) return false;

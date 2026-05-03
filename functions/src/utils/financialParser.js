@@ -10,8 +10,8 @@
 const PAYMENT_METHODS = ['pix', 'dinheiro', 'débito', 'debito', 'crédito', 'credito', 'boleto', 'transferência', 'transferencia', 'outro'];
 
 const TYPE_KEYWORDS = {
-  EXPENSE: ['gasto', 'despesa', 'paguei', 'pago', 'gastei'],
-  INCOME: ['receita', 'entrada', 'recebi', 'recebido'],
+  EXPENSE: ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando'],
+  INCOME: ['receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'],
 };
 
 const PAYMENT_METHOD_NORMALIZE = {

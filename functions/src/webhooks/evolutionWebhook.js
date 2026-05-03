@@ -3,7 +3,7 @@ const { parseFinancialMessage } = require('../utils/financialParser');
 const { createLog, updateLog } = require('../services/whatsappLogService');
 const { createTransaction } = require('../services/transactionService');
 
-const FINANCIAL_KEYWORDS = ['gasto', 'despesa', 'paguei', 'gastei', 'receita', 'entrada', 'recebi', 'recebido'];
+const FINANCIAL_KEYWORDS = ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando', 'receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'];
 
 // Só tenta processar se a mensagem começar com palavra financeira conhecida
 function looksLikeFinancialMessage(text) {
