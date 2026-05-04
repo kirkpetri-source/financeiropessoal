@@ -9,6 +9,9 @@
 
 const PAYMENT_METHODS = ['pix', 'dinheiro', 'débito', 'debito', 'crédito', 'credito', 'boleto', 'transferência', 'transferencia', 'outro'];
 
+// Palavras que devem ser removidas da descrição (unidades monetárias, preposições comuns)
+const IGNORED_WORDS = ['reais', 'real', 'r$', 'de', 'do', 'da', 'no', 'na'];
+
 const TYPE_KEYWORDS = {
   EXPENSE: ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando'],
   INCOME: ['receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'],
@@ -160,6 +163,15 @@ function parseFinancialMessage(message, payers = []) {
       }
     }
   }
+
+  // Remove palavras ignoradas da descrição (ex: "reais", "de", "da")
+  description = description
+    .split(' ')
+    .filter(w => !IGNORED_WORDS.includes(w.toLowerCase()))
+    .join(' ')
+    .trim();
+
+  if (!description) return null;
 
   const categoryName = suggestCategory(description, type);
 

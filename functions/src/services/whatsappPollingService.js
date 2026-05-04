@@ -194,8 +194,12 @@ async function pollForUser(userId, config) {
     // Timestamp do último reset — só processa mensagens posteriores
     const lastResetAt = config.lastResetAt || 0;
 
-    // 1. Polling do GRUPO
-    const groupMessages = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 });
+    // 1. Polling do GRUPO — captura fromMe (Kirk) E fromMe:false (Raquel e outros)
+    // O webhook já processa mensagens de terceiros, mas o polling serve de fallback
+    // A deduplicação por messageId evita processamento duplo
+    const groupMessagesOwn = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 });
+    const groupMessagesOthers = await fetchGroupMessages(config, config.groupId, { fromMe: false, limit: 50 });
+    const groupMessages = [...groupMessagesOwn, ...groupMessagesOthers];
     results.checked += groupMessages.length;
     const groupResult = await processMessages(groupMessages, userId, lastResetAt);
     results.processed += groupResult.processed;
