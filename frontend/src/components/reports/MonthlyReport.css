@@ -816,4 +816,100 @@
   /* Remove hover effects */
   .tr-even:hover,
   .tr-odd:hover { background: inherit !important; }
+
+  /* Garantir que zoom de tela não afete a impressão */
+  .rpt-pages { zoom: 1 !important; }
+}
+
+/* ============================================================
+   MOBILE RESPONSIVE  (screen only — nunca toca no print)
+   ============================================================ */
+
+/* Barra de controles compacta em mobile */
+@media screen and (max-width: 600px) {
+  .rpt-controls {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .rpt-controls__icon {
+    width: 28px;
+    height: 28px;
+  }
+  .rpt-controls__name { font-size: 12px; }
+  .rpt-controls__sub  { font-size: 10px; }
+  .rpt-btn-print {
+    padding: 6px 12px;
+    font-size: 12px;
+    gap: 5px;
+  }
+  .rpt-btn-close {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/*
+  Estratégia: CSS `zoom` reduz as páginas A4 (794px) para caber
+  na tela do celular mantendo layout, fontes e proporções intactos.
+  `zoom` afeta o fluxo do documento (diferente de transform: scale),
+  então o scroll vertical funciona corretamente.
+  Suporte: Chrome Android, iOS Safari, Samsung Internet, Edge ✓
+  Firefox mobile: recebe scroll horizontal como fallback.
+*/
+
+/* Base — telefones muito pequenos (< 370px) */
+@media screen and (max-width: 826px) {
+  .rpt-scroll {
+    padding: 8px 0 28px !important;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .rpt-pages {
+    zoom: 0.43;
+    margin: 0 auto !important;
+  }
+}
+
+/* 370–399px (iPhone SE 3ª geração) */
+@media screen and (min-width: 370px) and (max-width: 826px) {
+  .rpt-pages { zoom: 0.46; }
+}
+
+/* 400–429px (iPhone 12 mini, Pixel 6a) */
+@media screen and (min-width: 400px) and (max-width: 826px) {
+  .rpt-pages { zoom: 0.50; }
+}
+
+/* 430–479px (iPhone 14 Pro Max, Samsung Galaxy S23) */
+@media screen and (min-width: 430px) and (max-width: 826px) {
+  .rpt-pages { zoom: 0.54; }
+}
+
+/* 480–539px */
+@media screen and (min-width: 480px) and (max-width: 826px) {
+  .rpt-pages { zoom: 0.60; }
+}
+
+/* 540–619px (tablets compactos) */
+@media screen and (min-width: 540px) and (max-width: 826px) {
+  .rpt-pages { zoom: 0.68; }
+}
+
+/* 620–699px */
+@media screen and (min-width: 620px) and (max-width: 826px) {
+  .rpt-pages { zoom: 0.78; }
+}
+
+/* 700–825px (tablets 7") */
+@media screen and (min-width: 700px) and (max-width: 826px) {
+  .rpt-pages { zoom: 0.88; }
+}
+
+/* Firefox mobile: zoom não suportado → scroll horizontal */
+@-moz-document url-prefix() {
+  @media screen and (max-width: 826px) {
+    .rpt-scroll  { overflow-x: auto !important; }
+    .rpt-pages   { zoom: unset !important; min-width: 794px; }
+  }
 }
