@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, TrendingDown, DollarSign, Tag, Plus, ArrowRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Tag, Plus, ArrowRight, FileBarChart } from 'lucide-react';
+import MonthlyReport from '../components/reports/MonthlyReport';
 import { useTransactions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
@@ -31,6 +32,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth());
   const [modalOpen, setModalOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const { summary, fetchSummary, createTransaction } = useTransactions();
@@ -86,13 +88,25 @@ export default function DashboardPage() {
             <p className="text-xs text-gray-500">Resumo financeiro de</p>
             <p className="text-base font-bold text-gray-900">{capitalizeFirst(formatMonth(selectedMonth))}</p>
           </div>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="btn-primary flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Novo</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {summary && (
+              <button
+                onClick={() => setReportOpen(true)}
+                className="btn-secondary flex items-center gap-1.5"
+                title="Gerar relatório mensal"
+              >
+                <FileBarChart className="w-4 h-4" />
+                <span className="hidden sm:inline">Relatório</span>
+              </button>
+            )}
+            <button
+              onClick={() => setModalOpen(true)}
+              className="btn-primary flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Novo</span>
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select
@@ -252,6 +266,14 @@ export default function DashboardPage() {
           </div>
         </>
       )}
+
+      {/* Relatório mensal */}
+      <MonthlyReport
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        summary={summary}
+        month={selectedMonth}
+      />
 
       {/* Modal novo lançamento */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Novo Lançamento">
