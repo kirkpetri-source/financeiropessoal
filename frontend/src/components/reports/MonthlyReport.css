@@ -1,58 +1,60 @@
 /* ============================================================
-   MonthlyReport.css
-   A4 Financial Report — screen preview + @media print
+   MonthlyReport.css  — v2
+   A4 Financial Report: screen preview + @media print
    ============================================================ */
 
-/* ── Color tokens ── */
+/* ── Tokens ── */
 :root {
-  --income-color:  #16a34a;
-  --expense-color: #dc2626;
-  --pct-color:     #7c3aed;
-  --balance-color: #2563eb;
-  --border:        #e2e8f0;
-  --text-main:     #0f172a;
-  --text-muted:    #64748b;
-  --text-faint:    #94a3b8;
-  --bg-page:       #ffffff;
-  --bg-screen:     #f1f5f9;
+  --rpt-income:   #16a34a;
+  --rpt-expense:  #dc2626;
+  --rpt-pct:      #7c3aed;
+  --rpt-balance:  #2563eb;
+  --rpt-border:   #e2e8f0;
+  --rpt-text:     #0f172a;
+  --rpt-muted:    #64748b;
+  --rpt-faint:    #94a3b8;
+  --rpt-page-bg:  #ffffff;
+  --rpt-screen:   #f1f5f9;
 }
 
 /* ============================================================
    OVERLAY
    ============================================================ */
-.report-overlay {
+.rpt-overlay {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: var(--bg-screen);
+  background: var(--rpt-screen);
   display: flex;
   flex-direction: column;
   font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--rpt-text);
 }
 
 /* ============================================================
    CONTROLS BAR
    ============================================================ */
-.report-controls {
+.rpt-controls {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
+  padding: 9px 18px;
   background: #fff;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rpt-border);
   flex-shrink: 0;
-  gap: 12px;
+  gap: 10px;
 }
 
-.report-controls__info {
+.rpt-controls__left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.report-controls__icon {
-  width: 34px;
-  height: 34px;
+.rpt-controls__icon {
+  width: 32px;
+  height: 32px;
   background: #2563eb;
   border-radius: 8px;
   display: flex;
@@ -62,45 +64,45 @@
   flex-shrink: 0;
 }
 
-.report-controls__title {
+.rpt-controls__name {
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-main);
+  color: var(--rpt-text);
   margin: 0;
+  line-height: 1.2;
 }
 
-.report-controls__subtitle {
+.rpt-controls__sub {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--rpt-muted);
   margin: 0;
 }
 
-.report-controls__actions {
+.rpt-controls__right {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.report-print-btn {
+.rpt-btn-print {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 18px;
+  gap: 6px;
+  padding: 6px 16px;
   background: #2563eb;
   color: #fff;
   border: none;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
 }
+.rpt-btn-print:hover { background: #1d4ed8; }
 
-.report-print-btn:hover { background: #1d4ed8; }
-
-.report-close-btn {
-  width: 34px;
-  height: 34px;
+.rpt-btn-close {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -108,93 +110,92 @@
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--rpt-muted);
   transition: background 0.15s;
 }
-
-.report-close-btn:hover { background: #f1f5f9; }
+.rpt-btn-close:hover { background: #f1f5f9; }
 
 /* ============================================================
    SCROLL AREA
    ============================================================ */
-.report-scroll {
+.rpt-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 28px 20px 48px;
+  padding: 24px 16px 48px;
   display: flex;
   justify-content: center;
 }
 
 /* ============================================================
-   LOADING STATE
+   LOADING
    ============================================================ */
-.report-loading {
+.rpt-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
   padding: 80px 0;
-  color: var(--text-muted);
+  color: var(--rpt-muted);
   font-size: 13px;
 }
 
-.report-spinner {
-  width: 28px;
-  height: 28px;
+.rpt-spinner {
+  width: 26px;
+  height: 26px;
   border: 3px solid #dbeafe;
   border-top-color: #2563eb;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: rpt-spin 0.8s linear infinite;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes rpt-spin { to { transform: rotate(360deg); } }
 
 /* ============================================================
    PAGES WRAPPER
    ============================================================ */
-.report-pages {
+.rpt-pages {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 24px;
   width: 794px;
 }
 
 /* ============================================================
    SINGLE A4 PAGE
    ============================================================ */
-.report-page {
-  background: var(--bg-page);
+.rpt-page {
+  background: var(--rpt-page-bg);
   width: 794px;
   min-height: 1123px;
-  padding: 44px 52px;
-  box-shadow: 0 2px 24px rgba(0, 0, 0, 0.07);
+  padding: 38px 48px 56px;   /* 56px bottom → room for footer */
+  box-shadow: 0 2px 20px rgba(0,0,0,0.08);
   border-radius: 4px;
-  position: relative;
   box-sizing: border-box;
-  color: var(--text-main);
+  position: relative;
+  overflow: hidden;          /* clip on screen; print overrides */
 }
 
 /* ============================================================
-   HEADER  (Section A)
+   HEADER
    ============================================================ */
 .rpt-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
-.rpt-header__left {
+.rpt-header__brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
 }
 
 .rpt-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   display: flex;
   align-items: center;
@@ -204,43 +205,43 @@
 }
 
 .rpt-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
-  color: var(--text-main);
+  color: var(--rpt-text);
   margin: 0;
   letter-spacing: -0.3px;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .rpt-subtitle {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin: 3px 0 0;
+  font-size: 10.5px;
+  color: var(--rpt-muted);
+  margin: 2px 0 0;
   letter-spacing: 0.02em;
 }
 
-.rpt-header__right {
+.rpt-header__meta {
   text-align: right;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .rpt-meta-row {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  font-size: 11px;
+  gap: 5px;
+  font-size: 10.5px;
 }
 
-.rpt-meta-label {
-  color: var(--text-faint);
+.rpt-ml {
+  color: var(--rpt-faint);
   font-weight: 500;
 }
 
-.rpt-meta-value {
-  color: var(--text-muted);
+.rpt-mv {
+  color: var(--rpt-muted);
   font-weight: 600;
 }
 
@@ -249,167 +250,286 @@
   height: 3px;
   border-radius: 3px;
   background: linear-gradient(90deg, #2563eb 0%, #60a5fa 60%, #bfdbfe 100%);
-  margin-bottom: 22px;
+  margin-bottom: 18px;
 }
 
 /* ============================================================
    SECTIONS
    ============================================================ */
 .rpt-section {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .rpt-section--mt {
-  margin-top: 24px;
+  margin-top: 18px;
 }
 
-.rpt-section-title {
-  font-size: 9.5px;
+.rpt-stitle {
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  margin: 0 0 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+  color: var(--rpt-muted);
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rpt-border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stitle-note {
+  font-size: 8.5px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--rpt-faint);
 }
 
 /* ============================================================
-   SUMMARY CARDS  (Section B)
+   SUMMARY CARDS  ×4
    ============================================================ */
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
-.summary-card {
+.scard {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 13px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  gap: 8px;
+  padding: 10px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--rpt-border);
 }
 
-.summary-card--income  { background: #f0fdf4; }
-.summary-card--expense { background: #fff1f2; }
-.summary-card--balance { background: #eff6ff; }
-.summary-card--pct     { background: #f5f3ff; }
+.scard--income  { background: #f0fdf4; }
+.scard--expense { background: #fff1f2; }
+.scard--balance { background: #eff6ff; }
+.scard--pct     { background: #f5f3ff; }
 
-.summary-card__icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
+.scard__ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   flex-shrink: 0;
-  margin-top: 1px;
 }
+.scard__ico--income  { background: #22c55e; }
+.scard__ico--expense { background: #ef4444; }
+.scard__ico--balance { background: #2563eb; }
+.scard__ico--pct     { background: #9333ea; }
 
-.summary-card__icon--income  { background: #22c55e; }
-.summary-card__icon--expense { background: #ef4444; }
-.summary-card__icon--balance { background: #2563eb; }
-.summary-card__icon--pct     { background: #9333ea; }
-
-.summary-card__body { min-width: 0; }
-
-.summary-card__label {
-  font-size: 9px;
+.scard__lbl {
+  font-size: 8.5px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  margin: 0 0 3px;
+  color: var(--rpt-muted);
+  margin: 0 0 2px;
 }
 
-.summary-card__value {
-  font-size: 15px;
+.scard__val {
+  font-size: 13.5px;
   font-weight: 800;
   margin: 0;
   line-height: 1.2;
   letter-spacing: -0.3px;
 }
 
-.summary-card__sub {
-  font-size: 9.5px;
-  color: var(--text-faint);
-  margin: 3px 0 0;
+.scard__sub {
+  font-size: 9px;
+  color: var(--rpt-faint);
+  margin: 2px 0 0;
 }
 
 /* ============================================================
    COLOR UTILITIES
    ============================================================ */
-.income-color  { color: var(--income-color) !important; }
-.expense-color { color: var(--expense-color) !important; }
-.pct-color     { color: var(--pct-color) !important; }
+.income-c  { color: var(--rpt-income)  !important; }
+.expense-c { color: var(--rpt-expense) !important; }
+.pct-c     { color: var(--rpt-pct)     !important; }
 
 /* ============================================================
-   CHARTS  (Sections C & D)
+   PAYERS
+   ============================================================ */
+.payers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.payer-card {
+  padding: 10px 12px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--rpt-border);
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.payer-card__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.payer-card__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* card row: left + right side by side */
+.payer-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  row-gap: 4px;
+  column-gap: 8px;
+}
+
+.payer-card__left { grid-column: 1; grid-row: 1; }
+.payer-card__right { grid-column: 2; grid-row: 1; justify-self: end; text-align: right; }
+
+/* bar spans full width */
+.payer-bar-track {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  height: 5px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.payer-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.payer-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.payer-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--rpt-text);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.payer-share {
+  font-size: 9.5px;
+  color: var(--rpt-faint);
+  margin: 1px 0 0;
+}
+
+.payer-val {
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: -0.2px;
+}
+
+.payer-income {
+  font-size: 9.5px;
+  margin: 1px 0 0;
+}
+
+/* Combined proportional bar */
+.combined-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.combined-bar__seg {
+  height: 100%;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+/* ============================================================
+   CHARTS
    ============================================================ */
 .charts-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 10px;
 }
 
 .chart-card {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
+  border: 1px solid var(--rpt-border);
+  border-radius: 9px;
+  padding: 11px 13px;
 }
 
 .chart-card__title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--text-main);
-  margin: 0 0 10px;
+  color: var(--rpt-text);
+  margin: 0 0 8px;
 }
 
-.chart-card__dot {
-  width: 8px;
-  height: 8px;
+.chart-dot {
+  width: 7px;
+  height: 7px;
   border-radius: 2px;
   flex-shrink: 0;
 }
 
-.chart-card__dot--big   { background: #dc2626; }
-.chart-card__dot--small { background: #2563eb; }
-
-.chart-area {
-  margin: 0 -8px;
+.chart-wrap {
+  margin: 0 -4px;
 }
 
 .chart-empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 190px;
-  font-size: 12px;
-  color: var(--text-faint);
+  height: 160px;
+  font-size: 11px;
+  color: var(--rpt-faint);
 }
 
 /* Legend */
 .chart-legend {
-  margin-top: 8px;
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .legend-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10.5px;
-  color: var(--text-main);
+  gap: 5px;
+  font-size: 10px;
 }
 
 .legend-dot {
@@ -421,75 +541,81 @@
 
 .legend-name {
   flex: 1;
-  color: var(--text-muted);
+  color: var(--rpt-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.legend-value {
+.legend-val {
   font-weight: 700;
   white-space: nowrap;
+  font-size: 10px;
 }
 
 .legend-pct {
-  font-size: 9.5px;
-  color: var(--text-faint);
-  min-width: 34px;
+  font-size: 9px;
+  color: var(--rpt-faint);
+  min-width: 32px;
   text-align: right;
 }
 
 /* ============================================================
-   TABLES  (Sections E & F)
+   TABLES
    ============================================================ */
 .rpt-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
-}
-
-.rpt-table--sm {
   font-size: 10.5px;
 }
 
+.rpt-table--xs {
+  font-size: 9.5px;
+}
+
 .rpt-table thead th {
-  padding: 7px 9px;
+  padding: 6px 8px;
   text-align: left;
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  border-bottom: 2px solid var(--border);
+  color: var(--rpt-muted);
+  border-bottom: 2px solid var(--rpt-border);
   background: #f8fafc;
   white-space: nowrap;
 }
 
 .rpt-table tbody td {
-  padding: 6px 9px;
-  color: var(--text-main);
+  padding: 5px 8px;
+  color: var(--rpt-text);
   border-bottom: 1px solid #f8fafc;
   vertical-align: middle;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .tr-even { background: #fff; }
 .tr-odd  { background: #f8fafc; }
 
 .rpt-table tfoot td {
-  padding: 7px 9px;
-  font-size: 11px;
+  padding: 5px 8px;
+  font-size: 10.5px;
   border-bottom: none;
+  vertical-align: middle;
 }
 
-.tr-subtotal {
+.rpt-table--xs tfoot td {
+  font-size: 9.5px;
+}
+
+.tr-sub {
   background: #f8fafc;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--rpt-border);
 }
 
 .tr-total {
   background: #f1f5f9;
-  border-top: 2px solid var(--border);
+  border-top: 2px solid var(--rpt-border);
 }
 
 .tr-balance {
@@ -497,82 +623,101 @@
 }
 
 /* Column alignment */
-.col-right  { text-align: right; }
-.col-center { text-align: center; }
-.col-nowrap { white-space: nowrap; }
+.tc { text-align: center; }
+.tr { text-align: right; }
 
 /* Weight */
-.fw-600 { font-weight: 600; }
-.fw-700 { font-weight: 700; }
+.fw6 { font-weight: 600; }
+.fw7 { font-weight: 700; }
 
-/* Category cell */
-.cell-category {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
+/* No-wrap */
+.tnw { white-space: nowrap; }
 
-.cell-cat-dot {
+/* Category dot */
+.cat-dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
+  margin-right: 5px;
+  vertical-align: middle;
+  position: relative;
+  top: -0.5px;
 }
 
-/* Percentage bar */
-.col-bar { min-width: 80px; }
+/* Percentage bar cell */
+.pct-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: flex-end;
+}
 
-.pct-bar-track {
-  height: 6px;
+.pct-num {
+  font-size: 9.5px;
+  color: var(--rpt-muted);
+  min-width: 30px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pct-track {
+  width: 56px;
+  height: 5px;
   background: #e2e8f0;
   border-radius: 3px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
-.pct-bar-fill {
+.pct-fill {
   height: 100%;
   border-radius: 3px;
   min-width: 2px;
-  transition: width 0.3s ease;
 }
 
-/* Origin badge */
-.origin-tag {
-  font-size: 10px;
-  color: var(--text-muted);
+/* Payer badge */
+.payer-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 /* Empty state */
-.table-empty {
-  font-size: 12px;
-  color: var(--text-faint);
-  padding: 20px;
+.tbl-empty {
+  font-size: 11px;
+  color: var(--rpt-faint);
+  padding: 16px;
   text-align: center;
 }
 
 /* ============================================================
-   PAGE FOOTER
+   PAGE FOOTER (absolute, bottom of each page)
    ============================================================ */
-.rpt-page-footer {
+.rpt-pagefooter {
   position: absolute;
-  bottom: 28px;
-  left: 52px;
-  right: 52px;
+  bottom: 24px;
+  left: 48px;
+  right: 48px;
   text-align: center;
-  font-size: 9.5px;
-  color: var(--text-faint);
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
+  font-size: 9px;
+  color: var(--rpt-faint);
+  border-top: 1px solid var(--rpt-border);
+  padding-top: 8px;
 }
 
+/* Inline footer (last page) */
 .rpt-footer {
-  margin-top: 32px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  margin-top: 24px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rpt-border);
   text-align: center;
-  font-size: 9.5px;
-  color: var(--text-faint);
+  font-size: 9px;
+  color: var(--rpt-faint);
 }
 
 /* ============================================================
@@ -581,16 +726,16 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 14mm 15mm;
+    margin: 10mm 12mm;
   }
 
-  /* Hide everything that is not the report */
-  body > *:not(.report-overlay) {
+  /* Hide everything outside the overlay */
+  body > *:not(.rpt-overlay) {
     display: none !important;
   }
 
-  /* Flatten overlay to normal flow */
-  .report-overlay {
+  /* Flatten overlay */
+  .rpt-overlay {
     position: static !important;
     background: #fff !important;
     display: block !important;
@@ -602,7 +747,7 @@
   }
 
   /* Flatten scroll area */
-  .report-scroll {
+  .rpt-scroll {
     overflow: visible !important;
     padding: 0 !important;
     display: block !important;
@@ -610,28 +755,38 @@
     background: #fff !important;
   }
 
-  /* Page stack */
-  .report-pages {
+  /* Pages stack */
+  .rpt-pages {
     display: block !important;
     width: 100% !important;
     gap: 0 !important;
   }
 
   /* Each page */
-  .report-page {
+  .rpt-page {
     box-shadow: none !important;
     border-radius: 0 !important;
     border: none !important;
     padding: 0 !important;
     width: 100% !important;
     min-height: 0 !important;
+    overflow: visible !important;
     page-break-after: always;
     break-after: page;
   }
 
-  .report-page:last-child {
+  .rpt-page:last-child {
     page-break-after: avoid;
     break-after: avoid;
+  }
+
+  /* Page footer stays at bottom */
+  .rpt-pagefooter {
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    margin-top: 24px;
   }
 
   /* Force color output */
@@ -641,13 +796,19 @@
     color-adjust: exact !important;
   }
 
-  /* Keep tables together when possible */
+  /* Keep table headers repeating */
   .rpt-table thead { display: table-header-group; }
   .rpt-table tfoot { display: table-footer-group; }
   .rpt-table tr    { page-break-inside: avoid; break-inside: avoid; }
 
   /* Keep chart cards together */
   .chart-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Keep payer cards together */
+  .payer-card {
     page-break-inside: avoid;
     break-inside: avoid;
   }

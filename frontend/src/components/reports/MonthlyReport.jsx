@@ -1,38 +1,43 @@
 import { useState, useEffect } from 'react';
-import {
-  X, Printer, TrendingUp, TrendingDown, DollarSign,
-  BarChart2, Percent, FileText
-} from 'lucide-react';
+import { X, Printer, TrendingUp, TrendingDown, DollarSign, Percent, FileText } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
-import {
-  formatCurrency, formatDate, formatMonth, capitalizeFirst
-} from '../../utils/formatters';
+import { formatCurrency, formatDate, formatMonth, capitalizeFirst } from '../../utils/formatters';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import './MonthlyReport.css';
 
-const CHART_COLORS = [
-  '#2563eb', '#dc2626', '#16a34a', '#9333ea',
-  '#ea580c', '#0891b2', '#be185d', '#ca8a04',
-];
+/* ── Constants ── */
+const CHART_COLORS = ['#2563eb','#dc2626','#16a34a','#9333ea','#ea580c','#0891b2','#be185d','#ca8a04'];
+const PAYER_COLORS = { Kirk: '#2563eb', Raquel: '#db2777' };
+const MAX_TRANSACTIONS = 22;
+const MAX_CATEGORIES   = 12;
+const ORIGIN_LABELS    = { MANUAL:'✏️ Manual', WHATSAPP:'💬 WhatsApp', AI:'🤖 IA', AUDIO:'🎙️ Áudio', IMAGE:'🖼️ Imagem' };
 
-function currencyCompact(v) {
-  if (v >= 1000) return `R$${(v / 1000).toFixed(1)}k`;
-  return `R$${Number(v).toFixed(0)}`;
+function payerColor(name) {
+  if (PAYER_COLORS[name]) return PAYER_COLORS[name];
+  const idx = Object.values(PAYER_COLORS).length;
+  return CHART_COLORS[idx % CHART_COLORS.length];
 }
 
-const ORIGIN_LABELS = {
-  MANUAL:   '✏️ Manual',
-  WHATSAPP: '💬 WhatsApp',
-  AI:       '🤖 IA',
-  AUDIO:    '🎙️ Áudio',
-  IMAGE:    '🖼️ Imagem',
-};
+function pct(part, total) {
+  if (!total) return 0;
+  return Math.min(100, (part / total) * 100);
+}
+
+/* ── Custom bar label ── */
+function BarLabel({ x, y, width, value }) {
+  if (!value) return null;
+  return (
+    <text x={x + width + 4} y={y + 9} fontSize={9} fill="#64748b" dominantBaseline="middle">
+      {formatCurrency(value)}
+    </text>
+  );
+}
 
 export default function MonthlyReport({ isOpen, onClose, summary, month }) {
   const { user } = useAuth();
@@ -42,8 +47,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
-    api
-      .get('/transactions', { params: { month } })
+    api.get('/transactions', { params: { month } })
       .then(({ data }) => setTransactions(data))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -51,345 +55,314 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
 
   if (!isOpen || !summary) return null;
 
-  const generatedAt = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
-  const monthLabel  = capitalizeFirst(formatMonth(month));
-
   /* ── Derived data ── */
+  const generatedAt  = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+  const monthLabel   = capitalizeFirst(formatMonth(month));
+  const expenseTotal = summary.totalExpense || 0;
+  const expensePct   = summary.totalIncome > 0
+    ? ((expenseTotal / summary.totalIncome) * 100).toFixed(1) : '0.0';
+
   const expenses = transactions.filter(t => t.type === 'EXPENSE');
   const incomes  = transactions.filter(t => t.type === 'INCOME');
 
-  const expenseTotal = summary.totalExpense;
-  const expensePct = summary.totalIncome > 0
-    ? ((summary.totalExpense / summary.totalIncome) * 100).toFixed(1)
-    : '0.0';
-
-  // Build category breakdown from full transaction list
-  const categoryMap = {};
+  // Category breakdown
+  const catMap = {};
   expenses.forEach(t => {
-    const name  = t.category?.name  || 'Sem categoria';
+    const name  = t.category?.name  || 'Outros';
     const color = t.category?.color || '#94a3b8';
-    if (!categoryMap[name]) categoryMap[name] = { name, color, value: 0, count: 0 };
-    categoryMap[name].value += Number(t.amount);
-    categoryMap[name].count++;
+    if (!catMap[name]) catMap[name] = { name, color, value: 0, count: 0 };
+    catMap[name].value += Number(t.amount);
+    catMap[name].count++;
   });
-  const categoryList = Object.values(categoryMap).sort((a, b) => b.value - a.value);
+  const categoryList = Object.values(catMap).sort((a, b) => b.value - a.value);
+  const top5         = categoryList.slice(0, 5);
+  const displayedCategories = categoryList.slice(0, MAX_CATEGORIES);
 
-  const top5    = categoryList.slice(0, 5);
-  const bottom5 = [...categoryList]
-    .sort((a, b) => a.value - b.value)
-    .slice(0, Math.min(5, categoryList.length));
-
-  const sortedTransactions = [...transactions].sort(
-    (a, b) => new Date(a.date) - new Date(b.date)
+  // Payers
+  const payers = (summary.byPayer || []).filter(p =>
+    p.name !== 'Sem identificação' && (p.expense > 0 || p.income > 0)
   );
+  const totalPayerExpense = payers.reduce((s, p) => s + (p.expense || 0), 0) || expenseTotal || 1;
+
+  // Sorted transactions (most recent first → displayed oldest first for readability)
+  const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const displayedTx  = sortedTransactions.slice(-MAX_TRANSACTIONS);
+  const hiddenCount  = Math.max(0, transactions.length - MAX_TRANSACTIONS);
 
   return (
-    <div className="report-overlay" role="dialog" aria-modal="true" aria-label="Relatório Mensal">
+    <div className="rpt-overlay" role="dialog" aria-modal="true">
 
-      {/* ── Controls Bar (hidden on print) ── */}
-      <div className="report-controls no-print">
-        <div className="report-controls__info">
-          <div className="report-controls__icon">
-            <FileText size={18} />
-          </div>
+      {/* ── Controls (hidden on print) ── */}
+      <div className="rpt-controls no-print">
+        <div className="rpt-controls__left">
+          <div className="rpt-controls__icon"><FileText size={17} /></div>
           <div>
-            <p className="report-controls__title">Relatório Mensal</p>
-            <p className="report-controls__subtitle">{monthLabel}</p>
+            <p className="rpt-controls__name">Relatório Mensal</p>
+            <p className="rpt-controls__sub">{monthLabel}</p>
           </div>
         </div>
-        <div className="report-controls__actions">
-          <button className="report-print-btn" onClick={() => window.print()}>
-            <Printer size={15} />
-            Salvar PDF
+        <div className="rpt-controls__right">
+          <button className="rpt-btn-print" onClick={() => window.print()}>
+            <Printer size={14} /> Salvar PDF
           </button>
-          <button className="report-close-btn" onClick={onClose} aria-label="Fechar relatório">
-            <X size={18} />
+          <button className="rpt-btn-close" onClick={onClose} aria-label="Fechar">
+            <X size={17} />
           </button>
         </div>
       </div>
 
-      {/* ── Scrollable preview ── */}
-      <div className="report-scroll">
+      {/* ── Scroll area ── */}
+      <div className="rpt-scroll">
         {loading ? (
-          <div className="report-loading">
-            <div className="report-spinner" />
-            <p>Carregando dados…</p>
+          <div className="rpt-loading">
+            <div className="rpt-spinner" />
+            <span>Carregando dados…</span>
           </div>
         ) : (
-          <div className="report-pages" id="report-print-root">
+          <div className="rpt-pages">
 
-            {/* ═══════════════════════════════════════
-                PAGE 1 · Header + Summary + Charts
-            ═══════════════════════════════════════ */}
-            <div className="report-page">
+            {/* ══════════════════════════════════════════
+                PÁGINA 1 · Resumo + Pessoas + Gráficos
+            ══════════════════════════════════════════ */}
+            <div className="rpt-page">
 
-              {/* A · Header */}
+              {/* A · Cabeçalho */}
               <header className="rpt-header">
-                <div className="rpt-header__left">
-                  <div className="rpt-logo">
-                    <TrendingUp size={18} />
-                  </div>
+                <div className="rpt-header__brand">
+                  <div className="rpt-logo"><TrendingUp size={17} /></div>
                   <div>
                     <h1 className="rpt-title">Controle Financeiro Pessoal</h1>
-                    <p className="rpt-subtitle">Relatório Mensal de Receitas e Despesas</p>
+                    <p className="rpt-subtitle">Relatório Mensal · {monthLabel}</p>
                   </div>
                 </div>
-                <div className="rpt-header__right">
-                  <div className="rpt-meta-row">
-                    <span className="rpt-meta-label">Período</span>
-                    <span className="rpt-meta-value">{monthLabel}</span>
-                  </div>
-                  <div className="rpt-meta-row">
-                    <span className="rpt-meta-label">Gerado em</span>
-                    <span className="rpt-meta-value">{generatedAt}</span>
-                  </div>
-                  <div className="rpt-meta-row">
-                    <span className="rpt-meta-label">Usuário</span>
-                    <span className="rpt-meta-value">{user?.name || user?.email || '—'}</span>
-                  </div>
+                <div className="rpt-header__meta">
+                  <div className="rpt-meta-row"><span className="rpt-ml">Período</span><span className="rpt-mv">{monthLabel}</span></div>
+                  <div className="rpt-meta-row"><span className="rpt-ml">Gerado em</span><span className="rpt-mv">{generatedAt}</span></div>
+                  <div className="rpt-meta-row"><span className="rpt-ml">Usuário</span><span className="rpt-mv">{user?.name || user?.email || '—'}</span></div>
                 </div>
               </header>
-
               <div className="rpt-rule" />
 
-              {/* B · Summary Cards */}
+              {/* B · Cards de resumo */}
               <section className="rpt-section">
-                <h2 className="rpt-section-title">Resumo Executivo</h2>
+                <h2 className="rpt-stitle">Resumo Executivo</h2>
                 <div className="summary-grid">
 
-                  <div className="summary-card summary-card--income">
-                    <div className="summary-card__icon summary-card__icon--income">
-                      <TrendingUp size={16} />
-                    </div>
-                    <div className="summary-card__body">
-                      <p className="summary-card__label">Total de Receitas</p>
-                      <p className="summary-card__value income-color">
-                        {formatCurrency(summary.totalIncome)}
-                      </p>
-                      <p className="summary-card__sub">{incomes.length} lançamento{incomes.length !== 1 ? 's' : ''}</p>
+                  <div className="scard scard--income">
+                    <div className="scard__ico scard__ico--income"><TrendingUp size={15} /></div>
+                    <div>
+                      <p className="scard__lbl">Receitas</p>
+                      <p className="scard__val income-c">{formatCurrency(summary.totalIncome)}</p>
+                      <p className="scard__sub">{incomes.length} lançamento{incomes.length !== 1 ? 's' : ''}</p>
                     </div>
                   </div>
 
-                  <div className="summary-card summary-card--expense">
-                    <div className="summary-card__icon summary-card__icon--expense">
-                      <TrendingDown size={16} />
-                    </div>
-                    <div className="summary-card__body">
-                      <p className="summary-card__label">Total de Despesas</p>
-                      <p className="summary-card__value expense-color">
-                        {formatCurrency(summary.totalExpense)}
-                      </p>
-                      <p className="summary-card__sub">{expenses.length} lançamento{expenses.length !== 1 ? 's' : ''}</p>
+                  <div className="scard scard--expense">
+                    <div className="scard__ico scard__ico--expense"><TrendingDown size={15} /></div>
+                    <div>
+                      <p className="scard__lbl">Despesas</p>
+                      <p className="scard__val expense-c">{formatCurrency(expenseTotal)}</p>
+                      <p className="scard__sub">{expenses.length} lançamento{expenses.length !== 1 ? 's' : ''}</p>
                     </div>
                   </div>
 
-                  <div className="summary-card summary-card--balance">
-                    <div className="summary-card__icon summary-card__icon--balance">
-                      <DollarSign size={16} />
-                    </div>
-                    <div className="summary-card__body">
-                      <p className="summary-card__label">Saldo do Mês</p>
-                      <p className={`summary-card__value ${summary.balance >= 0 ? 'income-color' : 'expense-color'}`}>
+                  <div className="scard scard--balance">
+                    <div className="scard__ico scard__ico--balance"><DollarSign size={15} /></div>
+                    <div>
+                      <p className="scard__lbl">Saldo</p>
+                      <p className={`scard__val ${summary.balance >= 0 ? 'income-c' : 'expense-c'}`}>
                         {formatCurrency(summary.balance)}
                       </p>
-                      <p className="summary-card__sub">
-                        {summary.balance >= 0 ? '▲ Superávit' : '▼ Déficit'}
-                      </p>
+                      <p className="scard__sub">{summary.balance >= 0 ? '▲ Superávit' : '▼ Déficit'}</p>
                     </div>
                   </div>
 
-                  <div className="summary-card summary-card--pct">
-                    <div className="summary-card__icon summary-card__icon--pct">
-                      <Percent size={16} />
-                    </div>
-                    <div className="summary-card__body">
-                      <p className="summary-card__label">Comprometido</p>
-                      <p className="summary-card__value pct-color">{expensePct}%</p>
-                      {summary.topCategory && (
-                        <p className="summary-card__sub">Top: {summary.topCategory.name}</p>
-                      )}
+                  <div className="scard scard--pct">
+                    <div className="scard__ico scard__ico--pct"><Percent size={15} /></div>
+                    <div>
+                      <p className="scard__lbl">Comprometido</p>
+                      <p className="scard__val pct-c">{expensePct}%</p>
+                      {summary.topCategory && <p className="scard__sub">↑ {summary.topCategory.name}</p>}
                     </div>
                   </div>
 
                 </div>
               </section>
 
-              {/* C & D · Charts */}
-              <section className="rpt-section charts-grid">
+              {/* C · Gastos por pessoa */}
+              {payers.length > 0 && (
+                <section className="rpt-section">
+                  <h2 className="rpt-stitle">Gastos por Pessoa</h2>
 
-                {/* C · Biggest expenses */}
-                <div className="chart-card">
-                  <h3 className="chart-card__title">
-                    <span className="chart-card__dot chart-card__dot--big" />
-                    Maiores Gastos por Categoria
-                  </h3>
-                  {top5.length > 0 ? (
-                    <>
-                      <div className="chart-area">
-                        <ResponsiveContainer width="100%" height={190}>
-                          <PieChart>
-                            <Pie
-                              data={top5}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={48}
-                              outerRadius={80}
-                              paddingAngle={3}
-                              dataKey="value"
-                              startAngle={90}
-                              endAngle={-270}
-                            >
-                              {top5.map((entry, idx) => (
-                                <Cell
-                                  key={entry.name}
-                                  fill={entry.color || CHART_COLORS[idx % CHART_COLORS.length]}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip
-                              formatter={(v) => [formatCurrency(v), 'Valor']}
-                              contentStyle={{ fontSize: 11, borderRadius: 8 }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="chart-legend">
-                        {top5.map((cat, idx) => {
-                          const pct = expenseTotal > 0
-                            ? ((cat.value / expenseTotal) * 100).toFixed(1) : '0.0';
-                          return (
-                            <div key={cat.name} className="legend-row">
-                              <span
-                                className="legend-dot"
-                                style={{ background: cat.color || CHART_COLORS[idx % CHART_COLORS.length] }}
-                              />
-                              <span className="legend-name">{cat.name}</span>
-                              <span className="legend-value expense-color">{formatCurrency(cat.value)}</span>
-                              <span className="legend-pct">{pct}%</span>
+                  <div className="payers-grid">
+                    {payers.map(p => {
+                      const color = payerColor(p.name);
+                      const share = pct(p.expense, totalPayerExpense);
+                      const initial = p.name.charAt(0).toUpperCase();
+                      return (
+                        <div key={p.name} className="payer-card" style={{ '--payer-color': color }}>
+                          <div className="payer-card__left">
+                            <div className="payer-avatar" style={{ background: color }}>{initial}</div>
+                            <div>
+                              <p className="payer-name">{p.name}</p>
+                              <p className="payer-share">{share.toFixed(1)}% dos gastos</p>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="chart-empty">Nenhuma despesa no período.</div>
-                  )}
-                </div>
-
-                {/* D · Smallest expenses */}
-                <div className="chart-card">
-                  <h3 className="chart-card__title">
-                    <span className="chart-card__dot chart-card__dot--small" />
-                    Menores Gastos por Categoria
-                  </h3>
-                  {bottom5.length > 0 ? (
-                    <>
-                      <div className="chart-area">
-                        <ResponsiveContainer width="100%" height={190}>
-                          <BarChart
-                            data={bottom5}
-                            layout="vertical"
-                            margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                            <XAxis
-                              type="number"
-                              tickFormatter={currencyCompact}
-                              tick={{ fontSize: 9, fill: '#94a3b8' }}
-                              axisLine={false}
-                              tickLine={false}
-                            />
-                            <YAxis
-                              type="category"
-                              dataKey="name"
-                              tick={{ fontSize: 9, fill: '#64748b' }}
-                              width={72}
-                              axisLine={false}
-                              tickLine={false}
-                            />
-                            <Tooltip
-                              formatter={(v) => [formatCurrency(v), 'Valor']}
-                              contentStyle={{ fontSize: 11, borderRadius: 8 }}
-                            />
-                            <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18}>
-                              {bottom5.map((entry, idx) => (
-                                <Cell
-                                  key={entry.name}
-                                  fill={entry.color || CHART_COLORS[idx % CHART_COLORS.length]}
-                                />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="chart-legend">
-                        {bottom5.map((cat, idx) => (
-                          <div key={cat.name} className="legend-row">
-                            <span
-                              className="legend-dot"
-                              style={{ background: cat.color || CHART_COLORS[idx % CHART_COLORS.length] }}
-                            />
-                            <span className="legend-name">{cat.name}</span>
-                            <span className="legend-value expense-color">{formatCurrency(cat.value)}</span>
                           </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="chart-empty">Nenhuma despesa no período.</div>
-                  )}
-                </div>
+                          <div className="payer-card__right">
+                            <p className="payer-val" style={{ color }}>{formatCurrency(p.expense)}</p>
+                            {p.income > 0 && <p className="payer-income income-c">+{formatCurrency(p.income)}</p>}
+                          </div>
+                          <div className="payer-bar-track">
+                            <div className="payer-bar-fill" style={{ width: `${share}%`, background: color }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
 
+                  {/* Barra proporcional combinada */}
+                  {payers.length > 1 && (
+                    <div className="combined-bar">
+                      {payers.map(p => {
+                        const share = pct(p.expense, totalPayerExpense);
+                        return (
+                          <div
+                            key={p.name}
+                            className="combined-bar__seg"
+                            style={{ width: `${share}%`, background: payerColor(p.name) }}
+                            title={`${p.name}: ${share.toFixed(1)}%`}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {/* D · Gráficos */}
+              <section className="rpt-section">
+                <h2 className="rpt-stitle">Análise de Despesas por Categoria</h2>
+                <div className="charts-grid">
+
+                  {/* D1 · Maiores gastos — Donut */}
+                  <div className="chart-card">
+                    <p className="chart-card__title">
+                      <span className="chart-dot" style={{ background: '#dc2626' }} />
+                      Maiores Gastos
+                    </p>
+                    {top5.length > 0 ? (
+                      <>
+                        <div className="chart-wrap">
+                          <ResponsiveContainer width="100%" height={160}>
+                            <PieChart>
+                              <Pie data={top5} cx="50%" cy="50%" innerRadius={42} outerRadius={72}
+                                paddingAngle={3} dataKey="value" startAngle={90} endAngle={-270}>
+                                {top5.map((e, i) => (
+                                  <Cell key={e.name} fill={e.color || CHART_COLORS[i % CHART_COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={v => [formatCurrency(v), 'Valor']}
+                                contentStyle={{ fontSize: 10, borderRadius: 6, padding: '4px 8px' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="chart-legend">
+                          {top5.map((c, i) => (
+                            <div key={c.name} className="legend-row">
+                              <span className="legend-dot" style={{ background: c.color || CHART_COLORS[i % CHART_COLORS.length] }} />
+                              <span className="legend-name">{c.name}</span>
+                              <span className="legend-val expense-c">{formatCurrency(c.value)}</span>
+                              <span className="legend-pct">{expenseTotal > 0 ? ((c.value / expenseTotal) * 100).toFixed(1) : 0}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : <div className="chart-empty">Nenhuma despesa.</div>}
+                  </div>
+
+                  {/* D2 · Top categorias — Barras horizontais */}
+                  <div className="chart-card">
+                    <p className="chart-card__title">
+                      <span className="chart-dot" style={{ background: '#2563eb' }} />
+                      Top Categorias
+                    </p>
+                    {top5.length > 0 ? (
+                      <>
+                        <div className="chart-wrap">
+                          <ResponsiveContainer width="100%" height={160}>
+                            <BarChart data={top5} layout="vertical"
+                              margin={{ top: 2, right: 64, left: 4, bottom: 2 }}>
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                              <XAxis type="number" hide />
+                              <YAxis type="category" dataKey="name"
+                                tick={{ fontSize: 9, fill: '#64748b' }} width={68}
+                                axisLine={false} tickLine={false} />
+                              <Tooltip formatter={v => [formatCurrency(v), 'Valor']}
+                                contentStyle={{ fontSize: 10, borderRadius: 6, padding: '4px 8px' }} />
+                              <Bar dataKey="value" radius={[0, 3, 3, 0]} maxBarSize={16}>
+                                {top5.map((e, i) => (
+                                  <Cell key={e.name} fill={e.color || CHART_COLORS[i % CHART_COLORS.length]} />
+                                ))}
+                                <BarLabel />
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="chart-legend">
+                          {top5.map((c, i) => (
+                            <div key={c.name} className="legend-row">
+                              <span className="legend-dot" style={{ background: c.color || CHART_COLORS[i % CHART_COLORS.length] }} />
+                              <span className="legend-name">{c.name}</span>
+                              <span className="legend-val expense-c">{formatCurrency(c.value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : <div className="chart-empty">Nenhuma despesa.</div>}
+                  </div>
+
+                </div>
               </section>
 
-              {/* Page 1 footer watermark */}
-              <div className="rpt-page-footer">
-                Página 1 de 2 · {monthLabel} · Controle Financeiro Pessoal
-              </div>
-
+              <div className="rpt-pagefooter">Página 1 de 2 · {monthLabel} · Controle Financeiro Pessoal</div>
             </div>{/* /page 1 */}
 
 
-            {/* ═══════════════════════════════════════
-                PAGE 2 · Tables
-            ═══════════════════════════════════════ */}
-            <div className="report-page">
+            {/* ══════════════════════════════════════════
+                PÁGINA 2 · Tabelas
+            ══════════════════════════════════════════ */}
+            <div className="rpt-page">
 
-              {/* E · Category table */}
+              {/* E · Categorias */}
               <section className="rpt-section">
-                <h2 className="rpt-section-title">Despesas por Categoria</h2>
-                {categoryList.length > 0 ? (
+                <h2 className="rpt-stitle">Despesas por Categoria</h2>
+                {displayedCategories.length > 0 ? (
                   <table className="rpt-table">
                     <thead>
                       <tr>
                         <th>Categoria</th>
-                        <th className="col-center">Lançamentos</th>
-                        <th className="col-right">Valor Total</th>
-                        <th className="col-right">% do Total</th>
-                        <th className="col-right">Barra</th>
+                        <th className="tc">Qtd</th>
+                        <th className="tr">Valor</th>
+                        <th className="tr" style={{ width: 90 }}>% / Barra</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {categoryList.map((cat, i) => {
-                        const pct = expenseTotal > 0
-                          ? (cat.value / expenseTotal) * 100 : 0;
+                      {displayedCategories.map((cat, i) => {
+                        const share = expenseTotal > 0 ? (cat.value / expenseTotal) * 100 : 0;
                         return (
                           <tr key={cat.name} className={i % 2 === 0 ? 'tr-even' : 'tr-odd'}>
                             <td>
-                              <div className="cell-category">
-                                <span className="cell-cat-dot" style={{ background: cat.color }} />
-                                <span>{cat.name}</span>
-                              </div>
+                              <span className="cat-dot" style={{ background: cat.color }} />
+                              {cat.name}
                             </td>
-                            <td className="col-center">{cat.count}</td>
-                            <td className="col-right fw-600 expense-color">{formatCurrency(cat.value)}</td>
-                            <td className="col-right">{pct.toFixed(1)}%</td>
-                            <td className="col-right col-bar">
-                              <div className="pct-bar-track">
-                                <div
-                                  className="pct-bar-fill"
-                                  style={{ width: `${Math.min(100, pct)}%`, background: cat.color }}
-                                />
+                            <td className="tc">{cat.count}</td>
+                            <td className="tr fw6 expense-c">{formatCurrency(cat.value)}</td>
+                            <td className="tr">
+                              <div className="pct-cell">
+                                <span className="pct-num">{share.toFixed(1)}%</span>
+                                <div className="pct-track">
+                                  <div className="pct-fill" style={{ width: `${share}%`, background: cat.color }} />
+                                </div>
                               </div>
                             </td>
                           </tr>
@@ -398,84 +371,88 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
                     </tbody>
                     <tfoot>
                       <tr className="tr-total">
-                        <td className="fw-700">Total</td>
-                        <td className="col-center fw-700">{expenses.length}</td>
-                        <td className="col-right fw-700 expense-color">{formatCurrency(expenseTotal)}</td>
-                        <td className="col-right fw-700">100%</td>
-                        <td />
+                        <td className="fw7">Total</td>
+                        <td className="tc fw7">{expenses.length}</td>
+                        <td className="tr fw7 expense-c">{formatCurrency(expenseTotal)}</td>
+                        <td className="tr fw7">100%</td>
                       </tr>
                     </tfoot>
                   </table>
                 ) : (
-                  <p className="table-empty">Nenhuma despesa registrada neste mês.</p>
+                  <p className="tbl-empty">Nenhuma despesa registrada neste mês.</p>
                 )}
               </section>
 
-              {/* F · All transactions */}
+              {/* F · Todos os lançamentos */}
               <section className="rpt-section rpt-section--mt">
-                <h2 className="rpt-section-title">Todos os Lançamentos</h2>
-                {sortedTransactions.length > 0 ? (
-                  <table className="rpt-table rpt-table--sm">
+                <h2 className="rpt-stitle">
+                  Lançamentos do Mês
+                  {hiddenCount > 0 && <span className="stitle-note"> — exibindo os {MAX_TRANSACTIONS} mais recentes de {transactions.length}</span>}
+                </h2>
+                {displayedTx.length > 0 ? (
+                  <table className="rpt-table rpt-table--xs">
                     <thead>
                       <tr>
-                        <th>Data</th>
+                        <th style={{ width: 64 }}>Data</th>
                         <th>Descrição</th>
                         <th>Categoria</th>
                         <th>Pagamento</th>
+                        {payers.length > 0 && <th>Pessoa</th>}
                         <th>Origem</th>
-                        <th className="col-right">Valor</th>
+                        <th className="tr">Valor</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedTransactions.map((t, i) => (
+                      {displayedTx.map((t, i) => (
                         <tr key={t.id} className={i % 2 === 0 ? 'tr-even' : 'tr-odd'}>
-                          <td className="col-nowrap">{formatDate(t.date)}</td>
+                          <td className="tnw">{formatDate(t.date)}</td>
                           <td>{t.description}</td>
                           <td>
-                            <div className="cell-category">
-                              {t.category?.color && (
-                                <span className="cell-cat-dot" style={{ background: t.category.color }} />
-                              )}
-                              <span>{t.category?.name || '—'}</span>
-                            </div>
+                            {t.category?.color && <span className="cat-dot" style={{ background: t.category.color }} />}
+                            {t.category?.name || '—'}
                           </td>
                           <td>{t.paymentMethod?.name || '—'}</td>
-                          <td className="col-nowrap">
-                            <span className="origin-tag">
-                              {ORIGIN_LABELS[t.origin] || t.origin || '—'}
-                            </span>
-                          </td>
-                          <td className={`col-right fw-600 col-nowrap ${t.type === 'INCOME' ? 'income-color' : 'expense-color'}`}>
+                          {payers.length > 0 && (
+                            <td>
+                              {t.paidBy ? (
+                                <span className="payer-badge" style={{ background: `${payerColor(t.paidBy)}18`, color: payerColor(t.paidBy) }}>
+                                  {t.paidBy}
+                                </span>
+                              ) : '—'}
+                            </td>
+                          )}
+                          <td className="tnw">{ORIGIN_LABELS[t.origin] || t.origin || '—'}</td>
+                          <td className={`tr fw6 tnw ${t.type === 'INCOME' ? 'income-c' : 'expense-c'}`}>
                             {t.type === 'INCOME' ? '+' : '−'}{formatCurrency(t.amount)}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="tr-subtotal">
-                        <td colSpan={5} className="fw-600">Receitas</td>
-                        <td className="col-right fw-700 income-color">+{formatCurrency(summary.totalIncome)}</td>
+                      <tr className="tr-sub">
+                        <td colSpan={payers.length > 0 ? 6 : 5} className="fw6">Receitas do mês</td>
+                        <td className="tr fw7 income-c">+{formatCurrency(summary.totalIncome)}</td>
                       </tr>
-                      <tr className="tr-subtotal">
-                        <td colSpan={5} className="fw-600">Despesas</td>
-                        <td className="col-right fw-700 expense-color">−{formatCurrency(summary.totalExpense)}</td>
+                      <tr className="tr-sub">
+                        <td colSpan={payers.length > 0 ? 6 : 5} className="fw6">Despesas do mês</td>
+                        <td className="tr fw7 expense-c">−{formatCurrency(expenseTotal)}</td>
                       </tr>
                       <tr className="tr-total tr-balance">
-                        <td colSpan={5} className="fw-700">Saldo Final</td>
-                        <td className={`col-right fw-700 ${summary.balance >= 0 ? 'income-color' : 'expense-color'}`}>
+                        <td colSpan={payers.length > 0 ? 6 : 5} className="fw7">Saldo Final</td>
+                        <td className={`tr fw7 ${summary.balance >= 0 ? 'income-c' : 'expense-c'}`}>
                           {formatCurrency(summary.balance)}
                         </td>
                       </tr>
                     </tfoot>
                   </table>
                 ) : (
-                  <p className="table-empty">Nenhum lançamento registrado neste mês.</p>
+                  <p className="tbl-empty">Nenhum lançamento registrado neste mês.</p>
                 )}
               </section>
 
               {/* G · Footer */}
               <footer className="rpt-footer">
-                <p>Gerado em {generatedAt} &bull; Controle Financeiro Pessoal &bull; Página 2 de 2</p>
+                Gerado em {generatedAt} &bull; Controle Financeiro Pessoal &bull; Página 2 de 2
               </footer>
 
             </div>{/* /page 2 */}
