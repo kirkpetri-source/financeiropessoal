@@ -60,7 +60,9 @@ export default function WhatsappLogsPage() {
     setPolling(true);
     try {
       const { data } = await api.post('/whatsapp/poll');
-      if (data.processed > 0) {
+      if (data.error) {
+        toast.error(data.error, { duration: 6000 });
+      } else if (data.processed > 0) {
         toast.success(`${data.processed} nova(s) mensagem(ns) processada(s)!`);
       } else {
         toast.success('Nenhuma mensagem nova encontrada.');

@@ -77,7 +77,11 @@ function detectPaymentMethod(words) {
 
 function detectAmount(words) {
   for (let i = words.length - 1; i >= 0; i--) {
-    const word = words[i].replace(',', '.');
+    // Remove símbolo de moeda colado ao número (ex: "R$170", "$50") e troca vírgula por ponto
+    const word = words[i]
+      .toLowerCase()
+      .replace(/r?\$/g, '')
+      .replace(',', '.');
     const num = parseFloat(word);
     if (!isNaN(num) && num > 0) {
       return {

@@ -219,11 +219,25 @@ async function pollForUser(userId, config) {
 
     await db.collection('whatsappConfigs').doc(userId).update({
       lastPolledAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastPollError: admin.firestore.FieldValue.delete(),
+      lastPollErrorAt: admin.firestore.FieldValue.delete(),
     });
 
   } catch (err) {
     console.error(`[Polling] Erro para userId ${userId}:`, err.message);
     results.errors++;
+    // Falha de conexão com a Evolution API (servidor fora do ar, URL errada, etc.)
+    // costuma vir como "fetch failed". Mantém a mensagem para exibir ao usuário.
+    results.error = /fetch failed/i.test(err.message)
+      ? 'Não foi possível conectar à Evolution API. Verifique se o servidor está online e a URL/chave estão corretas.'
+      : err.message;
+    // Persiste o erro para diagnóstico na tela (não deixa falhar silenciosamente)
+    try {
+      await db.collection('whatsappConfigs').doc(userId).update({
+        lastPollError: results.error,
+        lastPollErrorAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch { /* ignora erro de escrita do diagnóstico */ }
   }
 
   return results;
