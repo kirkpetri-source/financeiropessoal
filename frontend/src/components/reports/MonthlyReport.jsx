@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Printer, TrendingUp, TrendingDown, DollarSign, Percent, FileText } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -89,7 +90,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
   const displayedTx  = sortedTransactions.slice(-MAX_TRANSACTIONS);
   const hiddenCount  = Math.max(0, transactions.length - MAX_TRANSACTIONS);
 
-  return (
+  return createPortal(
     <div className="rpt-overlay" role="dialog" aria-modal="true">
 
       {/* ── Controls (hidden on print) ── */}
@@ -460,6 +461,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
