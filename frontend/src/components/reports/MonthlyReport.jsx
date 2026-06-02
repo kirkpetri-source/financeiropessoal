@@ -85,6 +85,30 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
   );
   const totalPayerExpense = payers.reduce((s, p) => s + (p.expense || 0), 0) || expenseTotal || 1;
 
+  // Despesas por categoria, separadas por pessoa — o que e quanto cada um gastou
+  const payerCatMap = {};
+  payers.forEach(p => { payerCatMap[p.name] = { total: 0, cats: {} }; });
+  expenses.forEach(t => {
+    const who = t.paidBy;
+    if (!who || !payerCatMap[who]) return;
+    const cName  = t.category?.name  || 'Outros';
+    const cColor = t.category?.color || '#94a3b8';
+    const b = payerCatMap[who];
+    if (!b.cats[cName]) b.cats[cName] = { name: cName, color: cColor, value: 0, count: 0 };
+    b.cats[cName].value += Number(t.amount);
+    b.cats[cName].count++;
+    b.total += Number(t.amount);
+  });
+  const payerBreakdown = payers
+    .map(p => ({
+      name: p.name,
+      total: payerCatMap[p.name].total,
+      cats: Object.values(payerCatMap[p.name].cats).sort((a, b) => b.value - a.value),
+    }))
+    .filter(p => p.total > 0);
+  const hasPayerBreakdown = payerBreakdown.length > 0;
+  const totalPages = hasPayerBreakdown ? 3 : 2;
+
   // Sorted transactions (most recent first → displayed oldest first for readability)
   const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
   const displayedTx  = sortedTransactions.slice(-MAX_TRANSACTIONS);
@@ -325,8 +349,84 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
                 </div>
               </section>
 
-              <div className="rpt-pagefooter">Página 1 de 2 · {monthLabel} · Controle Financeiro Pessoal</div>
+              <div className="rpt-pagefooter">Página 1 de {totalPages} · {monthLabel} · Controle Financeiro Pessoal</div>
             </div>{/* /page 1 */}
+
+
+            {/* ══════════════════════════════════════════
+                PÁGINA 2 · Em que cada pessoa gasta
+            ══════════════════════════════════════════ */}
+            {hasPayerBreakdown && (
+            <div className="rpt-page">
+              <header className="rpt-header">
+                <div className="rpt-header__brand">
+                  <div className="rpt-logo"><TrendingUp size={17} /></div>
+                  <div>
+                    <h1 className="rpt-title">Controle Financeiro Pessoal</h1>
+                    <p className="rpt-subtitle">Relatório Mensal · {monthLabel}</p>
+                  </div>
+                </div>
+                <div className="rpt-header__meta">
+                  <div className="rpt-meta-row"><span className="rpt-ml">Período</span><span className="rpt-mv">{monthLabel}</span></div>
+                  <div className="rpt-meta-row"><span className="rpt-ml">Gerado em</span><span className="rpt-mv">{generatedAt}</span></div>
+                </div>
+              </header>
+              <div className="rpt-rule" />
+
+              <section className="rpt-section">
+                <h2 className="rpt-stitle">Em que Cada Pessoa Gasta</h2>
+                <p className="rpt-shint">Despesas de cada pessoa distribuídas por categoria — quanto e em quê cada um gastou no mês.</p>
+
+                <div className="ppc-grid">
+                  {payerBreakdown.map(p => {
+                    const color = payerColor(p.name);
+                    const share = pct(p.total, totalPayerExpense);
+                    const top = p.cats[0];
+                    return (
+                      <div key={p.name} className="ppc-col" style={{ '--payer-color': color }}>
+                        <div className="ppc-head">
+                          <div className="payer-avatar" style={{ background: color }}>{p.name.charAt(0).toUpperCase()}</div>
+                          <div className="ppc-head__txt">
+                            <p className="ppc-name">{p.name}</p>
+                            <p className="ppc-sub">{share.toFixed(1)}% do total · {p.cats.length} categoria{p.cats.length !== 1 ? 's' : ''}</p>
+                          </div>
+                          <p className="ppc-total" style={{ color }}>{formatCurrency(p.total)}</p>
+                        </div>
+
+                        {top && (
+                          <p className="ppc-highlight">
+                            Maior gasto: <strong style={{ color }}>{top.name}</strong> ({formatCurrency(top.value)})
+                          </p>
+                        )}
+
+                        <div className="ppc-list">
+                          {p.cats.map(c => {
+                            const cShare = p.total > 0 ? (c.value / p.total) * 100 : 0;
+                            return (
+                              <div key={c.name} className="ppc-row">
+                                <div className="ppc-row__head">
+                                  <span className="cat-dot" style={{ background: c.color }} />
+                                  <span className="ppc-cat">{c.name}</span>
+                                  <span className="ppc-count">{c.count}×</span>
+                                  <span className="ppc-val expense-c">{formatCurrency(c.value)}</span>
+                                  <span className="ppc-pct">{cShare.toFixed(0)}%</span>
+                                </div>
+                                <div className="ppc-track">
+                                  <div className="ppc-fill" style={{ width: `${cShare}%`, background: c.color }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <div className="rpt-pagefooter">Página 2 de {totalPages} · {monthLabel} · Controle Financeiro Pessoal</div>
+            </div>
+            )}{/* /page 2 — por pessoa */}
 
 
             {/* ══════════════════════════════════════════
@@ -453,7 +553,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
 
               {/* G · Footer */}
               <footer className="rpt-footer">
-                Gerado em {generatedAt} &bull; Controle Financeiro Pessoal &bull; Página 2 de 2
+                Gerado em {generatedAt} &bull; Controle Financeiro Pessoal &bull; Página {totalPages} de {totalPages}
               </footer>
 
             </div>{/* /page 2 */}

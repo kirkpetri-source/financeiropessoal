@@ -721,9 +721,114 @@
 }
 
 /* ============================================================
+   EM QUE CADA PESSOA GASTA  (breakdown por pessoa)
+   ============================================================ */
+.rpt-shint {
+  font-size: 10px;
+  color: var(--rpt-muted);
+  margin: -2px 0 10px;
+}
+
+.ppc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.ppc-col {
+  border: 1px solid var(--rpt-border);
+  border-top: 3px solid var(--payer-color, var(--rpt-balance));
+  border-radius: 9px;
+  background: #fafafa;
+  padding: 10px 12px 12px;
+}
+
+.ppc-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rpt-border);
+}
+
+.ppc-head__txt { min-width: 0; }
+
+.ppc-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--rpt-text);
+  line-height: 1.2;
+}
+
+.ppc-sub {
+  font-size: 9px;
+  color: var(--rpt-faint);
+}
+
+.ppc-total {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ppc-highlight {
+  font-size: 9.5px;
+  color: var(--rpt-muted);
+  margin: 8px 0 6px;
+}
+
+.ppc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ppc-row { display: flex; flex-direction: column; gap: 3px; }
+
+.ppc-row__head {
+  display: grid;
+  grid-template-columns: 8px 1fr auto auto auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.ppc-cat {
+  color: var(--rpt-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ppc-count { font-size: 8.5px; color: var(--rpt-faint); }
+
+.ppc-val { font-weight: 600; white-space: nowrap; }
+
+.ppc-pct {
+  font-size: 9px;
+  color: var(--rpt-muted);
+  width: 30px;
+  text-align: right;
+}
+
+.ppc-track {
+  height: 4px;
+  background: #e8edf3;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ppc-fill { height: 100%; border-radius: 3px; }
+
+/* ============================================================
    @MEDIA PRINT
    ============================================================ */
 @media print {
+  /* Cada coluna de pessoa não quebra no meio */
+  .ppc-col { break-inside: avoid; page-break-inside: avoid; background: #fafafa !important; }
+
   @page {
     size: A4 portrait;
     margin: 10mm 12mm;
