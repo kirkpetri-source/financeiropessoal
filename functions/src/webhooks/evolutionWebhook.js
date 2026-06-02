@@ -45,9 +45,9 @@ function extractMessageData(payload) {
       messageType = 'STICKER';
     }
 
-    return { messageId, remoteJid, fromMe, sender, content, messageType, instanceName };
+    return { messageId, remoteJid, fromMe, sender, senderJid, pushName, content, messageType, instanceName };
   } catch {
-    return { messageId: null, remoteJid: null, fromMe: false, sender: null, content: null, messageType: 'TEXT', instanceName: null };
+    return { messageId: null, remoteJid: null, fromMe: false, sender: null, senderJid: null, pushName: null, content: null, messageType: 'TEXT', instanceName: null };
   }
 }
 
@@ -108,7 +108,7 @@ async function handleEvolutionWebhook(req, res) {
   res.status(200).json({ received: true });
 
   try {
-    const { messageId, remoteJid, fromMe, sender, content, messageType, instanceName } = extractMessageData(req.body);
+    const { messageId, remoteJid, fromMe, sender, senderJid, pushName, content, messageType, instanceName } = extractMessageData(req.body);
 
     const userConfig = await findUserBySource(remoteJid, instanceName);
 
@@ -152,6 +152,14 @@ async function handleEvolutionWebhook(req, res) {
     // PROTEÇÃO INTELIGENTE: ignora silenciosamente mensagens que não parecem financeiras
     // (links, frases do dia a dia, imagens com legenda, etc.)
     if (!looksLikeFinancialMessage(content)) return;
+
+    // DEDUPLICAÇÃO: evita lançamento duplicado caso a mesma mensagem chegue
+    // pelo webhook mais de uma vez (retry do Evolution) ou também pelo polling.
+    if (messageId) {
+      const dup = await db.collection('whatsappLogs')
+        .where('messageId', '==', messageId).limit(1).get();
+      if (!dup.empty) return;
+    }
 
     const log = await createLog(logBase);
 
