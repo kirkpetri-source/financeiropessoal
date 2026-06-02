@@ -206,15 +206,19 @@ async function pollForUser(userId, config) {
     results.skipped += groupResult.skipped;
     results.errors += groupResult.errors;
 
-    // 2. Polling da AUTO-CONVERSA ("Mensagens para mim")
-    const ownJid = await fetchOwnJid(config);
-    if (ownJid) {
-      const selfMessages = await fetchGroupMessages(config, ownJid, { fromMe: undefined, limit: 50 });
-      results.checked += selfMessages.length;
-      const selfResult = await processMessages(selfMessages, userId, lastResetAt);
-      results.processed += selfResult.processed;
-      results.skipped += selfResult.skipped;
-      results.errors += selfResult.errors;
+    // 2. Polling da AUTO-CONVERSA ("Mensagens para mim") — só quando habilitado.
+    // Por padrão processamos APENAS o grupo cadastrado; chats privados (inclusive
+    // a auto-conversa) só entram se allowPrivateChat estiver ligado nas configurações.
+    if (config.allowPrivateChat) {
+      const ownJid = await fetchOwnJid(config);
+      if (ownJid) {
+        const selfMessages = await fetchGroupMessages(config, ownJid, { fromMe: undefined, limit: 50 });
+        results.checked += selfMessages.length;
+        const selfResult = await processMessages(selfMessages, userId, lastResetAt);
+        results.processed += selfResult.processed;
+        results.skipped += selfResult.skipped;
+        results.errors += selfResult.errors;
+      }
     }
 
     await db.collection('whatsappConfigs').doc(userId).update({
