@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
+  "buildCommand": "cd liontech-landing && npm install && npm run build",
+  "outputDirectory": "liontech-landing/dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
