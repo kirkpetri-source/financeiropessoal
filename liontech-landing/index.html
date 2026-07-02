@@ -31,12 +31,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
     <!-- Tipografia moderna (Space Grotesk para títulos, Inter para texto) -->
+    <!-- Carregada sem bloquear a renderização: o texto aparece imediatamente com fonte do sistema -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
 
     <!-- Dados estruturados: empresa local (ajuda o Google a exibir endereço e horários) -->
     <script type="application/ld+json">

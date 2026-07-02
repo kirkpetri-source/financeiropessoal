@@ -1,4 +1,5 @@
-import { motion } from 'framer-motion'
+import { useRef } from 'react'
+import { motion, useScroll, useTransform } from 'framer-motion'
 import { MessageCircle, ChevronDown, Monitor, Laptop, Smartphone, Cpu, MapPin } from 'lucide-react'
 import { whatsappLink, WHATSAPP_MESSAGES, COMPANY_CITY } from '../config.js'
 
@@ -20,8 +21,14 @@ const DEVICES = [
 ]
 
 export default function Hero() {
+  const sectionRef = useRef(null)
+  // Parallax: o conteúdo sobe mais devagar e esmaece conforme o usuário rola
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end start'] })
+  const contentY = useTransform(scrollYProgress, [0, 1], [0, 140])
+  const contentOpacity = useTransform(scrollYProgress, [0, 0.75], [1, 0])
+
   return (
-    <section id="inicio" className="relative flex min-h-svh items-center overflow-hidden pt-16">
+    <section ref={sectionRef} id="inicio" className="relative flex min-h-svh items-center overflow-hidden pt-16">
       {/* Fundo: grid tecnológico + brilhos de cor */}
       <div className="absolute inset-0 bg-grid-tech bg-[size:56px_56px]" aria-hidden="true" />
       <div
@@ -52,7 +59,10 @@ export default function Hero() {
         </motion.div>
       ))}
 
-      <div className="relative mx-auto max-w-4xl px-4 py-24 text-center sm:px-6">
+      <motion.div
+        className="relative mx-auto max-w-4xl px-4 py-24 text-center sm:px-6"
+        style={{ y: contentY, opacity: contentOpacity }}
+      >
         <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0}>
           <span className="section-kicker inline-flex items-center gap-2">
             <MapPin size={13} />
@@ -106,7 +116,7 @@ export default function Hero() {
             <ChevronDown size={18} />
           </a>
         </motion.div>
-      </div>
+      </motion.div>
 
       {/* Indicador de scroll */}
       <motion.a

@@ -1,5 +1,6 @@
 import Navbar from './components/Navbar.jsx'
 import Hero from './components/Hero.jsx'
+import ScrollCinema from './components/ScrollCinema.jsx'
 import QuickSchedule from './components/QuickSchedule.jsx'
 import Services from './components/Services.jsx'
 import BeforeAfter from './components/BeforeAfter.jsx'
@@ -18,6 +19,7 @@ export default function App() {
       <Navbar />
       <main>
         <Hero />
+        <ScrollCinema />
         <QuickSchedule />
         <Services />
         <BeforeAfter />
