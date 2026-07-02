@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0b14"/>
+      <stop offset="1" stop-color="#141428"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1050" cy="80" r="220" fill="#8b5cf6" opacity="0.15"/>
+  <circle cx="120" cy="560" r="200" fill="#38bdf8" opacity="0.12"/>
+  <text x="600" y="270" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="#ffffff" text-anchor="middle">Lion Tech Soluções em TI</text>
+  <text x="600" y="350" font-family="Arial, sans-serif" font-size="34" fill="url(#accent)" text-anchor="middle">Assistência Técnica e Informática em Mineiros-GO</text>
+  <text x="600" y="430" font-family="Arial, sans-serif" font-size="24" fill="#94a3b8" text-anchor="middle">Computadores • Notebooks • Celulares • PC Gamer • Loja de eletrônicos</text>
+</svg>
