@@ -9,7 +9,7 @@
 // ── WhatsApp ────────────────────────────────────────────────
 // Formato internacional, apenas números: 55 + DDD + número.
 // Exemplo: "5564999550000"
-export const WHATSAPP_NUMBER = 'SEU_NUMERO_AQUI'
+export const WHATSAPP_NUMBER = '5564999555364'
 
 // ── Redes sociais ───────────────────────────────────────────
 export const INSTAGRAM_USER = 'liontechti'
