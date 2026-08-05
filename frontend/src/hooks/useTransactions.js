@@ -22,9 +22,12 @@ export function useTransactions() {
     }
   }, []);
 
-  const fetchSummary = useCallback(async (month) => {
+  // paidBy vai ao backend: o filtro por pessoa agora vale para graficos e
+  // listas, nao so para os quatro totais como era antes.
+  const fetchSummary = useCallback(async (month, paidBy = null) => {
     try {
-      const { data } = await api.get('/transactions/summary', { params: { month } });
+      const params = paidBy ? { month, paidBy } : { month };
+      const { data } = await api.get('/transactions/summary', { params });
       setSummary(data);
     } catch {
       toast.error('Erro ao carregar resumo.');

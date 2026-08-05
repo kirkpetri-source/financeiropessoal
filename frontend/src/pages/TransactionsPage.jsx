@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Filter, ArrowUpCircle, ArrowDownCircle } from 'lu
 import { useTransactions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
-import { useWhatsappConfig } from '../hooks/useWhatsappConfig';
+import { useHousehold } from '../hooks/useHousehold';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import TransactionForm from '../components/forms/TransactionForm';
@@ -33,12 +33,12 @@ export default function TransactionsPage() {
   const { transactions, loading, fetchTransactions, createTransaction, updateTransaction, deleteTransaction } = useTransactions();
   const { categories, fetchCategories } = useCategories();
   const { paymentMethods, fetchPaymentMethods } = usePaymentMethods();
-  const { payers, fetchPayers } = useWhatsappConfig();
+  const { nomesDosMembros: payers, buscarHousehold } = useHousehold();
 
   const months = monthsList(12);
 
   useEffect(() => { fetchTransactions(filters); }, [filters]);
-  useEffect(() => { fetchCategories(); fetchPaymentMethods(); fetchPayers(); }, []);
+  useEffect(() => { fetchCategories(); fetchPaymentMethods(); buscarHousehold(); }, []);
 
   function openCreate() { setEditingTransaction(null); setModalOpen(true); }
   function openEdit(t) { setEditingTransaction(t); setModalOpen(true); }

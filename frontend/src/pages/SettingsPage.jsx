@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { User, Lock, MessageSquare, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { User, Lock, MessageSquare, Users, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useHousehold } from '../hooks/useHousehold';
 import toast from 'react-hot-toast';
 
 function Section({ icon: Icon, title, children }) {
@@ -21,6 +22,10 @@ function Section({ icon: Icon, title, children }) {
 
 export default function SettingsPage() {
   const { user, updateUser, changePassword } = useAuth();
+  const {
+    household, membros, permissoes, buscarHousehold,
+    adicionarMembro, atualizarMembro, removerMembro, renomearFamilia,
+  } = useHousehold();
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
@@ -28,7 +33,9 @@ export default function SettingsPage() {
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
   const [allowPrivateChat, setAllowPrivateChat] = useState(false);
-  const [payers, setPayers] = useState([{ name: '', phone: '' }]);
+  const [novoMembro, setNovoMembro] = useState({ nome: '', telefone: '' });
+  const [salvandoMembro, setSalvandoMembro] = useState(false);
+  const [nomeFamilia, setNomeFamilia] = useState('');
 
   const profileForm = useForm({ defaultValues: { name: user?.name || '', email: user?.email || '' } });
   const passwordForm = useForm();
@@ -45,10 +52,9 @@ export default function SettingsPage() {
       });
       setWhatsappEnabled(data.enabled || false);
       setAllowPrivateChat(data.allowPrivateChat || false);
-      const savedPayers = data.payers || [];
-      setPayers(savedPayers.length > 0 ? savedPayers : [{ name: '', phone: '' }]);
     }).catch(() => {});
-  }, []);
+    buscarHousehold().then((h) => { if (h) setNomeFamilia(h.name || ''); });
+  }, [buscarHousehold]);
 
   async function handleProfileSubmit(data) {
     setSavingProfile(true);
@@ -87,8 +93,7 @@ export default function SettingsPage() {
   async function handleWhatsappSubmit(data) {
     setSavingWhatsapp(true);
     try {
-      const validPayers = payers.filter(p => p.name.trim());
-      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled, allowPrivateChat, payers: validPayers });
+      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled, allowPrivateChat });
       toast.success('Configurações do WhatsApp salvas!');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao salvar configurações.');
@@ -156,6 +161,126 @@ export default function SettingsPage() {
         </form>
       </Section>
 
+      {/* Família */}
+      <Section icon={Users} title="Minha Família">
+        <div className="flex gap-2 items-end">
+          <div className="flex-1">
+            <label className="label">Nome da família</label>
+            <input
+              className="input"
+              value={nomeFamilia}
+              onChange={(e) => setNomeFamilia(e.target.value)}
+              placeholder="Ex: Família Petri"
+              disabled={!permissoes.gerirMembros}
+            />
+          </div>
+          {permissoes.gerirMembros && (
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              disabled={!nomeFamilia.trim() || nomeFamilia === household?.name}
+              onClick={() => renomearFamilia(nomeFamilia.trim()).catch((e) =>
+                toast.error(e.response?.data?.error || 'Erro ao renomear.'))}
+            >
+              Salvar
+            </button>
+          )}
+        </div>
+
+        <div>
+          <label className="label">Membros</label>
+          <p className="text-xs text-gray-400 mb-2">
+            Quem participa do controle financeiro. O telefone permite identificar
+            automaticamente quem pagou, pelo número que enviou a mensagem.
+          </p>
+
+          <div className="space-y-2">
+            {membros.map((m) => (
+              <div key={m.id} className="flex items-center gap-3 p-2.5 bg-gray-50 rounded-xl">
+                <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-primary-700 text-xs font-bold">
+                    {(m.name || '?').charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {m.name}
+                    {m.role === 'owner' && (
+                      <span className="ml-2 text-xs font-normal text-primary-600">dono</span>
+                    )}
+                    {m.pendenteDeConta && (
+                      <span className="ml-2 text-xs font-normal text-gray-400">sem login</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-gray-400 truncate">
+                    {m.phone || 'sem telefone'}{m.email ? ` · ${m.email}` : ''}
+                  </p>
+                </div>
+                {permissoes.gerirMembros && m.role !== 'owner' && (
+                  <button
+                    type="button"
+                    onClick={() => removerMembro(m.id).catch((e) =>
+                      toast.error(e.response?.data?.error || 'Erro ao remover.'))}
+                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                    title="Remover da família"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {permissoes.gerirMembros && (
+            <div className="flex gap-2 items-center mt-3">
+              <input
+                className="input flex-1"
+                placeholder="Nome (ex: Raquel)"
+                value={novoMembro.nome}
+                onChange={(e) => setNovoMembro((n) => ({ ...n, nome: e.target.value }))}
+              />
+              <input
+                className="input flex-1"
+                placeholder="WhatsApp (ex: 5564999555364)"
+                value={novoMembro.telefone}
+                onChange={(e) => setNovoMembro((n) => ({ ...n, telefone: e.target.value.replace(/\D/g, '') }))}
+              />
+              <button
+                type="button"
+                disabled={!novoMembro.nome.trim() || salvandoMembro}
+                onClick={async () => {
+                  setSalvandoMembro(true);
+                  try {
+                    // Sem conta ainda: entra com ID sintético e já é reconhecido
+                    // pelo telefone no WhatsApp. Ao criar login, o convite liga
+                    // a conta real a este registro.
+                    await adicionarMembro({
+                      userId: `pendente-${novoMembro.nome.trim().toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+                      nome: novoMembro.nome.trim(),
+                      telefone: novoMembro.telefone || null,
+                      papel: 'member',
+                    });
+                    setNovoMembro({ nome: '', telefone: '' });
+                  } catch (e) {
+                    toast.error(e.response?.data?.error || 'Erro ao adicionar membro.');
+                  } finally {
+                    setSalvandoMembro(false);
+                  }
+                }}
+                className="btn-secondary text-sm flex-shrink-0"
+              >
+                {salvandoMembro ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Adicionar'}
+              </button>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400 mt-2">
+            Também dá para indicar no fim da mensagem:{' '}
+            <code className="bg-gray-100 px-1 rounded">gasto mercado 84,90 pix raquel</code>
+          </p>
+        </div>
+      </Section>
+
       {/* WhatsApp / Evolution API */}
       <Section icon={MessageSquare} title="Integração WhatsApp (Evolution API)">
         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
@@ -216,57 +341,6 @@ export default function SettingsPage() {
             <label className="label">Mensagem de Confirmação</label>
             <input className="input" placeholder="✅ Lançamento registrado: {tipo} de R$ {valor}" {...whatsappForm.register('confirmationMessageTemplate')} />
             <p className="text-xs text-gray-400 mt-1">Use: {'{tipo}'} {'{valor}'} {'{categoria}'}</p>
-          </div>
-
-          <div>
-            <label className="label">Membros da família</label>
-            <p className="text-xs text-gray-400 mb-2">
-              Cadastre o nome e telefone de cada pessoa. O sistema identificará automaticamente quem pagou pelo número do remetente.
-            </p>
-            <div className="space-y-2">
-              {payers.map((payer, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
-                  <input
-                    className="input flex-1"
-                    placeholder="Nome (ex: Kirk)"
-                    value={payer.name}
-                    onChange={(e) => {
-                      const updated = [...payers];
-                      updated[idx] = { ...updated[idx], name: e.target.value };
-                      setPayers(updated);
-                    }}
-                  />
-                  <input
-                    className="input flex-1"
-                    placeholder="WhatsApp (ex: 5564999555364)"
-                    value={payer.phone || ''}
-                    onChange={(e) => {
-                      const updated = [...payers];
-                      updated[idx] = { ...updated[idx], phone: e.target.value.replace(/\D/g, '') };
-                      setPayers(updated);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setPayers(payers.filter((_, i) => i !== idx))}
-                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                    title="Remover"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => setPayers([...payers, { name: '', phone: '' }])}
-                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 mt-1"
-              >
-                + Adicionar membro
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">
-              Também pode indicar no final da mensagem: <code className="bg-gray-100 px-1 rounded">gasto mercado 84,90 pix raquel</code>
-            </p>
           </div>
 
           <div className="pt-1 border-t border-gray-100">

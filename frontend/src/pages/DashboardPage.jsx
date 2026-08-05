@@ -12,7 +12,7 @@ import MonthlyReport from '../components/reports/MonthlyReport';
 import { useTransactions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
-import { useWhatsappConfig } from '../hooks/useWhatsappConfig';
+import { useHousehold } from '../hooks/useHousehold';
 import Modal from '../components/ui/Modal';
 import TransactionForm from '../components/forms/TransactionForm';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -60,23 +60,23 @@ export default function DashboardPage() {
   const { summary, fetchSummary, createTransaction } = useTransactions();
   const { categories,     fetchCategories }     = useCategories();
   const { paymentMethods, fetchPaymentMethods } = usePaymentMethods();
-  const { payers: payerConfig, fetchPayers }    = useWhatsappConfig();
+  const { nomesDosMembros, buscarHousehold }    = useHousehold();
 
   const months = monthsList(12);
 
-  useEffect(() => { fetchSummary(selectedMonth); }, [selectedMonth, fetchSummary]);
+  useEffect(() => { fetchSummary(selectedMonth, filterPayer || null); }, [selectedMonth, filterPayer, fetchSummary]);
   useEffect(() => {
     fetchCategories();
     fetchPaymentMethods();
-    fetchPayers();
-  }, [fetchCategories, fetchPaymentMethods, fetchPayers]);
+    buscarHousehold();
+  }, [fetchCategories, fetchPaymentMethods, buscarHousehold]);
 
   async function handleCreateTransaction(data) {
     setSaving(true);
     try {
       await createTransaction(data);
       setModalOpen(false);
-      fetchSummary(selectedMonth);
+      fetchSummary(selectedMonth, filterPayer || null);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao salvar lançamento.');
     } finally {
@@ -89,18 +89,13 @@ export default function DashboardPage() {
     p.name !== 'Sem identificação' && (p.expense > 0 || p.income > 0)
   ) || [];
 
-  const filteredSummary = useMemo(() => {
-    if (!summary) return null;
-    if (!filterPayer) return summary;
-    const payer   = summary.byPayer?.find(p => p.name === filterPayer);
-    const income  = payer?.income  || 0;
-    const expense = payer?.expense || 0;
-    return { ...summary, totalIncome: income, totalExpense: expense, balance: income - expense };
-  }, [summary, filterPayer]);
-
-  const totalIncome  = filteredSummary?.totalIncome  ?? 0;
-  const totalExpense = filteredSummary?.totalExpense ?? 0;
-  const balance      = filteredSummary?.balance      ?? 0;
+  // O filtro por pessoa é aplicado no backend e já chega refletido em todo o
+  // resumo — totais, gráficos e lista. Antes era recalculado só aqui, e apenas
+  // para os quatro cartões: os gráficos continuavam mostrando a família toda e
+  // a tela ficava incoerente.
+  const totalIncome  = summary?.totalIncome  ?? 0;
+  const totalExpense = summary?.totalExpense ?? 0;
+  const balance      = summary?.balance      ?? 0;
   const expensePct   = totalIncome > 0
     ? Math.min(100, (totalExpense / totalIncome) * 100) : 0;
 
@@ -516,7 +511,7 @@ export default function DashboardPage() {
         <TransactionForm
           categories={categories}
           paymentMethods={paymentMethods}
-          payers={payerConfig}
+          payers={nomesDosMembros}
           onSubmit={handleCreateTransaction}
           isLoading={saving}
         />
