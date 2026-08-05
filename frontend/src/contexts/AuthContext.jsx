@@ -81,12 +81,53 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  /**
+   * Troca de senha com reautenticação.
+   *
+   * Roda inteira no Firebase Auth de propósito: o backend não tem como conferir
+   * a senha atual (o Admin SDK só sobrescreve), então validar aqui é o único
+   * jeito de exigir mesmo a senha anterior.
+   */
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser?.email) {
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+
+    try {
+      await reauthenticateWithCredential(firebaseUser, credential);
+    } catch (err) {
+      if (['auth/wrong-password', 'auth/invalid-credential'].includes(err.code)) {
+        throw new Error('Senha atual incorreta.');
+      }
+      if (err.code === 'auth/too-many-requests') {
+        throw new Error('Muitas tentativas. Aguarde alguns minutos e tente de novo.');
+      }
+      throw err;
+    }
+
+    try {
+      await updatePassword(firebaseUser, newPassword);
+    } catch (err) {
+      if (err.code === 'auth/weak-password') {
+        throw new Error('Senha fraca. Use no mínimo 6 caracteres.');
+      }
+      throw err;
+    }
+
+    // A senha nova invalida o token antigo — renova para não cair no 401.
+    const token = await firebaseUser.getIdToken(true);
+    localStorage.setItem('@financeiro:token', token);
+  }, []);
+
   const updateUser = useCallback((updatedUser) => {
     setUser((prev) => ({ ...prev, ...updatedUser }));
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser, changePassword }}>
       {children}
     </AuthContext.Provider>
   );

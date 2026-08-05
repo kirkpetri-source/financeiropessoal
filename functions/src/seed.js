@@ -1,8 +1,21 @@
-require('../../functions/src/config/firebaseAdmin');
-const { admin, db } = require('./config/firebaseAdmin');
-const { format, subDays, startOfMonth } = require('date-fns');
+/**
+ * Popula os dados de referência do sistema: categorias e formas de pagamento padrão.
+ *
+ *   npm run seed
+ *
+ * É idempotente — rodar de novo não duplica nem sobrescreve nada.
+ *
+ * NÃO cria usuário nem lançamento de exemplo. A versão anterior criava um
+ * admin@financeiro.local com senha 'admin123' (documentada no README) e oito
+ * lançamentos fictícios direto no banco de produção. Num sistema com dados
+ * financeiros reais, e mais ainda num SaaS pago, isso é porta aberta e sujeira.
+ * Conta de verdade se cria pelo cadastro do aplicativo.
+ */
 
-const EXPENSE_CATEGORIES = [
+require('./config/firebaseAdmin');
+const { admin, db } = require('./config/firebaseAdmin');
+
+const CATEGORIAS_DESPESA = [
   { name: 'Alimentação', color: '#f97316' },
   { name: 'Mercado', color: '#84cc16' },
   { name: 'Transporte', color: '#06b6d4' },
@@ -22,7 +35,7 @@ const EXPENSE_CATEGORIES = [
   { name: 'Outros', color: '#94a3b8' },
 ];
 
-const INCOME_CATEGORIES = [
+const CATEGORIAS_RECEITA = [
   { name: 'Salário', color: '#22c55e' },
   { name: 'Serviços', color: '#10b981' },
   { name: 'Vendas', color: '#34d399' },
@@ -31,111 +44,54 @@ const INCOME_CATEGORIES = [
   { name: 'Outros', color: '#94a3b8' },
 ];
 
-const PAYMENT_METHODS = ['Pix', 'Dinheiro', 'Débito', 'Crédito', 'Boleto', 'Transferência', 'Outro'];
+const FORMAS_PAGAMENTO = ['Pix', 'Dinheiro', 'Débito', 'Crédito', 'Boleto', 'Transferência', 'Outro'];
 
-async function upsertDoc(collection, id, data) {
-  const ref = db.collection(collection).doc(id);
+async function criarSeNaoExistir(colecao, id, dados) {
+  const ref = db.collection(colecao).doc(id);
   const doc = await ref.get();
-  if (!doc.exists) await ref.set({ ...data, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  if (doc.exists) return false;
+  await ref.set({ ...dados, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  return true;
+}
+
+function idPadrao(prefixo, nome) {
+  return `${prefixo}-${nome.toLowerCase().replace(/[^a-z]/g, '-')}`;
 }
 
 async function main() {
-  console.log('🌱 Iniciando seed do Firestore...\n');
+  console.log('Seed de dados de referência\n');
 
-  // Categorias padrão
-  console.log('📁 Criando categorias padrão...');
-  for (const cat of EXPENSE_CATEGORIES) {
-    const id = `default-expense-${cat.name.toLowerCase().replace(/[^a-z]/g, '-')}`;
-    await upsertDoc('categories', id, { name: cat.name, type: 'EXPENSE', color: cat.color, isDefault: true, userId: null });
-  }
-  for (const cat of INCOME_CATEGORIES) {
-    const id = `default-income-${cat.name.toLowerCase().replace(/[^a-z]/g, '-')}`;
-    await upsertDoc('categories', id, { name: cat.name, type: 'INCOME', color: cat.color, isDefault: true, userId: null });
-  }
-  console.log('  ✅ Categorias criadas.\n');
+  const totalCategorias = CATEGORIAS_DESPESA.length + CATEGORIAS_RECEITA.length;
+  let criadas = 0;
 
-  // Formas de pagamento
-  console.log('💳 Criando formas de pagamento...');
-  for (const method of PAYMENT_METHODS) {
-    const id = `default-pm-${method.toLowerCase().replace(/[^a-z]/g, '-')}`;
-    await upsertDoc('paymentMethods', id, { name: method, isDefault: true, userId: null });
-  }
-  console.log('  ✅ Formas de pagamento criadas.\n');
-
-  // Usuário admin no Firebase Auth
-  console.log('👤 Criando usuário administrador...');
-  let adminUser;
-  try {
-    adminUser = await admin.auth().getUserByEmail('admin@financeiro.local');
-    console.log('  ℹ️  Usuário já existe:', adminUser.email);
-  } catch {
-    adminUser = await admin.auth().createUser({
-      email: 'admin@financeiro.local',
-      password: 'admin123',
-      displayName: 'Administrador',
+  for (const cat of CATEGORIAS_DESPESA) {
+    const novo = await criarSeNaoExistir('categories', idPadrao('default-expense', cat.name), {
+      name: cat.name, type: 'EXPENSE', color: cat.color, isDefault: true, userId: null,
     });
-    console.log('  ✅ Usuário criado:', adminUser.email);
+    if (novo) criadas++;
   }
-
-  // Perfil no Firestore
-  await upsertDoc('users', adminUser.uid, { name: 'Administrador', email: 'admin@financeiro.local' });
-  console.log('  ✅ Perfil salvo no Firestore.\n');
-
-  // Buscar IDs de categorias e formas de pagamento pelo nome
-  const findCat = async (name) => {
-    const snap = await db.collection('categories').where('name', '==', name).where('isDefault', '==', true).limit(1).get();
-    return snap.empty ? null : snap.docs[0].id;
-  };
-  const findPm = async (name) => {
-    const snap = await db.collection('paymentMethods').where('name', '==', name).where('isDefault', '==', true).limit(1).get();
-    return snap.empty ? null : snap.docs[0].id;
-  };
-
-  const [pixId, creditId, debitoId, transferenciaId] = await Promise.all([
-    findPm('Pix'), findPm('Crédito'), findPm('Débito'), findPm('Transferência'),
-  ]);
-  const [catSalario, catMercado, catAlimentacao, catCombustivel, catEnergia, catInternet, catLazer, catServicos] = await Promise.all([
-    findCat('Salário'), findCat('Mercado'), findCat('Alimentação'), findCat('Combustível'),
-    findCat('Energia'), findCat('Internet'), findCat('Lazer'), findCat('Serviços'),
-  ]);
-
-  // Lançamentos de exemplo
-  console.log('💰 Criando lançamentos de exemplo...');
-  const now = new Date();
-  const start = startOfMonth(now);
-
-  const samples = [
-    { type: 'INCOME', description: 'Salário do mês', amount: 4500, categoryId: catSalario, paymentMethodId: transferenciaId, date: start },
-    { type: 'INCOME', description: 'Manutenção notebook cliente', amount: 250, categoryId: catServicos, paymentMethodId: pixId, date: subDays(now, 5) },
-    { type: 'EXPENSE', description: 'Compras mercado da semana', amount: 284.90, categoryId: catMercado, paymentMethodId: debitoId, date: subDays(now, 3) },
-    { type: 'EXPENSE', description: 'Gasolina carro', amount: 120, categoryId: catCombustivel, paymentMethodId: pixId, date: subDays(now, 7) },
-    { type: 'EXPENSE', description: 'Conta de energia', amount: 245.30, categoryId: catEnergia, paymentMethodId: pixId, date: subDays(now, 10) },
-    { type: 'EXPENSE', description: 'Internet fibra', amount: 109.90, categoryId: catInternet, paymentMethodId: debitoId, date: subDays(now, 8) },
-    { type: 'EXPENSE', description: 'Almoço restaurante', amount: 58, categoryId: catAlimentacao, paymentMethodId: creditId, date: subDays(now, 2) },
-    { type: 'EXPENSE', description: 'Cinema + pipoca', amount: 82, categoryId: catLazer, paymentMethodId: creditId, date: subDays(now, 4) },
-  ];
-
-  for (const t of samples) {
-    await db.collection('transactions').add({
-      userId: adminUser.uid,
-      ...t,
-      date: admin.firestore.Timestamp.fromDate(t.date),
-      referenceMonth: format(t.date, 'yyyy-MM'),
-      origin: 'MANUAL',
-      status: 'CONFIRMED',
-      notes: null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  for (const cat of CATEGORIAS_RECEITA) {
+    const novo = await criarSeNaoExistir('categories', idPadrao('default-income', cat.name), {
+      name: cat.name, type: 'INCOME', color: cat.color, isDefault: true, userId: null,
     });
+    if (novo) criadas++;
   }
-  console.log(`  ✅ ${samples.length} lançamentos criados.\n`);
+  console.log(`Categorias: ${criadas} criada(s), ${totalCategorias - criadas} já existia(m).`);
 
-  console.log('✅ Seed concluído!\n');
-  console.log('📋 Credenciais:');
-  console.log('   E-mail: admin@financeiro.local');
-  console.log('   Senha:  admin123\n');
+  let formasCriadas = 0;
+  for (const forma of FORMAS_PAGAMENTO) {
+    const novo = await criarSeNaoExistir('paymentMethods', idPadrao('default-pm', forma), {
+      name: forma, isDefault: true, userId: null,
+    });
+    if (novo) formasCriadas++;
+  }
+  console.log(`Formas de pagamento: ${formasCriadas} criada(s), ${FORMAS_PAGAMENTO.length - formasCriadas} já existia(m).`);
 
+  console.log('\nSeed concluído.');
   process.exit(0);
 }
 
-main().catch((e) => { console.error('❌', e); process.exit(1); });
+main().catch((err) => {
+  console.error('Falha no seed:', err);
+  process.exit(1);
+});

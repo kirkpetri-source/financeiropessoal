@@ -20,7 +20,7 @@ function Section({ icon: Icon, title, children }) {
 }
 
 export default function SettingsPage() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, changePassword } = useAuth();
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
@@ -68,13 +68,17 @@ export default function SettingsPage() {
       toast.error('As senhas não coincidem.');
       return;
     }
+    if (data.newPassword === data.currentPassword) {
+      toast.error('A nova senha precisa ser diferente da atual.');
+      return;
+    }
     setSavingPassword(true);
     try {
-      await api.put('/auth/me/password', { currentPassword: data.currentPassword, newPassword: data.newPassword });
+      await changePassword(data.currentPassword, data.newPassword);
       toast.success('Senha alterada com sucesso!');
       passwordForm.reset();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Erro ao alterar senha.');
+      toast.error(err.message || 'Erro ao alterar senha.');
     } finally {
       setSavingPassword(false);
     }
