@@ -1,6 +1,7 @@
 const { db } = require('../config/firebaseAdmin');
 const { escopoDe } = require('../data/escopo');
 const { parseFinancialMessage, looksLikeFinancialMessage } = require('../utils/financialParser');
+const { detectarParcelamento, montarParcelas } = require('../utils/parcelamento');
 const { parseWithAI } = require('./aiParserService');
 const { createTransaction } = require('./transactionService');
 const householdService = require('./householdService');
@@ -102,13 +103,18 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
   const membros = await householdService.listarMembros(householdId);
   const nomesDosMembros = membros.map((m) => m.name).filter(Boolean);
 
+  // Parcelamento sai do texto ANTES de interpretar: senao o parser le o "10x"
+  // como se fosse o valor da compra.
+  const parcelado = detectarParcelamento(texto);
+  const textoParaParser = parcelado ? parcelado.textoLimpo : texto;
+
   // 1) regras (rápido e grátis)  2) IA, só se as regras não derem conta
   let interpretados = [];
-  const porRegra = parseFinancialMessage(texto, nomesDosMembros);
+  const porRegra = parseFinancialMessage(textoParaParser, nomesDosMembros);
   if (porRegra) {
     interpretados = [porRegra];
   } else {
-    const porIA = await parseWithAI(texto, nomesDosMembros);
+    const porIA = await parseWithAI(textoParaParser, nomesDosMembros);
     if (Array.isArray(porIA)) interpretados = porIA;
   }
 
@@ -133,20 +139,53 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
 
     const paidBy = await resolverPagador(householdId, item.paidBy, senderJid, pushName);
 
-    const transacao = await createTransaction(dados, {
+    const comum = {
       type: item.type,
-      description: item.description,
-      amount: item.amount,
       categoryId,
       paymentMethodId,
-      // Sempre a hora da MENSAGEM, nunca a do processamento. O webhook usava a
-      // hora do processamento e um gasto enviado 23h58 podia cair no dia — e no
-      // mês — errado, dependendo de por onde a mensagem entrasse.
-      date: dataDaMensagem,
       notes: `Via WhatsApp (${origem}).`,
       origin: 'WHATSAPP',
       status: 'CONFIRMED',
       paidBy,
+    };
+
+    // Compra parcelada vira N lançamentos, um por mês. Só faz sentido para
+    // despesa: "recebi 300 em 3x" é raro e ambíguo demais para adivinhar.
+    if (parcelado && item.type === 'EXPENSE') {
+      const parcelas = montarParcelas({
+        descricao: item.description,
+        valorTotal: item.amount,
+        parcelas: parcelado.parcelas,
+        dataDaCompra: dataDaMensagem,
+      });
+
+      for (const p of parcelas) {
+        const transacao = await createTransaction(dados, {
+          ...comum,
+          description: p.description,
+          amount: p.amount,
+          date: p.date,
+          parcela: p.parcela,
+          totalParcelas: p.totalParcelas,
+          grupoParcelamento: p.grupoParcelamento,
+          valorTotalParcelamento: p.valorTotal,
+        });
+        ids.push(transacao.id);
+        // Só a primeira parcela entra na confirmação — as outras são
+        // consequência dela, e listar dez linhas no grupo seria ruído.
+        if (p.parcela === 1) criadas.push({ ...transacao, _parcelamento: parcelado.parcelas });
+      }
+      continue;
+    }
+
+    const transacao = await createTransaction(dados, {
+      ...comum,
+      description: item.description,
+      amount: item.amount,
+      // Sempre a hora da MENSAGEM, nunca a do processamento. O webhook usava a
+      // hora do processamento e um gasto enviado 23h58 podia cair no dia — e no
+      // mês — errado, dependendo de por onde a mensagem entrasse.
+      date: dataDaMensagem,
     });
     ids.push(transacao.id);
     criadas.push(transacao);

@@ -44,12 +44,23 @@ function montarConfirmacao(modelo, transacao) {
   const padrao = '✅ {tipo} de R$ {valor} em {categoria}';
   const texto = modelo || padrao;
 
-  return texto
+  const base = texto
     .replace(/\{tipo\}/gi, RÓTULO_TIPO[transacao.type] || 'lançamento')
     .replace(/\{valor\}/gi, formatarValor(transacao.amount))
     .replace(/\{categoria\}/gi, transacao.category?.name || 'Outros')
     .replace(/\{descricao\}/gi, transacao.description || '')
     .replace(/\{pagador\}/gi, transacao.paidBy || '');
+
+  // Compra parcelada: a pessoa precisa ver que lançamos as N parcelas, e não
+  // só a primeira — senão parece que o sistema registrou o valor errado.
+  const parcelas = transacao._parcelamento;
+  if (parcelas > 1) {
+    const total = transacao.valorTotalParcelamento;
+    const totalFormatado = total ? ` (total R$ ${formatarValor(total)})` : '';
+    return `${base}\n📅 ${parcelas}x lançadas, uma por mês${totalFormatado}`;
+  }
+
+  return base;
 }
 
 /**

@@ -112,6 +112,12 @@ function detectPaymentMethod(words) {
 // "1.500,00" → 1500.00 | "84,90" → 84.9 | "1.500" → 1500 | "1.5" → 1.5 | "R$50" → 50
 function parseBrazilianAmount(raw) {
   let w = raw.toLowerCase().replace(/r?\$/g, '').trim();
+
+  // Recusa número com letra colada. parseFloat('10x') devolve 10, e por causa
+  // disso "geladeira 1200 em 10x" era lançada como R$ 10 em vez de R$ 1.200 —
+  // o parser pegava o "10x" achando que era o valor da compra.
+  if (!/^[\d.,]+$/.test(w)) return NaN;
+
   if (w.includes(',')) {
     // Vírgula é decimal; pontos são separadores de milhar
     w = w.replace(/\./g, '').replace(',', '.');

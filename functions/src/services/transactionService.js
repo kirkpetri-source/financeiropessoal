@@ -54,6 +54,11 @@ async function createTransaction(dados, entrada, criadoPor = null) {
     paidBy: entrada.paidBy || null,
     // Quem registrou. O lançamento pertence à família; isto é só rastreabilidade.
     createdBy: criadoPor,
+    // Parcelamento: presentes só quando a compra foi dividida em Nx.
+    parcela: entrada.parcela || null,
+    totalParcelas: entrada.totalParcelas || null,
+    grupoParcelamento: entrada.grupoParcelamento || null,
+    valorTotalParcelamento: entrada.valorTotalParcelamento || null,
   });
 
   const lista = await enriquecer([{ ...criada, date: criada.date?.toDate?.() || criada.date }]);

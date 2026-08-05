@@ -38,6 +38,15 @@ describe('parseBrazilianAmount', () => {
   it('devolve NaN para texto que não é número', () => {
     expect(parseBrazilianAmount('mercado')).toBeNaN();
   });
+
+  // parseFloat('10x') devolve 10, e isso fazia "geladeira 1200 em 10x" ser
+  // lancada como R$ 10 em vez de R$ 1.200.
+  it('recusa numero com letra colada', () => {
+    expect(parseBrazilianAmount('10x')).toBeNaN();
+    expect(parseBrazilianAmount('12vezes')).toBeNaN();
+    expect(parseBrazilianAmount('3kg')).toBeNaN();
+    expect(parseBrazilianAmount('2h')).toBeNaN();
+  });
 });
 
 describe('parseFinancialMessage — formato básico', () => {
