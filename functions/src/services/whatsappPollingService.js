@@ -1,7 +1,8 @@
 const { db, admin } = require('../config/firebaseAdmin');
 const { escopoDe } = require('../data/escopo');
-const { fetchGroupMessages, fetchOwnJid } = require('./evolutionApiService');
+const { provedorDe } = require('../canais');
 const { lancarPorTexto, jaProcessada, looksLikeFinancialMessage } = require('./lancamentoPorMensagem');
+const { responder, confirmarLancamentos, ehMensagemDoBot } = require('./respostaWhatsapp');
 
 /**
  * Polling agendado — rede de segurança do webhook.
@@ -23,10 +24,13 @@ function textoDaMensagem(msg) {
  * Processa uma mensagem, aceitando vários lançamentos separados por linha.
  * @returns {Promise<number>} quantidade de lançamentos criados
  */
-async function processarMensagem(msg, householdId) {
+async function processarMensagem(msg, householdId, config) {
   const messageId = msg.key?.id;
   const texto = textoDaMensagem(msg);
   if (!texto) return 0;
+
+  // Nao reprocessa a propria confirmacao do bot (protecao contra loop).
+  if (ehMensagemDoBot(texto)) return 0;
 
   const senderJid = msg.key?.participant || msg.key?.remoteJid || null;
   const pushName = msg.pushName || msg.verifiedBizName || null;
@@ -42,6 +46,7 @@ async function processarMensagem(msg, householdId) {
 
   const dados = escopoDe(householdId);
   let criados = 0;
+  const confirmar = [];
 
   for (let i = 0; i < linhasFinanceiras.length; i++) {
     const linha = linhasFinanceiras[i];
@@ -60,7 +65,7 @@ async function processarMensagem(msg, householdId) {
       rawPayload: msg,
     });
 
-    const { transacoes, erro } = await lancarPorTexto({
+    const { transacoes, criadas: transacoesCriadas, erro } = await lancarPorTexto({
       householdId,
       texto: linha,
       senderJid,
@@ -79,12 +84,17 @@ async function processarMensagem(msg, householdId) {
       transactionId: transacoes[0],
     });
     criados += transacoes.length;
+    confirmar.push(...transacoesCriadas);
+  }
+
+  if (confirmar.length && config) {
+    await confirmarLancamentos(householdId, config, groupId, confirmar);
   }
 
   return criados;
 }
 
-async function processarLote(mensagens, householdId, ignorarAntesDe = 0) {
+async function processarLote(mensagens, householdId, ignorarAntesDe = 0, config = null) {
   const umDiaAtras = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
   const minimo = Math.max(umDiaAtras, ignorarAntesDe);
 
@@ -96,7 +106,7 @@ async function processarLote(mensagens, householdId, ignorarAntesDe = 0) {
     if (await jaProcessada(msg.key?.id)) { puladas++; continue; }
 
     try {
-      processadas += await processarMensagem(msg, householdId);
+      processadas += await processarMensagem(msg, householdId, config);
     } catch (err) {
       console.error('[Polling] Erro ao processar mensagem:', err.message);
       erros++;
@@ -126,28 +136,37 @@ async function pollForHousehold(householdId, config) {
     }
     await lockRef.set({ lockedAt: Math.floor(Date.now() / 1000), householdId });
 
+    const provider = provedorDe(config);
+
+    // A Cloud API nao expoe historico — la as mensagens chegam so por webhook,
+    // e o polling nao tem o que fazer.
+    if (!provider.suportaBusca) {
+      console.log('[Polling] Canal ' + provider.nome + ' nao suporta busca; nada a fazer.');
+      return resultado;
+    }
+
     const ignorarAntesDe = config.lastResetAt || 0;
 
     // Grupo: pega as próprias mensagens e as dos outros membros.
     const [minhas, dosOutros] = await Promise.all([
-      fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 }),
-      fetchGroupMessages(config, config.groupId, { fromMe: false, limit: 50 }),
+      provider.buscarMensagens(config, config.groupId, { fromMe: true, limit: 50 }),
+      provider.buscarMensagens(config, config.groupId, { fromMe: false, limit: 50 }),
     ]);
     const doGrupo = [...minhas, ...dosOutros];
     resultado.checked += doGrupo.length;
 
-    const doGrupoResultado = await processarLote(doGrupo, householdId, ignorarAntesDe);
+    const doGrupoResultado = await processarLote(doGrupo, householdId, ignorarAntesDe, config);
     resultado.processed += doGrupoResultado.processed;
     resultado.skipped += doGrupoResultado.skipped;
     resultado.errors += doGrupoResultado.errors;
 
     // Auto-conversa ("Mensagens para mim") só quando explicitamente habilitada.
     if (config.allowPrivateChat) {
-      const meuJid = await fetchOwnJid(config);
+      const meuJid = await provider.obterIdentidadePropria(config);
       if (meuJid) {
-        const privadas = await fetchGroupMessages(config, meuJid, { fromMe: undefined, limit: 50 });
+        const privadas = await provider.buscarMensagens(config, meuJid, { fromMe: undefined, limit: 50 });
         resultado.checked += privadas.length;
-        const privadasResultado = await processarLote(privadas, householdId, ignorarAntesDe);
+        const privadasResultado = await processarLote(privadas, householdId, ignorarAntesDe, config);
         resultado.processed += privadasResultado.processed;
         resultado.skipped += privadasResultado.skipped;
         resultado.errors += privadasResultado.errors;

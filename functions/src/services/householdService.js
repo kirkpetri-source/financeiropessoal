@@ -1,4 +1,5 @@
 const { admin, db } = require('../config/firebaseAdmin');
+const { gerarCodigoVinculo } = require('../utils/codigoVinculo');
 
 /**
  * Famílias (households) — a unidade de cobrança e de isolamento do sistema.
@@ -42,6 +43,9 @@ async function criarHousehold({ nome, ownerId, ownerNome, ownerEmail, ownerTelef
     tx.set(ref, {
       name: nome || `Família de ${ownerNome || 'você'}`,
       ownerId,
+      // Codigo que o cliente manda no grupo ("vincular ABC123") para ligar o
+      // grupo do WhatsApp a esta familia, sem precisar descobrir o ID do grupo.
+      codigoVinculo: gerarCodigoVinculo(),
       subscription: {
         status: 'trialing',
         plan: 'familia',

@@ -120,6 +120,10 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
   }
 
   const ids = [];
+  // As transações completas (com categoria já resolvida) sobem junto: a
+  // confirmação no WhatsApp precisa do nome da categoria, não só do ID.
+  const criadas = [];
+
   for (const item of interpretados) {
     const [categoryId, paymentMethodId] = await Promise.all([
       resolverCategoriaId(dados, item.categoryName),
@@ -145,13 +149,14 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
       paidBy,
     });
     ids.push(transacao.id);
+    criadas.push(transacao);
   }
 
   if (!ids.length) {
-    return { transacoes: [], erro: 'Categoria ou forma de pagamento não encontrada.' };
+    return { transacoes: [], criadas: [], erro: 'Categoria ou forma de pagamento não encontrada.' };
   }
 
-  return { transacoes: ids, erro: null };
+  return { transacoes: ids, criadas, erro: null };
 }
 
 /** Já processamos essa mensagem? Evita lançamento duplicado (webhook + polling). */
