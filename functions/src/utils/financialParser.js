@@ -59,6 +59,39 @@ const CATEGORY_MAP = {
   ],
 };
 
+/**
+ * Casa uma palavra-chave como PALAVRA INTEIRA, não como pedaço de outra.
+ *
+ * Sem isso, 'net' casava dentro de 'netflix' (assinatura virava Internet) e
+ * 'oi' casava dentro de 'foi'/'noite' (conversa comum acionava a IA à toa).
+ *
+ * Não dá para usar \b: em JS o \b só conhece [A-Za-z0-9_], então quebra em
+ * palavra acentuada ('café,' não casaria). Usamos \p{L}/\p{N} com a flag u.
+ * A fronteira só é aplicada do lado em que a palavra-chave começa/termina com
+ * letra ou dígito — assim 'r$' ainda casa em 'r$50'.
+ */
+const _cacheRegex = new Map();
+
+function regexPalavraInteira(palavra) {
+  let regex = _cacheRegex.get(palavra);
+  if (regex) return regex;
+
+  const escapada = palavra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const comecaComLetraOuNumero = /[\p{L}\p{N}]/u.test(palavra[0]);
+  const terminaComLetraOuNumero = /[\p{L}\p{N}]/u.test(palavra[palavra.length - 1]);
+
+  const esquerda = comecaComLetraOuNumero ? '(?<![\\p{L}\\p{N}])' : '';
+  const direita = terminaComLetraOuNumero ? '(?![\\p{L}\\p{N}])' : '';
+
+  regex = new RegExp(`${esquerda}${escapada}${direita}`, 'u');
+  _cacheRegex.set(palavra, regex);
+  return regex;
+}
+
+function contemPalavra(texto, palavra) {
+  return regexPalavraInteira(palavra).test(texto);
+}
+
 function detectType(firstWord) {
   const lower = firstWord.toLowerCase();
   for (const [type, keywords] of Object.entries(TYPE_KEYWORDS)) {
@@ -75,14 +108,23 @@ function detectPaymentMethod(words) {
   return { method: null, remainingWords: words };
 }
 
+// Converte um token em número respeitando o formato brasileiro.
+// "1.500,00" → 1500.00 | "84,90" → 84.9 | "1.500" → 1500 | "1.5" → 1.5 | "R$50" → 50
+function parseBrazilianAmount(raw) {
+  let w = raw.toLowerCase().replace(/r?\$/g, '').trim();
+  if (w.includes(',')) {
+    // Vírgula é decimal; pontos são separadores de milhar
+    w = w.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(w)) {
+    // Apenas pontos em grupos de 3 dígitos → separador de milhar (ex: 1.500, 1.234.567)
+    w = w.replace(/\./g, '');
+  }
+  return parseFloat(w);
+}
+
 function detectAmount(words) {
   for (let i = words.length - 1; i >= 0; i--) {
-    // Remove símbolo de moeda colado ao número (ex: "R$170", "$50") e troca vírgula por ponto
-    const word = words[i]
-      .toLowerCase()
-      .replace(/r?\$/g, '')
-      .replace(',', '.');
-    const num = parseFloat(word);
+    const num = parseBrazilianAmount(words[i]);
     if (!isNaN(num) && num > 0) {
       return {
         amount: num,
@@ -98,7 +140,7 @@ function suggestCategory(description, type) {
   const categoryList = CATEGORY_MAP[type] || [];
 
   for (const { keywords, category } of categoryList) {
-    if (keywords.some((kw) => lower.includes(kw))) {
+    if (keywords.some((kw) => contemPalavra(lower, kw))) {
       return category;
     }
   }
@@ -195,4 +237,37 @@ function parseFinancialMessage(message, payers = []) {
   };
 }
 
-module.exports = { parseFinancialMessage, suggestCategory };
+// Pistas de que uma linha PODE ser um lançamento financeiro (não exige começar com tipo).
+// Usado como gatilho leve antes de tentar o parser/IA — evita acionar a IA em conversa comum.
+const FINANCIAL_HINTS = [
+  ...TYPE_KEYWORDS.EXPENSE,
+  ...TYPE_KEYWORDS.INCOME,
+  ...PAYMENT_METHODS,
+  'reais', 'real', 'r$', 'pila', 'conto', 'paguei', 'pagamento', 'conta', 'comprei',
+  // palavras de categoria (mercado, uber, gasolina, ifood...) reforçam a detecção
+  ...Object.values(CATEGORY_MAP).flat().flatMap((c) => c.keywords),
+];
+
+/**
+ * Decide se vale a pena tentar interpretar a linha como lançamento financeiro.
+ * Critério: precisa conter um número E alguma pista financeira como palavra
+ * inteira, em qualquer posição.
+ *
+ * Não exige que a mensagem COMECE com palavra-chave — assim "uber 23 pix" e
+ * "fiz um pix de 50 no mercado" passam. Mas exige palavra inteira, senão
+ * "boa noite, chego 22h" acionaria a IA por causa do 'oi' dentro de 'noite'.
+ */
+function looksLikeFinancialMessage(text) {
+  if (!text) return false;
+  const lower = text.trim().toLowerCase();
+  if (!/\d/.test(lower)) return false;
+  return FINANCIAL_HINTS.some((hint) => contemPalavra(lower, hint));
+}
+
+module.exports = {
+  parseFinancialMessage,
+  suggestCategory,
+  looksLikeFinancialMessage,
+  parseBrazilianAmount,
+  contemPalavra,
+};
