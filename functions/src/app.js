@@ -7,6 +7,7 @@ const transactionRoutes = require('./routes/transactions');
 const categoryRoutes = require('./routes/categories');
 const paymentMethodRoutes = require('./routes/paymentMethods');
 const whatsappRoutes = require('./routes/whatsapp');
+const householdRoutes = require('./routes/households');
 const { handleEvolutionWebhook } = require('./webhooks/evolutionWebhook');
 const errorHandler = require('./middlewares/errorHandler');
 const { webhookAuth } = require('./middlewares/webhookAuth');
@@ -59,6 +60,7 @@ app.use('/auth', limiteAuth, authRoutes);
 app.use('/transactions', transactionRoutes);
 app.use('/categories', categoryRoutes);
 app.use('/payment-methods', paymentMethodRoutes);
+app.use('/households', householdRoutes);
 app.use('/whatsapp/poll', limitePolling);
 app.use('/whatsapp', whatsappRoutes);
 

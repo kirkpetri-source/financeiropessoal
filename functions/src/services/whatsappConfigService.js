@@ -1,52 +1,72 @@
 const { admin, db } = require('../config/firebaseAdmin');
 
-async function getConfig(userId) {
-  const doc = await db.collection('whatsappConfigs').doc(userId).get();
+/**
+ * Configuração do canal WhatsApp — um documento por família, com o householdId
+ * como ID (antes era por usuário).
+ *
+ * A chave da Evolution API nunca sai daqui em texto puro: getConfig devolve
+ * mascarada, e updateConfig ignora o valor mascarado para não sobrescrever a
+ * chave real com asteriscos quando o formulário é salvo sem alterá-la.
+ */
 
-  const defaults = {
-    userId,
-    enabled: false,
-    evolutionApiUrl: null,
-    instanceName: null,
-    apiKey: null,
-    groupId: null,
-    confirmationMessageTemplate: '✅ Lançamento registrado: {tipo} de R$ {valor} em {categoria}',
-  };
+const PADROES = {
+  enabled: false,
+  evolutionApiUrl: null,
+  instanceName: null,
+  apiKey: null,
+  groupId: null,
+  allowPrivateChat: false,
+  payers: [],
+  confirmationMessageTemplate: '✅ Lançamento registrado: {tipo} de R$ {valor} em {categoria}',
+};
 
-  const data = doc.exists ? { ...defaults, ...doc.data() } : defaults;
+function mascarar(chave) {
+  if (!chave) return null;
+  return '••••••••' + String(chave).slice(-4);
+}
+
+async function getConfig(householdId) {
+  const doc = await db.collection('whatsappConfigs').doc(householdId).get();
+  const dados = doc.exists ? { ...PADROES, ...doc.data() } : { ...PADROES };
 
   return {
-    ...data,
-    id: userId,
-    apiKey: data.apiKey ? '••••••••' + data.apiKey.slice(-4) : null,
+    ...dados,
+    id: householdId,
+    householdId,
+    apiKey: mascarar(dados.apiKey),
+    // Diagnóstico da última tentativa de leitura, para a tela mostrar o motivo
+    // quando a integração para de funcionar.
+    lastPollError: dados.lastPollError || null,
+    lastPolledAt: dados.lastPolledAt?.toDate?.() || null,
   };
 }
 
-async function updateConfig(userId, data) {
-  const ref = db.collection('whatsappConfigs').doc(userId);
+async function updateConfig(householdId, entrada) {
+  const ref = db.collection('whatsappConfigs').doc(householdId);
   const doc = await ref.get();
 
-  const updateData = { ...data, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+  const alteracao = { ...entrada, householdId, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
 
-  // Não sobrescreve a apiKey se receber o valor mascarado
-  if (data.apiKey && data.apiKey.startsWith('••••')) {
-    delete updateData.apiKey;
+  // Formulário salvo sem mexer na chave devolve o valor mascarado — não pode
+  // virar a chave de verdade.
+  if (typeof alteracao.apiKey === 'string' && alteracao.apiKey.startsWith('••••')) {
+    delete alteracao.apiKey;
   }
-  // Limpar string vazia para null
-  if (updateData.evolutionApiUrl === '') updateData.evolutionApiUrl = null;
+  if (alteracao.evolutionApiUrl === '') alteracao.evolutionApiUrl = null;
 
   if (doc.exists) {
-    await ref.update(updateData);
+    await ref.update(alteracao);
   } else {
-    await ref.set({ userId, createdAt: admin.firestore.FieldValue.serverTimestamp(), ...updateData });
+    await ref.set({ createdAt: admin.firestore.FieldValue.serverTimestamp(), ...alteracao });
   }
 
-  return getConfig(userId);
+  return getConfig(householdId);
 }
 
-async function getRawConfig(userId) {
-  const doc = await db.collection('whatsappConfigs').doc(userId).get();
-  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+/** Configuração completa, com a chave em texto puro. Uso interno apenas. */
+async function getRawConfig(householdId) {
+  const doc = await db.collection('whatsappConfigs').doc(householdId).get();
+  return doc.exists ? { householdId, ...doc.data() } : null;
 }
 
-module.exports = { getConfig, updateConfig, getRawConfig };
+module.exports = { getConfig, updateConfig, getRawConfig, PADROES };

@@ -6,6 +6,13 @@ async function getProfile(userId) {
   return { id: doc.id, ...doc.data() };
 }
 
+/**
+ * Cria ou atualiza o perfil e garante que o usuário tenha uma família.
+ *
+ * Quem cadastra vira dono da própria família, com trial. Sem isso o usuário
+ * novo logaria e esbarraria em SEM_HOUSEHOLD em toda tela — o cadastro precisa
+ * entregar uma conta utilizável, não um estado intermediário.
+ */
 async function createOrUpdateProfile(userId, data) {
   const ref = db.collection('users').doc(userId);
   const doc = await ref.get();
@@ -21,6 +28,19 @@ async function createOrUpdateProfile(userId, data) {
     await ref.set(payload);
   } else {
     await ref.update(payload);
+  }
+
+  const jaTemFamilia = doc.exists && doc.data().householdId;
+  if (!jaTemFamilia) {
+    // require local: householdService escreve em users/, e importar no topo
+    // criaria dependência circular entre os dois services.
+    const householdService = require('./householdService');
+    await householdService.criarHousehold({
+      nome: data.name ? `Família ${String(data.name).split(' ')[0]}` : 'Minha família',
+      ownerId: userId,
+      ownerNome: data.name,
+      ownerEmail: data.email,
+    });
   }
 
   return getProfile(userId);

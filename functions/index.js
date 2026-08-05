@@ -4,7 +4,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const app = require('./src/app');
-const { pollAllUsers } = require('./src/services/whatsappPollingService');
+const { pollAllHouseholds } = require('./src/services/whatsappPollingService');
 
 // Chave da IA (Gemini) usada no fallback do parser de mensagens financeiras.
 // Configure com: firebase functions:secrets:set GEMINI_API_KEY
@@ -31,7 +31,7 @@ exports.pollWhatsapp = onSchedule(
   { schedule: 'every 2 minutes', region: 'southamerica-east1', timeoutSeconds: 120, memory: '256MiB', secrets: [GEMINI_API_KEY] },
   async () => {
     console.log('[Polling] Iniciando verificação automática...');
-    const results = await pollAllUsers();
+    const results = await pollAllHouseholds();
     console.log('[Polling] Concluído:', JSON.stringify(results));
   }
 );

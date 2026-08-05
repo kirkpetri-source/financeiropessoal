@@ -1,279 +1,197 @@
 const { db, admin } = require('../config/firebaseAdmin');
+const { escopoDe } = require('../data/escopo');
 const { fetchGroupMessages, fetchOwnJid } = require('./evolutionApiService');
-const { parseFinancialMessage, looksLikeFinancialMessage } = require('../utils/financialParser');
-const { parseWithAI } = require('./aiParserService');
-const { createTransaction } = require('./transactionService');
-const { resolvePayerName } = require('../utils/resolvePayerName');
-
-// Cache simples de payers por userId para evitar múltiplas consultas por mensagem
-const _payersCache = {};
-async function getPayersForUser(userId) {
-  if (_payersCache[userId]) return _payersCache[userId];
-  const doc = await db.collection('whatsappConfigs').doc(userId).get();
-  const payers = doc.exists ? (doc.data().payers || []) : [];
-  _payersCache[userId] = payers;
-  setTimeout(() => { delete _payersCache[userId]; }, 5 * 60 * 1000); // cache 5min
-  return payers;
-}
-
-async function isAlreadyProcessed(messageId) {
-  if (!messageId) return true;
-  const snap = await db.collection('whatsappLogs')
-    .where('messageId', '==', messageId).limit(1).get();
-  return !snap.empty;
-}
-
-async function resolveCategoryId(userId, categoryName) {
-  const [d, u] = await Promise.all([
-    db.collection('categories').where('isDefault', '==', true).where('name', '==', categoryName).limit(1).get(),
-    db.collection('categories').where('userId', '==', userId).where('name', '==', categoryName).limit(1).get(),
-  ]);
-  if (!u.empty) return u.docs[0].id;
-  if (!d.empty) return d.docs[0].id;
-  const fallback = await db.collection('categories').where('isDefault', '==', true).where('name', '==', 'Outros').limit(1).get();
-  return fallback.empty ? null : fallback.docs[0].id;
-}
-
-async function resolvePaymentMethodId(userId, methodName) {
-  const name = methodName || 'Pix';
-  const [d, u] = await Promise.all([
-    db.collection('paymentMethods').where('isDefault', '==', true).where('name', '==', name).limit(1).get(),
-    db.collection('paymentMethods').where('userId', '==', userId).where('name', '==', name).limit(1).get(),
-  ]);
-  if (!u.empty) return u.docs[0].id;
-  if (!d.empty) return d.docs[0].id;
-  const fallback = await db.collection('paymentMethods').where('isDefault', '==', true).where('name', '==', 'Outro').limit(1).get();
-  return fallback.empty ? null : fallback.docs[0].id;
-}
+const { lancarPorTexto, jaProcessada, looksLikeFinancialMessage } = require('./lancamentoPorMensagem');
 
 /**
- * Processa uma mensagem buscada via polling (fromMe: true).
- * Suporta múltiplas transações por mensagem (uma por linha).
- * Retorna a quantidade de transações criadas.
+ * Polling agendado — rede de segurança do webhook.
+ *
+ * Roda a cada 2 minutos e relê as mensagens recentes do grupo. Se o webhook
+ * falhar (servidor fora do ar, URL errada, token vencido), nada se perde: o
+ * polling encontra a mensagem no histórico. A deduplicação por messageId
+ * garante que os dois caminhos não lancem a mesma coisa duas vezes.
  */
-async function processPolledMessage(msg, userId) {
-  const messageId = msg.key?.id;
-  const rawContent = msg.message?.conversation
+
+function textoDaMensagem(msg) {
+  return msg.message?.conversation
     || msg.message?.extendedTextMessage?.text
     || msg.message?.ephemeralMessage?.message?.conversation
     || null;
-
-  // JID do remetente para identificação por telefone
-  const senderJid = msg.key?.participant || msg.key?.remoteJid || null;
-  // Usa o nome real do remetente se disponível, senão busca o perfil do usuário
-  const senderName = msg.pushName || msg.verifiedBizName || null;
-  const messageTimestamp = msg.messageTimestamp;
-  const groupId = msg.key?.remoteJid;
-
-  if (!rawContent) return 0;
-
-  // Divide por linha — suporta múltiplos lançamentos em uma mensagem
-  const lines = rawContent.split('\n').map(l => l.trim()).filter(Boolean);
-  const financialLines = lines.filter(looksLikeFinancialMessage);
-
-  if (!financialLines.length) return 0;
-
-  const txDate = messageTimestamp
-    ? new Date(messageTimestamp * 1000).toISOString()
-    : new Date().toISOString();
-
-  let created = 0;
-
-  for (let i = 0; i < financialLines.length; i++) {
-    const line = financialLines[i];
-    // ID único por linha para deduplicação
-    const lineMessageId = financialLines.length > 1 ? `${messageId}_line${i}` : messageId;
-
-    if (await isAlreadyProcessed(lineMessageId)) continue;
-
-    const logRef = await db.collection('whatsappLogs').add({
-      userId,
-      messageId: lineMessageId,
-      groupId,
-      sender: senderName || 'Você',
-      messageType: 'TEXT',
-      content: line,
-      processingStatus: 'PENDING',
-      rawPayload: msg,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    const payers = userId ? await getPayersForUser(userId) : [];
-
-    // 1) Parser por regras. 2) Fallback de IA para linguagem natural (pode gerar vários).
-    let parsedList = [];
-    const regexParsed = parseFinancialMessage(line, payers);
-    if (regexParsed) {
-      parsedList = [regexParsed];
-    } else {
-      const aiList = await parseWithAI(line, payers);
-      if (Array.isArray(aiList)) parsedList = aiList;
-    }
-
-    if (!parsedList.length) {
-      await logRef.update({
-        processingStatus: 'ERROR',
-        errorMessage: `Não foi possível interpretar: "${line}"`,
-      });
-      continue;
-    }
-
-    const transactionIds = [];
-    for (const parsed of parsedList) {
-      const [categoryId, paymentMethodId] = await Promise.all([
-        resolveCategoryId(userId, parsed.categoryName),
-        resolvePaymentMethodId(userId, parsed.paymentMethodName),
-      ]);
-
-      if (!categoryId || !paymentMethodId) continue;
-
-      // Resolve paidBy: 1) nome na msg, 2) telefone configurado, 3) pushName
-      const paidBy = resolvePayerName(parsed.paidBy, senderJid, senderName, payers);
-
-      const transaction = await createTransaction(userId, {
-        type: parsed.type,
-        description: parsed.description,
-        amount: parsed.amount,
-        categoryId,
-        paymentMethodId,
-        date: txDate,
-        notes: `Via WhatsApp. Enviado por: ${senderName || 'Você'}`,
-        origin: 'WHATSAPP',
-        status: 'CONFIRMED',
-        paidBy,
-      });
-      transactionIds.push(transaction.id);
-    }
-
-    if (!transactionIds.length) {
-      await logRef.update({ processingStatus: 'ERROR', errorMessage: 'Categoria ou forma de pagamento não encontrada.' });
-      continue;
-    }
-
-    await logRef.update({ processingStatus: 'PROCESSED', transactionId: transactionIds[0] });
-    created += transactionIds.length;
-  }
-
-  return created;
-}
-
-async function processMessages(messages, userId, lastResetAt = 0) {
-  const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
-  // Ignora mensagens anteriores ao último reset de dados
-  const minTimestamp = Math.max(oneDayAgo, lastResetAt);
-  let processed = 0, skipped = 0, errors = 0;
-
-  for (const msg of messages) {
-    const messageId = msg.key?.id;
-    const timestamp = msg.messageTimestamp || 0;
-    if (timestamp && timestamp < minTimestamp) { skipped++; continue; }
-    if (await isAlreadyProcessed(messageId)) { skipped++; continue; }
-    try {
-      const txs = await processPolledMessage(msg, userId);
-      processed += txs;
-    } catch (err) {
-      console.error('[Polling] Erro:', err.message);
-      errors++;
-    }
-  }
-  return { processed, skipped, errors };
 }
 
 /**
- * Executa o polling para um usuário específico.
- * Usa lock distribuído para evitar execuções simultâneas (race condition).
+ * Processa uma mensagem, aceitando vários lançamentos separados por linha.
+ * @returns {Promise<number>} quantidade de lançamentos criados
  */
-async function pollForUser(userId, config) {
-  const results = { checked: 0, processed: 0, skipped: 0, errors: 0 };
+async function processarMensagem(msg, householdId) {
+  const messageId = msg.key?.id;
+  const texto = textoDaMensagem(msg);
+  if (!texto) return 0;
+
+  const senderJid = msg.key?.participant || msg.key?.remoteJid || null;
+  const pushName = msg.pushName || msg.verifiedBizName || null;
+  const groupId = msg.key?.remoteJid;
+
+  const linhas = texto.split('\n').map((l) => l.trim()).filter(Boolean);
+  const linhasFinanceiras = linhas.filter(looksLikeFinancialMessage);
+  if (!linhasFinanceiras.length) return 0;
+
+  const dataDaMensagem = msg.messageTimestamp
+    ? new Date(msg.messageTimestamp * 1000).toISOString()
+    : new Date().toISOString();
+
+  const dados = escopoDe(householdId);
+  let criados = 0;
+
+  for (let i = 0; i < linhasFinanceiras.length; i++) {
+    const linha = linhasFinanceiras[i];
+    // ID próprio por linha, para deduplicar cada lançamento separadamente
+    const idDaLinha = linhasFinanceiras.length > 1 ? `${messageId}_line${i}` : messageId;
+
+    if (await jaProcessada(idDaLinha)) continue;
+
+    const log = await dados.criar('whatsappLogs', {
+      messageId: idDaLinha,
+      groupId,
+      sender: pushName || 'Você',
+      messageType: 'TEXT',
+      content: linha,
+      processingStatus: 'PENDING',
+      rawPayload: msg,
+    });
+
+    const { transacoes, erro } = await lancarPorTexto({
+      householdId,
+      texto: linha,
+      senderJid,
+      pushName,
+      dataDaMensagem,
+      origem: 'grupo',
+    });
+
+    if (erro) {
+      await dados.atualizar('whatsappLogs', log.id, { processingStatus: 'ERROR', errorMessage: erro });
+      continue;
+    }
+
+    await dados.atualizar('whatsappLogs', log.id, {
+      processingStatus: 'PROCESSED',
+      transactionId: transacoes[0],
+    });
+    criados += transacoes.length;
+  }
+
+  return criados;
+}
+
+async function processarLote(mensagens, householdId, ignorarAntesDe = 0) {
+  const umDiaAtras = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+  const minimo = Math.max(umDiaAtras, ignorarAntesDe);
+
+  let processadas = 0, puladas = 0, erros = 0;
+
+  for (const msg of mensagens) {
+    const timestamp = msg.messageTimestamp || 0;
+    if (timestamp && timestamp < minimo) { puladas++; continue; }
+    if (await jaProcessada(msg.key?.id)) { puladas++; continue; }
+
+    try {
+      processadas += await processarMensagem(msg, householdId);
+    } catch (err) {
+      console.error('[Polling] Erro ao processar mensagem:', err.message);
+      erros++;
+    }
+  }
+
+  return { processed: processadas, skipped: puladas, errors: erros };
+}
+
+/**
+ * Polling de uma família. Usa lock distribuído para que duas execuções
+ * simultâneas não criem lançamentos duplicados.
+ */
+async function pollForHousehold(householdId, config) {
+  const resultado = { checked: 0, processed: 0, skipped: 0, errors: 0 };
 
   try {
-    // LOCK: impede que dois polls rodem ao mesmo tempo para o mesmo usuário
-    const lockRef = db.collection('pollingLocks').doc(userId);
+    const lockRef = db.collection('pollingLocks').doc(householdId);
     const lockDoc = await lockRef.get();
-    const lockAge = lockDoc.exists
-      ? (Math.floor(Date.now() / 1000) - (lockDoc.data().lockedAt || 0))
+    const idadeDoLock = lockDoc.exists
+      ? Math.floor(Date.now() / 1000) - (lockDoc.data().lockedAt || 0)
       : 999;
 
-    if (lockAge < 60) {
-      // Outro poll rodou há menos de 60s — pula para evitar duplicação
-      console.log(`[Polling] Lock ativo para ${userId}, pulando.`);
-      return results;
+    if (idadeDoLock < 60) {
+      console.log(`[Polling] Lock ativo para ${householdId}, pulando.`);
+      return resultado;
     }
-    await lockRef.set({ lockedAt: Math.floor(Date.now() / 1000) });
+    await lockRef.set({ lockedAt: Math.floor(Date.now() / 1000), householdId });
 
-    // Timestamp do último reset — só processa mensagens posteriores
-    const lastResetAt = config.lastResetAt || 0;
+    const ignorarAntesDe = config.lastResetAt || 0;
 
-    // 1. Polling do GRUPO — captura fromMe (Kirk) E fromMe:false (Raquel e outros)
-    // O webhook já processa mensagens de terceiros, mas o polling serve de fallback
-    // A deduplicação por messageId evita processamento duplo
-    const groupMessagesOwn = await fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 });
-    const groupMessagesOthers = await fetchGroupMessages(config, config.groupId, { fromMe: false, limit: 50 });
-    const groupMessages = [...groupMessagesOwn, ...groupMessagesOthers];
-    results.checked += groupMessages.length;
-    const groupResult = await processMessages(groupMessages, userId, lastResetAt);
-    results.processed += groupResult.processed;
-    results.skipped += groupResult.skipped;
-    results.errors += groupResult.errors;
+    // Grupo: pega as próprias mensagens e as dos outros membros.
+    const [minhas, dosOutros] = await Promise.all([
+      fetchGroupMessages(config, config.groupId, { fromMe: true, limit: 50 }),
+      fetchGroupMessages(config, config.groupId, { fromMe: false, limit: 50 }),
+    ]);
+    const doGrupo = [...minhas, ...dosOutros];
+    resultado.checked += doGrupo.length;
 
-    // 2. Polling da AUTO-CONVERSA ("Mensagens para mim") — só quando habilitado.
-    // Por padrão processamos APENAS o grupo cadastrado; chats privados (inclusive
-    // a auto-conversa) só entram se allowPrivateChat estiver ligado nas configurações.
+    const doGrupoResultado = await processarLote(doGrupo, householdId, ignorarAntesDe);
+    resultado.processed += doGrupoResultado.processed;
+    resultado.skipped += doGrupoResultado.skipped;
+    resultado.errors += doGrupoResultado.errors;
+
+    // Auto-conversa ("Mensagens para mim") só quando explicitamente habilitada.
     if (config.allowPrivateChat) {
-      const ownJid = await fetchOwnJid(config);
-      if (ownJid) {
-        const selfMessages = await fetchGroupMessages(config, ownJid, { fromMe: undefined, limit: 50 });
-        results.checked += selfMessages.length;
-        const selfResult = await processMessages(selfMessages, userId, lastResetAt);
-        results.processed += selfResult.processed;
-        results.skipped += selfResult.skipped;
-        results.errors += selfResult.errors;
+      const meuJid = await fetchOwnJid(config);
+      if (meuJid) {
+        const privadas = await fetchGroupMessages(config, meuJid, { fromMe: undefined, limit: 50 });
+        resultado.checked += privadas.length;
+        const privadasResultado = await processarLote(privadas, householdId, ignorarAntesDe);
+        resultado.processed += privadasResultado.processed;
+        resultado.skipped += privadasResultado.skipped;
+        resultado.errors += privadasResultado.errors;
       }
     }
 
-    await db.collection('whatsappConfigs').doc(userId).update({
+    await db.collection('whatsappConfigs').doc(householdId).update({
       lastPolledAt: admin.firestore.FieldValue.serverTimestamp(),
       lastPollError: admin.firestore.FieldValue.delete(),
       lastPollErrorAt: admin.firestore.FieldValue.delete(),
     });
-
   } catch (err) {
-    console.error(`[Polling] Erro para userId ${userId}:`, err.message);
-    results.errors++;
-    // Falha de conexão com a Evolution API (servidor fora do ar, URL errada, etc.)
-    // costuma vir como "fetch failed". Mantém a mensagem para exibir ao usuário.
-    results.error = /fetch failed/i.test(err.message)
+    console.error(`[Polling] Erro na família ${householdId}:`, err.message);
+    resultado.errors++;
+
+    resultado.error = /fetch failed/i.test(err.message)
       ? 'Não foi possível conectar à Evolution API. Verifique se o servidor está online e a URL/chave estão corretas.'
       : err.message;
-    // Persiste o erro para diagnóstico na tela (não deixa falhar silenciosamente)
+
+    // Persiste o erro para a tela mostrar o motivo, em vez de falhar em silêncio.
     try {
-      await db.collection('whatsappConfigs').doc(userId).update({
-        lastPollError: results.error,
+      await db.collection('whatsappConfigs').doc(householdId).update({
+        lastPollError: resultado.error,
         lastPollErrorAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-    } catch { /* ignora erro de escrita do diagnóstico */ }
+    } catch { /* diagnóstico não pode derrubar o polling */ }
   }
 
-  return results;
+  return resultado;
 }
 
-/**
- * Executa polling para todos os usuários com integração ativa.
- */
-async function pollAllUsers() {
-  const snap = await db.collection('whatsappConfigs')
-    .where('enabled', '==', true).get();
+/** Polling de todas as famílias com a integração ativa. */
+async function pollAllHouseholds() {
+  const snap = await db.collection('whatsappConfigs').where('enabled', '==', true).get();
 
-  const results = [];
+  const resultados = [];
   for (const doc of snap.docs) {
     const config = doc.data();
     if (!config.groupId || !config.evolutionApiUrl || !config.apiKey) continue;
-    const result = await pollForUser(doc.id, config);
-    results.push({ userId: doc.id, ...result });
+    resultados.push({ householdId: doc.id, ...(await pollForHousehold(doc.id, config)) });
   }
 
-  console.log('[Polling] Resultado:', JSON.stringify(results));
-  return results;
+  console.log('[Polling] Resultado:', JSON.stringify(resultados));
+  return resultados;
 }
 
-module.exports = { pollAllUsers, pollForUser };
+module.exports = { pollAllHouseholds, pollForHousehold };

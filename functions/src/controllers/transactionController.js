@@ -3,48 +3,37 @@ const { format } = require('date-fns');
 
 async function list(req, res, next) {
   try {
-    const transactions = await transactionService.listTransactions(req.userId, req.query);
-    res.json(transactions);
-  } catch (err) {
-    next(err);
-  }
+    res.json(await transactionService.listTransactions(req.dados, req.query));
+  } catch (err) { next(err); }
 }
 
 async function create(req, res, next) {
   try {
-    const transaction = await transactionService.createTransaction(req.userId, req.body);
-    res.status(201).json(transaction);
-  } catch (err) {
-    next(err);
-  }
+    const transacao = await transactionService.createTransaction(req.dados, req.body, req.userId);
+    res.status(201).json(transacao);
+  } catch (err) { next(err); }
 }
 
 async function update(req, res, next) {
   try {
-    const transaction = await transactionService.updateTransaction(req.userId, req.params.id, req.body);
-    res.json(transaction);
-  } catch (err) {
-    next(err);
-  }
+    res.json(await transactionService.updateTransaction(req.dados, req.params.id, req.body));
+  } catch (err) { next(err); }
 }
 
 async function remove(req, res, next) {
   try {
-    await transactionService.deleteTransaction(req.userId, req.params.id);
+    await transactionService.deleteTransaction(req.dados, req.params.id);
     res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 }
 
 async function summary(req, res, next) {
   try {
     const month = req.query.month || format(new Date(), 'yyyy-MM');
-    const data = await transactionService.getMonthlySummary(req.userId, month);
-    res.json(data);
-  } catch (err) {
-    next(err);
-  }
+    // paidBy faz o filtro por pessoa valer para os graficos tambem, e nao so
+    // para os totais como era antes.
+    res.json(await transactionService.getMonthlySummary(req.dados, month, req.query.paidBy || null));
+  } catch (err) { next(err); }
 }
 
 module.exports = { list, create, update, remove, summary };

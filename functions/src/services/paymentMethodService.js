@@ -1,47 +1,39 @@
-const { admin, db } = require('../config/firebaseAdmin');
+/**
+ * Formas de pagamento — mesma lógica das categorias: as padrão são globais e
+ * imutáveis, as personalizadas pertencem à família.
+ */
 
-async function listPaymentMethods(userId) {
-  const [defaultSnap, userSnap] = await Promise.all([
-    db.collection('paymentMethods').where('isDefault', '==', true).get(),
-    db.collection('paymentMethods').where('userId', '==', userId).get(),
+async function listPaymentMethods(dados) {
+  const [snapPadrao, snapDaFamilia] = await Promise.all([
+    dados.consultarPadroes('paymentMethods').get(),
+    dados.consultar('paymentMethods').get(),
   ]);
 
-  const defaults = defaultSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  const userMethods = userSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const padrao = snapPadrao.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const daFamilia = snapDaFamilia.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-  return [...defaults, ...userMethods].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  return [...padrao, ...daFamilia].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 }
 
-async function createPaymentMethod(userId, name) {
-  const ref = await db.collection('paymentMethods').add({
-    userId,
-    isDefault: false,
-    name,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-  const doc = await ref.get();
-  return { id: doc.id, ...doc.data() };
+async function createPaymentMethod(dados, name) {
+  return dados.criar('paymentMethods', { isDefault: false, name });
 }
 
-async function deletePaymentMethod(userId, id) {
-  const ref = db.collection('paymentMethods').doc(id);
-  const doc = await ref.get();
-
-  if (!doc.exists || doc.data().userId !== userId) {
-    throw Object.assign(new Error('Forma de pagamento não encontrada.'), { statusCode: 404 });
+async function deletePaymentMethod(dados, id) {
+  const atual = await dados.buscarDoc('paymentMethods', id);
+  if (!atual) throw Object.assign(new Error('Forma de pagamento não encontrada.'), { statusCode: 404 });
+  if (atual._somenteLeitura) {
+    throw Object.assign(new Error('Forma de pagamento padrão não pode ser excluída.'), { statusCode: 403 });
   }
 
-  const inUse = await db.collection('transactions')
-    .where('userId', '==', userId)
-    .where('paymentMethodId', '==', id)
-    .limit(1)
-    .get();
+  const emUso = await dados.consultar('transactions')
+    .where('paymentMethodId', '==', id).limit(1).get();
 
-  if (!inUse.empty) {
+  if (!emUso.empty) {
     throw Object.assign(new Error('Forma de pagamento em uso.'), { statusCode: 409 });
   }
 
-  await ref.delete();
+  await dados.remover('paymentMethods', id);
 }
 
 module.exports = { listPaymentMethods, createPaymentMethod, deletePaymentMethod };

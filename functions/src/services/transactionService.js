@@ -1,169 +1,182 @@
 const { admin, db } = require('../config/firebaseAdmin');
 const { format } = require('date-fns');
 
-function buildReferenceMonth(dateStr) {
-  return format(new Date(dateStr), 'yyyy-MM');
+/**
+ * Lançamentos financeiros, sempre no escopo de uma família.
+ *
+ * Todas as funções recebem `dados` — o acessor devolvido por escopoDe(householdId).
+ * Nenhuma monta query própria para as coleções da família, justamente para que
+ * não exista caminho sem o filtro do tenant.
+ */
+
+function mesDeReferencia(dataStr) {
+  return format(new Date(dataStr), 'yyyy-MM');
 }
 
-async function listTransactions(userId, filters = {}) {
-  const { month, type, categoryId, paymentMethodId, origin, paidBy } = filters;
+function comDataConvertida(doc) {
+  const d = doc.data ? doc.data() : doc;
+  return { id: doc.id, ...d, date: d.date?.toDate?.() || d.date };
+}
 
-  let query = db.collection('transactions').where('userId', '==', userId);
+async function listTransactions(dados, filtros = {}) {
+  const { month, type, categoryId, paymentMethodId, origin, paidBy } = filtros;
 
+  let query = dados.consultar('transactions');
   if (month) query = query.where('referenceMonth', '==', month);
   if (type) query = query.where('type', '==', type);
 
   const snap = await query.orderBy('date', 'desc').get();
-  let results = snap.docs.map((d) => ({ id: d.id, ...d.data(), date: d.data().date?.toDate?.() || d.data().date }));
+  let resultado = snap.docs.map(comDataConvertida);
 
-  if (categoryId) results = results.filter((t) => t.categoryId === categoryId);
-  if (paymentMethodId) results = results.filter((t) => t.paymentMethodId === paymentMethodId);
-  if (origin) results = results.filter((t) => t.origin === origin);
-  if (paidBy) results = results.filter((t) => t.paidBy?.toLowerCase() === paidBy.toLowerCase());
+  // Filtros de baixa cardinalidade ficam em memória de propósito: cada
+  // combinação viraria um índice composto no Firestore, e o volume por família
+  // e por mês é pequeno.
+  if (categoryId) resultado = resultado.filter((t) => t.categoryId === categoryId);
+  if (paymentMethodId) resultado = resultado.filter((t) => t.paymentMethodId === paymentMethodId);
+  if (origin) resultado = resultado.filter((t) => t.origin === origin);
+  if (paidBy) resultado = resultado.filter((t) => t.paidBy?.toLowerCase() === paidBy.toLowerCase());
 
-  return enrichTransactions(results);
+  return enriquecer(resultado);
 }
 
-async function createTransaction(userId, data) {
-  const referenceMonth = buildReferenceMonth(data.date);
-
-  const ref = await db.collection('transactions').add({
-    userId,
-    type: data.type,
-    description: data.description,
-    amount: Number(data.amount),
-    categoryId: data.categoryId,
-    paymentMethodId: data.paymentMethodId,
-    date: admin.firestore.Timestamp.fromDate(new Date(data.date)),
-    referenceMonth,
-    notes: data.notes || null,
-    origin: data.origin || 'MANUAL',
-    status: data.status || 'CONFIRMED',
-    paidBy: data.paidBy || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+async function createTransaction(dados, entrada, criadoPor = null) {
+  const criada = await dados.criar('transactions', {
+    type: entrada.type,
+    description: entrada.description,
+    amount: Number(entrada.amount),
+    categoryId: entrada.categoryId,
+    paymentMethodId: entrada.paymentMethodId,
+    date: admin.firestore.Timestamp.fromDate(new Date(entrada.date)),
+    referenceMonth: mesDeReferencia(entrada.date),
+    notes: entrada.notes || null,
+    origin: entrada.origin || 'MANUAL',
+    status: entrada.status || 'CONFIRMED',
+    paidBy: entrada.paidBy || null,
+    // Quem registrou. O lançamento pertence à família; isto é só rastreabilidade.
+    createdBy: criadoPor,
   });
 
-  const doc = await ref.get();
-  const tx = { id: doc.id, ...doc.data(), date: doc.data().date?.toDate?.() };
-  return enrichTransactions([tx]).then((list) => list[0]);
+  const lista = await enriquecer([{ ...criada, date: criada.date?.toDate?.() || criada.date }]);
+  return lista[0];
 }
 
-async function updateTransaction(userId, transactionId, data) {
-  const ref = db.collection('transactions').doc(transactionId);
-  const doc = await ref.get();
+async function updateTransaction(dados, transactionId, entrada) {
+  const alteracao = {};
 
-  if (!doc.exists || doc.data().userId !== userId) {
-    throw Object.assign(new Error('Lançamento não encontrado.'), { statusCode: 404 });
+  const camposDiretos = ['type', 'description', 'categoryId', 'paymentMethodId', 'notes', 'origin', 'status', 'paidBy'];
+  for (const campo of camposDiretos) {
+    if (entrada[campo] !== undefined) alteracao[campo] = entrada[campo];
+  }
+  if (entrada.amount !== undefined) alteracao.amount = Number(entrada.amount);
+  if (entrada.date !== undefined) {
+    alteracao.date = admin.firestore.Timestamp.fromDate(new Date(entrada.date));
+    alteracao.referenceMonth = mesDeReferencia(entrada.date);
   }
 
-  const updateData = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
-
-  if (data.type !== undefined) updateData.type = data.type;
-  if (data.description !== undefined) updateData.description = data.description;
-  if (data.amount !== undefined) updateData.amount = Number(data.amount);
-  if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
-  if (data.paymentMethodId !== undefined) updateData.paymentMethodId = data.paymentMethodId;
-  if (data.notes !== undefined) updateData.notes = data.notes;
-  if (data.origin !== undefined) updateData.origin = data.origin;
-  if (data.status !== undefined) updateData.status = data.status;
-  if (data.paidBy !== undefined) updateData.paidBy = data.paidBy;
-
-  if (data.date !== undefined) {
-    updateData.date = admin.firestore.Timestamp.fromDate(new Date(data.date));
-    updateData.referenceMonth = buildReferenceMonth(data.date);
-  }
-
-  await ref.update(updateData);
-  const updated = await ref.get();
-  const tx = { id: updated.id, ...updated.data(), date: updated.data().date?.toDate?.() };
-  return enrichTransactions([tx]).then((list) => list[0]);
+  const atualizada = await dados.atualizar('transactions', transactionId, alteracao);
+  const lista = await enriquecer([{ ...atualizada, date: atualizada.date?.toDate?.() || atualizada.date }]);
+  return lista[0];
 }
 
-async function deleteTransaction(userId, transactionId) {
-  const ref = db.collection('transactions').doc(transactionId);
-  const doc = await ref.get();
-
-  if (!doc.exists || doc.data().userId !== userId) {
-    throw Object.assign(new Error('Lançamento não encontrado.'), { statusCode: 404 });
-  }
-
-  await ref.delete();
+async function deleteTransaction(dados, transactionId) {
+  await dados.remover('transactions', transactionId);
 }
 
-async function getMonthlySummary(userId, month) {
-  const snap = await db.collection('transactions')
-    .where('userId', '==', userId)
+async function getMonthlySummary(dados, month, filtroPagador = null) {
+  const snap = await dados.consultar('transactions')
     .where('referenceMonth', '==', month)
     .get();
 
-  const transactions = snap.docs.map((d) => ({
-    id: d.id, ...d.data(), date: d.data().date?.toDate?.(),
-  }));
+  const todas = await enriquecer(snap.docs.map(comDataConvertida));
 
-  const confirmed = transactions.filter((t) => t.status === 'CONFIRMED');
+  // O breakdown por pessoa considera o mês inteiro, mesmo quando há filtro —
+  // é ele que alimenta os cartões de "Gastos por Pessoa" na tela.
+  const porPagador = {};
+  todas.filter((t) => t.status === 'CONFIRMED').forEach((t) => {
+    const quem = t.paidBy || 'Sem identificação';
+    if (!porPagador[quem]) porPagador[quem] = { name: quem, income: 0, expense: 0 };
+    if (t.type === 'INCOME') porPagador[quem].income += t.amount;
+    else porPagador[quem].expense += t.amount;
+  });
+  const byPayer = Object.values(porPagador).sort((a, b) => b.expense - a.expense);
 
-  const totalIncome = confirmed.filter((t) => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
-  const totalExpense = confirmed.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
-  const balance = totalIncome - totalExpense;
+  // O filtro por pessoa antes valia só para os totais: os gráficos continuavam
+  // mostrando a família toda, e a tela ficava incoerente. Agora vale para tudo.
+  const consideradas = filtroPagador
+    ? todas.filter((t) => t.paidBy === filtroPagador)
+    : todas;
 
-  // Buscar nomes de categorias para enriquecer
-  const enriched = await enrichTransactions(transactions);
+  const confirmadas = consideradas.filter((t) => t.status === 'CONFIRMED');
+  const totalIncome = confirmadas.filter((t) => t.type === 'INCOME').reduce((s, t) => s + t.amount, 0);
+  const totalExpense = confirmadas.filter((t) => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0);
 
-  const expenseByCategory = {};
-  enriched.filter((t) => t.type === 'EXPENSE' && t.status === 'CONFIRMED').forEach((t) => {
-    const key = t.category?.name || 'Outros';
-    if (!expenseByCategory[key]) {
-      expenseByCategory[key] = { name: key, value: 0, color: t.category?.color || '#94a3b8', id: t.categoryId };
+  const porCategoria = {};
+  confirmadas.filter((t) => t.type === 'EXPENSE').forEach((t) => {
+    const chave = t.category?.name || 'Outros';
+    if (!porCategoria[chave]) {
+      porCategoria[chave] = { name: chave, value: 0, color: t.category?.color || '#94a3b8', id: t.categoryId };
     }
-    expenseByCategory[key].value += t.amount;
+    porCategoria[chave].value += t.amount;
   });
+  const expenseByCategory = Object.values(porCategoria).sort((a, b) => b.value - a.value);
 
-  const expenseByCategoryArr = Object.values(expenseByCategory).sort((a, b) => b.value - a.value);
-  const topCategory = expenseByCategoryArr[0] || null;
+  // Só lançamentos confirmados na lista. Antes vinham pendentes e com erro
+  // junto, e a lista não batia com os totais logo acima dela.
+  const recentTransactions = [...confirmadas]
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 10);
 
-  const recentTransactions = enriched.sort((a, b) => {
-    const da = a.date instanceof Date ? a.date : new Date(a.date);
-    const db2 = b.date instanceof Date ? b.date : new Date(b.date);
-    return db2 - da;
-  }).slice(0, 10);
-
-  // Breakdown por pagador
-  const byPayer = {};
-  enriched.filter((t) => t.status === 'CONFIRMED').forEach((t) => {
-    const payer = t.paidBy || 'Sem identificação';
-    if (!byPayer[payer]) byPayer[payer] = { name: payer, income: 0, expense: 0 };
-    if (t.type === 'INCOME') byPayer[payer].income += t.amount;
-    else byPayer[payer].expense += t.amount;
-  });
-  const byPayerArr = Object.values(byPayer).sort((a, b) => b.expense - a.expense);
-
-  return { month, totalIncome, totalExpense, balance, topCategory, expenseByCategory: expenseByCategoryArr, recentTransactions, byPayer: byPayerArr };
+  return {
+    month,
+    filtroPagador: filtroPagador || null,
+    totalIncome,
+    totalExpense,
+    balance: totalIncome - totalExpense,
+    topCategory: expenseByCategory[0] || null,
+    expenseByCategory,
+    recentTransactions,
+    byPayer,
+  };
 }
 
-// Enriquece transações com nome/cor de categoria e nome de forma de pagamento
-async function enrichTransactions(transactions) {
-  if (!transactions.length) return [];
+/**
+ * Preenche nome e cor da categoria e nome da forma de pagamento.
+ *
+ * Usa getAll() em vez de um get() por documento: antes eram N+M idas ao
+ * Firestore por listagem, o que pesa na conta quando forem muitas famílias.
+ */
+async function enriquecer(transacoes) {
+  if (!transacoes.length) return [];
 
-  const categoryIds = [...new Set(transactions.map((t) => t.categoryId).filter(Boolean))];
-  const pmIds = [...new Set(transactions.map((t) => t.paymentMethodId).filter(Boolean))];
+  const idsCategorias = [...new Set(transacoes.map((t) => t.categoryId).filter(Boolean))];
+  const idsPagamentos = [...new Set(transacoes.map((t) => t.paymentMethodId).filter(Boolean))];
 
-  const [catDocs, pmDocs] = await Promise.all([
-    Promise.all(categoryIds.map((id) => db.collection('categories').doc(id).get())),
-    Promise.all(pmIds.map((id) => db.collection('paymentMethods').doc(id).get())),
-  ]);
+  const refs = [
+    ...idsCategorias.map((id) => db.collection('categories').doc(id)),
+    ...idsPagamentos.map((id) => db.collection('paymentMethods').doc(id)),
+  ];
 
-  const catMap = {};
-  catDocs.forEach((d) => { if (d.exists) catMap[d.id] = { id: d.id, ...d.data() }; });
+  const docs = refs.length ? await db.getAll(...refs) : [];
 
-  const pmMap = {};
-  pmDocs.forEach((d) => { if (d.exists) pmMap[d.id] = { id: d.id, ...d.data() }; });
+  const categorias = {};
+  const pagamentos = {};
+  docs.forEach((doc, i) => {
+    if (!doc.exists) return;
+    const alvo = i < idsCategorias.length ? categorias : pagamentos;
+    alvo[doc.id] = { id: doc.id, ...doc.data() };
+  });
 
-  return transactions.map((t) => ({
+  return transacoes.map((t) => ({
     ...t,
-    category: catMap[t.categoryId] || { id: t.categoryId, name: 'Desconhecida', color: '#94a3b8' },
-    paymentMethod: pmMap[t.paymentMethodId] || { id: t.paymentMethodId, name: 'Desconhecido' },
+    category: categorias[t.categoryId] || { id: t.categoryId, name: 'Desconhecida', color: '#94a3b8' },
+    paymentMethod: pagamentos[t.paymentMethodId] || { id: t.paymentMethodId, name: 'Desconhecido' },
   }));
 }
 
-module.exports = { listTransactions, createTransaction, updateTransaction, deleteTransaction, getMonthlySummary };
+module.exports = {
+  listTransactions,
+  createTransaction,
+  updateTransaction,
+  deleteTransaction,
+  getMonthlySummary,
+};

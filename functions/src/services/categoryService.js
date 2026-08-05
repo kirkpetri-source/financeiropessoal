@@ -1,69 +1,59 @@
-const { admin, db } = require('../config/firebaseAdmin');
+/**
+ * Categorias — mistura registros globais (isDefault) com os da família.
+ * As padrão são referência compartilhada e ninguém as edita; as personalizadas
+ * pertencem à família e só ela enxerga.
+ */
 
-async function listCategories(userId) {
-  const [defaultSnap, userSnap] = await Promise.all([
-    db.collection('categories').where('isDefault', '==', true).get(),
-    db.collection('categories').where('userId', '==', userId).get(),
+async function listCategories(dados) {
+  const [snapPadrao, snapDaFamilia] = await Promise.all([
+    dados.consultarPadroes('categories').get(),
+    dados.consultar('categories').get(),
   ]);
 
-  const defaults = defaultSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  const userCats = userSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const padrao = snapPadrao.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const daFamilia = snapDaFamilia.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-  return [...defaults, ...userCats].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  return [...padrao, ...daFamilia].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 }
 
-async function createCategory(userId, data) {
-  const ref = await db.collection('categories').add({
-    userId,
+async function createCategory(dados, entrada) {
+  return dados.criar('categories', {
     isDefault: false,
-    name: data.name,
-    type: data.type,
-    color: data.color || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    name: entrada.name,
+    type: entrada.type,
+    color: entrada.color || null,
   });
-  const doc = await ref.get();
-  return { id: doc.id, ...doc.data() };
 }
 
-async function updateCategory(userId, categoryId, data) {
-  const ref = db.collection('categories').doc(categoryId);
-  const doc = await ref.get();
-
-  if (!doc.exists || doc.data().userId !== userId) {
-    throw Object.assign(new Error('Categoria não encontrada ou não pode ser editada.'), { statusCode: 404 });
+async function updateCategory(dados, categoryId, entrada) {
+  const atual = await dados.buscarDoc('categories', categoryId);
+  if (!atual) throw Object.assign(new Error('Categoria não encontrada.'), { statusCode: 404 });
+  if (atual._somenteLeitura) {
+    throw Object.assign(new Error('Categoria padrão do sistema não pode ser editada.'), { statusCode: 403 });
   }
 
-  await ref.update({
-    name: data.name,
-    type: data.type,
-    color: data.color ?? doc.data().color,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  return dados.atualizar('categories', categoryId, {
+    name: entrada.name,
+    type: entrada.type,
+    color: entrada.color ?? atual.color,
   });
-
-  const updated = await ref.get();
-  return { id: updated.id, ...updated.data() };
 }
 
-async function deleteCategory(userId, categoryId) {
-  const ref = db.collection('categories').doc(categoryId);
-  const doc = await ref.get();
-
-  if (!doc.exists || doc.data().userId !== userId) {
-    throw Object.assign(new Error('Categoria não encontrada ou não pode ser excluída.'), { statusCode: 404 });
+async function deleteCategory(dados, categoryId) {
+  const atual = await dados.buscarDoc('categories', categoryId);
+  if (!atual) throw Object.assign(new Error('Categoria não encontrada.'), { statusCode: 404 });
+  if (atual._somenteLeitura) {
+    throw Object.assign(new Error('Categoria padrão do sistema não pode ser excluída.'), { statusCode: 403 });
   }
 
-  const inUse = await db.collection('transactions')
-    .where('userId', '==', userId)
-    .where('categoryId', '==', categoryId)
-    .limit(1)
-    .get();
+  const emUso = await dados.consultar('transactions')
+    .where('categoryId', '==', categoryId).limit(1).get();
 
-  if (!inUse.empty) {
+  if (!emUso.empty) {
     throw Object.assign(new Error('Categoria em uso em lançamentos.'), { statusCode: 409 });
   }
 
-  await ref.delete();
+  await dados.remover('categories', categoryId);
 }
 
 module.exports = { listCategories, createCategory, updateCategory, deleteCategory };

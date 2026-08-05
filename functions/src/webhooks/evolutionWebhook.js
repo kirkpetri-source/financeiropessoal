@@ -1,21 +1,23 @@
-const { db } = require('../config/firebaseAdmin');
-const { parseFinancialMessage, looksLikeFinancialMessage } = require('../utils/financialParser');
-const { parseWithAI } = require('../services/aiParserService');
+const { escopoDe } = require('../data/escopo');
 const { createLog, updateLog } = require('../services/whatsappLogService');
-const { createTransaction } = require('../services/transactionService');
-const { resolvePayerName } = require('../utils/resolvePayerName');
+const {
+  acharHouseholdPorOrigem,
+  lancarPorTexto,
+  jaProcessada,
+  looksLikeFinancialMessage,
+} = require('../services/lancamentoPorMensagem');
 
-function extractMessageData(payload) {
+/**
+ * Webhook do Evolution — porta de entrada instantânea das mensagens.
+ * O polling agendado cobre o mesmo caminho como rede de segurança; a
+ * deduplicação por messageId impede que os dois lancem a mesma coisa.
+ */
+
+function extrairMensagem(payload) {
   try {
     const data = payload.data || payload;
-    const messageId = data.key?.id || null;
-    const remoteJid = data.key?.remoteJid || null;
     const fromMe = data.key?.fromMe || false;
-    const pushName = data.pushName || null;
-    // JID do remetente — em grupos é data.key.participant, em privado é remoteJid
-    const senderJid = data.key?.participant || (fromMe ? null : remoteJid) || null;
-    const sender = pushName || senderJid || null;
-    const instanceName = payload.instance || null;
+    const remoteJid = data.key?.remoteJid || null;
 
     let content = null;
     let messageType = 'TEXT';
@@ -29,193 +31,118 @@ function extractMessageData(payload) {
       messageType = 'IMAGE';
     } else if (data.message?.audioMessage) {
       messageType = 'AUDIO';
-    } else if (data.message?.documentMessage) {
-      messageType = 'DOCUMENT';
-    } else if (data.message?.videoMessage) {
+    } else if (data.message?.documentMessage || data.message?.videoMessage) {
       messageType = 'DOCUMENT';
     } else if (data.message?.stickerMessage) {
       messageType = 'STICKER';
     }
 
-    return { messageId, remoteJid, fromMe, sender, senderJid, pushName, content, messageType, instanceName };
+    return {
+      messageId: data.key?.id || null,
+      remoteJid,
+      fromMe,
+      // Em grupo o remetente vem em key.participant; em conversa privada é o remoteJid.
+      senderJid: data.key?.participant || (fromMe ? null : remoteJid) || null,
+      pushName: data.pushName || null,
+      timestamp: data.messageTimestamp || null,
+      content,
+      messageType,
+      instanceName: payload.instance || null,
+    };
   } catch {
-    return { messageId: null, remoteJid: null, fromMe: false, sender: null, senderJid: null, pushName: null, content: null, messageType: 'TEXT', instanceName: null };
+    return {
+      messageId: null, remoteJid: null, fromMe: false, senderJid: null, pushName: null,
+      timestamp: null, content: null, messageType: 'TEXT', instanceName: null,
+    };
   }
 }
 
-// Busca usuário pelo grupo OU pela instância (chat privado)
-async function findUserBySource(remoteJid, instanceName) {
-  const isGroup = remoteJid?.endsWith('@g.us');
+const COMANDOS = ['resumo', 'ultimos', 'últimos', 'apagar ultimo', 'apagar último', 'categorias', 'ajuda', '/resumo', '/ultimos', '/ajuda'];
 
-  if (isGroup) {
-    const snap = await db.collection('whatsappConfigs')
-      .where('enabled', '==', true)
-      .where('groupId', '==', remoteJid)
-      .limit(1).get();
-    if (!snap.empty) return snap.docs[0].data();
-  }
-
-  // Chat privado: busca pela instância com allowPrivateChat ativo
-  if (!isGroup && instanceName) {
-    const snap = await db.collection('whatsappConfigs')
-      .where('enabled', '==', true)
-      .where('instanceName', '==', instanceName)
-      .where('allowPrivateChat', '==', true)
-      .limit(1).get();
-    if (!snap.empty) return snap.docs[0].data();
-  }
-
-  return null;
-}
-
-async function resolveCategoryId(userId, categoryName) {
-  const [defaultSnap, userSnap] = await Promise.all([
-    db.collection('categories').where('isDefault', '==', true).where('name', '==', categoryName).limit(1).get(),
-    db.collection('categories').where('userId', '==', userId).where('name', '==', categoryName).limit(1).get(),
-  ]);
-  if (!userSnap.empty) return userSnap.docs[0].id;
-  if (!defaultSnap.empty) return defaultSnap.docs[0].id;
-  const fallback = await db.collection('categories').where('isDefault', '==', true).where('name', '==', 'Outros').limit(1).get();
-  return fallback.empty ? null : fallback.docs[0].id;
-}
-
-async function resolvePaymentMethodId(userId, methodName) {
-  const name = methodName || 'Pix';
-  const [defaultSnap, userSnap] = await Promise.all([
-    db.collection('paymentMethods').where('isDefault', '==', true).where('name', '==', name).limit(1).get(),
-    db.collection('paymentMethods').where('userId', '==', userId).where('name', '==', name).limit(1).get(),
-  ]);
-  if (!userSnap.empty) return userSnap.docs[0].id;
-  if (!defaultSnap.empty) return defaultSnap.docs[0].id;
-  const fallback = await db.collection('paymentMethods').where('isDefault', '==', true).where('name', '==', 'Outro').limit(1).get();
-  return fallback.empty ? null : fallback.docs[0].id;
-}
-
-function isCommand(message) {
-  const COMMANDS = ['resumo mes', 'ultimos', 'apagar ultimo', 'categorias', 'ajuda', '/resumo', '/ultimos', '/ajuda'];
-  return COMMANDS.some((c) => message.toLowerCase().startsWith(c));
+function ehComando(texto) {
+  const t = texto.trim().toLowerCase();
+  return COMANDOS.some((c) => t === c || t.startsWith(`${c} `));
 }
 
 async function handleEvolutionWebhook(req, res) {
+  // Responde antes de processar: o Evolution reenvia a mensagem se demorarmos,
+  // e reenvio vira risco de lançamento duplicado.
   res.status(200).json({ received: true });
 
   try {
-    const { messageId, remoteJid, fromMe, sender, senderJid, pushName, content, messageType, instanceName } = extractMessageData(req.body);
+    const msg = extrairMensagem(req.body);
 
-    const userConfig = await findUserBySource(remoteJid, instanceName);
+    const encontrado = await acharHouseholdPorOrigem(msg.remoteJid, msg.instanceName);
+    if (!encontrado) return; // origem desconhecida: ignora sem registrar log
 
-    const isPrivateChat = !remoteJid?.endsWith('@g.us');
-    const origem = isPrivateChat ? 'chat privado' : 'grupo';
+    const { householdId } = encontrado;
+    const dados = escopoDe(householdId);
 
-    const logBase = {
-      rawPayload: req.body,
-      messageId,
-      groupId: remoteJid,
-      sender: sender || (fromMe ? 'você' : 'desconhecido'),
-      messageType,
-      content,
-      processingStatus: 'PENDING',
-      userId: userConfig?.userId || null,
-    };
+    const ehPrivado = !msg.remoteJid?.endsWith('@g.us');
+    const origem = ehPrivado ? 'chat privado' : 'grupo';
 
-    if (!userConfig) {
-      // Não salva log para origens não reconhecidas — evita poluição
-      return;
-    }
-
-    const { userId } = userConfig;
-
-    // Mídia não-texto: salva como pendente apenas se for do grupo (no privado ignora silenciosamente)
-    if (messageType === 'IMAGE' || messageType === 'AUDIO' || messageType === 'DOCUMENT') {
-      if (!isPrivateChat) {
-        const log = await createLog(logBase);
-        await updateLog(log.id, {
+    // Mídia ainda não é interpretada. Registra como pendente só no grupo, para
+    // ficar visível na tela; no privado ignora em silêncio.
+    if (['IMAGE', 'AUDIO', 'DOCUMENT'].includes(msg.messageType)) {
+      if (!ehPrivado && !(await jaProcessada(msg.messageId))) {
+        const log = await createLog(dados, {
+          messageId: msg.messageId,
+          groupId: msg.remoteJid,
+          sender: msg.pushName || 'desconhecido',
+          messageType: msg.messageType,
+          content: msg.content,
           processingStatus: 'PENDING',
-          errorMessage: `Processamento de ${messageType.toLowerCase()} ainda não implementado.`,
+          rawPayload: req.body,
+        });
+        await updateLog(log.id, {
+          errorMessage: `Processamento de ${msg.messageType.toLowerCase()} ainda não implementado.`,
         });
       }
       return;
     }
 
-    if (messageType === 'STICKER' || messageType !== 'TEXT' || !content) return;
+    if (msg.messageType !== 'TEXT' || !msg.content) return;
+    if (ehComando(msg.content)) return;
 
-    if (isCommand(content)) return;
+    // Filtro barato antes de acionar a IA: conversa comum não vira lançamento.
+    if (!looksLikeFinancialMessage(msg.content)) return;
 
-    // PROTEÇÃO INTELIGENTE: ignora silenciosamente mensagens que não parecem financeiras
-    // (links, frases do dia a dia, imagens com legenda, etc.)
-    if (!looksLikeFinancialMessage(content)) return;
+    // Deduplicação: a mesma mensagem pode chegar por reenvio do Evolution e
+    // também pelo polling.
+    if (await jaProcessada(msg.messageId)) return;
 
-    // DEDUPLICAÇÃO: evita lançamento duplicado caso a mesma mensagem chegue
-    // pelo webhook mais de uma vez (retry do Evolution) ou também pelo polling.
-    if (messageId) {
-      const dup = await db.collection('whatsappLogs')
-        .where('messageId', '==', messageId).limit(1).get();
-      if (!dup.empty) return;
-    }
+    const log = await createLog(dados, {
+      messageId: msg.messageId,
+      groupId: msg.remoteJid,
+      sender: msg.pushName || (msg.fromMe ? 'você' : 'desconhecido'),
+      messageType: 'TEXT',
+      content: msg.content,
+      processingStatus: 'PENDING',
+      rawPayload: req.body,
+    });
 
-    const log = await createLog(logBase);
+    const dataDaMensagem = msg.timestamp
+      ? new Date(msg.timestamp * 1000).toISOString()
+      : new Date().toISOString();
 
-    // Passa lista de pagadores configurados para o parser detectar nome no final
-    const configPayers = userConfig.payers || [];
+    const { transacoes, erro } = await lancarPorTexto({
+      householdId,
+      texto: msg.content,
+      senderJid: msg.senderJid,
+      pushName: msg.pushName,
+      dataDaMensagem,
+      origem,
+    });
 
-    // 1) Tenta o parser por regras (rápido e grátis). 2) Se falhar, cai para a IA,
-    //    que interpreta linguagem natural e pode extrair vários lançamentos.
-    let parsedList = [];
-    const regexParsed = parseFinancialMessage(content, configPayers);
-    if (regexParsed) {
-      parsedList = [regexParsed];
-    } else {
-      const aiList = await parseWithAI(content, configPayers);
-      if (Array.isArray(aiList)) parsedList = aiList;
-    }
-
-    if (!parsedList.length) {
-      await updateLog(log.id, {
-        processingStatus: 'ERROR',
-        errorMessage: `Não foi possível interpretar: "${content}". Ex.: "mercado 84,90 pix" ou "paguei 50 de gasolina".`,
-      });
+    if (erro) {
+      await updateLog(log.id, { processingStatus: 'ERROR', errorMessage: erro });
       return;
     }
 
-    const txDate = new Date().toISOString();
-    const transactionIds = [];
-
-    for (const parsed of parsedList) {
-      const [categoryId, paymentMethodId] = await Promise.all([
-        resolveCategoryId(userId, parsed.categoryName),
-        resolvePaymentMethodId(userId, parsed.paymentMethodName),
-      ]);
-
-      if (!categoryId || !paymentMethodId) continue;
-
-      // Resolve paidBy: 1) nome na msg, 2) telefone configurado, 3) pushName
-      const paidBy = resolvePayerName(parsed.paidBy, senderJid, pushName, configPayers);
-
-      const transaction = await createTransaction(userId, {
-        type: parsed.type,
-        description: parsed.description,
-        amount: parsed.amount,
-        categoryId,
-        paymentMethodId,
-        date: txDate,
-        notes: `Via WhatsApp (${origem}). Enviado por: ${sender || 'você'}`,
-        origin: 'WHATSAPP',
-        status: 'CONFIRMED',
-        paidBy,
-      });
-      transactionIds.push(transaction.id);
-    }
-
-    if (!transactionIds.length) {
-      await updateLog(log.id, { processingStatus: 'ERROR', errorMessage: 'Categoria ou forma de pagamento não encontrada.' });
-      return;
-    }
-
-    await updateLog(log.id, { processingStatus: 'PROCESSED', transactionId: transactionIds[0] });
-
+    await updateLog(log.id, { processingStatus: 'PROCESSED', transactionId: transacoes[0] });
   } catch (err) {
     console.error('[Webhook] Erro:', err);
   }
 }
 
-module.exports = { handleEvolutionWebhook };
+module.exports = { handleEvolutionWebhook, extrairMensagem, ehComando };

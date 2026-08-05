@@ -1,63 +1,86 @@
 const { admin, db } = require('../config/firebaseAdmin');
 
-async function listLogs(userId, filters = {}) {
-  const { status, messageType, limit = 50, offset = 0 } = filters;
+/**
+ * Registro das mensagens recebidas pelo WhatsApp.
+ *
+ * A listagem pagina no Firestore, não em memória. A versão anterior baixava a
+ * coleção inteira da família a cada abertura da tela e recortava depois — com
+ * o polling rodando de 2 em 2 minutos, essa coleção só cresce, e a cada mês a
+ * tela ficava mais cara e mais lenta.
+ */
 
-  let query = db.collection('whatsappLogs').where('userId', '==', userId).orderBy('createdAt', 'desc');
+async function listLogs(dados, filtros = {}) {
+  const { status, messageType } = filtros;
+  const limite = Math.min(Number(filtros.limit) || 50, 200);
 
-  const snap = await query.get();
-  let logs = snap.docs.map((d) => ({ id: d.id, ...d.data(), createdAt: d.data().createdAt?.toDate?.() }));
+  let query = dados.consultar('whatsappLogs');
 
-  if (status) logs = logs.filter((l) => l.processingStatus === status);
-  if (messageType) logs = logs.filter((l) => l.messageType === messageType);
+  // Filtros que o Firestore resolve com índice
+  if (status) query = query.where('processingStatus', '==', status);
+  if (messageType) query = query.where('messageType', '==', messageType);
 
-  const total = logs.length;
-  const paginated = logs.slice(Number(offset), Number(offset) + Number(limit));
+  const snap = await query.orderBy('createdAt', 'desc').limit(limite).get();
 
-  // Enriquecer com dados da transação se houver
-  const enriched = await Promise.all(paginated.map(async (log) => {
-    if (!log.transactionId) return { ...log, transaction: null };
-    const txDoc = await db.collection('transactions').doc(log.transactionId).get();
-    if (!txDoc.exists) return { ...log, transaction: null };
-    const tx = txDoc.data();
-    return { ...log, transaction: { id: txDoc.id, description: tx.description, amount: tx.amount, type: tx.type } };
+  const logs = snap.docs.map((d) => ({
+    id: d.id,
+    ...d.data(),
+    createdAt: d.data().createdAt?.toDate?.() || null,
   }));
 
-  return { logs: enriched, total };
+  const enriquecidos = await enriquecerComTransacao(logs);
+
+  return { logs: enriquecidos, total: enriquecidos.length, limite };
 }
 
-async function createLog(data) {
-  const ref = await db.collection('whatsappLogs').add({
-    ...data,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+async function enriquecerComTransacao(logs) {
+  const ids = [...new Set(logs.map((l) => l.transactionId).filter(Boolean))];
+  if (!ids.length) return logs.map((l) => ({ ...l, transaction: null }));
+
+  const docs = await db.getAll(...ids.map((id) => db.collection('transactions').doc(id)));
+
+  const porId = {};
+  docs.forEach((doc) => {
+    if (!doc.exists) return;
+    const t = doc.data();
+    porId[doc.id] = { id: doc.id, description: t.description, amount: t.amount, type: t.type };
   });
-  const doc = await ref.get();
-  return { id: doc.id, ...doc.data() };
+
+  return logs.map((l) => ({ ...l, transaction: porId[l.transactionId] || null }));
 }
 
-async function updateLog(id, data) {
-  await db.collection('whatsappLogs').doc(id).update(data);
+async function createLog(dados, entrada) {
+  return dados.criar('whatsappLogs', entrada);
 }
 
-async function deleteLog(userId, logId) {
-  const ref = db.collection('whatsappLogs').doc(logId);
-  const doc = await ref.get();
+async function updateLog(logId, entrada) {
+  await db.collection('whatsappLogs').doc(logId).update(entrada);
+}
 
-  if (!doc.exists || doc.data().userId !== userId) {
-    throw Object.assign(new Error('Log não encontrado.'), { statusCode: 404 });
-  }
+/**
+ * Cancela o lançamento gerado por uma mensagem.
+ *
+ * O log NÃO é apagado de propósito: ele é a marca de que aquela mensagem já foi
+ * processada. Apagando, o polling reencontraria a mesma mensagem no histórico
+ * do WhatsApp e criaria o lançamento de novo.
+ */
+async function deleteLog(dados, logId) {
+  const log = await dados.buscarDoc('whatsappLogs', logId);
+  if (!log) throw Object.assign(new Error('Log não encontrado.'), { statusCode: 404 });
 
-  const transactionId = doc.data().transactionId;
+  const transactionId = log.transactionId;
 
-  // IMPORTANTE: não apaga o log — marca como CANCELADO para manter a deduplicação.
-  // Se apagássemos o log, o polling re-processaria a mesma mensagem do histórico do WhatsApp.
   await Promise.all([
-    ref.update({
+    dados.atualizar('whatsappLogs', logId, {
       processingStatus: 'CANCELLED',
       transactionId: null,
       cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
     }),
-    transactionId ? db.collection('transactions').doc(transactionId).delete() : Promise.resolve(),
+    transactionId
+      ? dados.remover('transactions', transactionId).catch((err) => {
+          // O lançamento pode já ter sido excluído pela tela de Lançamentos.
+          if (err.statusCode !== 404) throw err;
+        })
+      : Promise.resolve(),
   ]);
 }
 
