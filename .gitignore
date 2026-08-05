@@ -8,3 +8,10 @@ dist/
 .firebase/
 *.log
 backend/
+
+# Backups do Firestore — contêm dados financeiros reais
+backups/
+
+# Lixo do macOS
+.DS_Store
+._*

@@ -1,17 +1,9 @@
 const { db } = require('../config/firebaseAdmin');
-const { parseFinancialMessage } = require('../utils/financialParser');
+const { parseFinancialMessage, looksLikeFinancialMessage } = require('../utils/financialParser');
+const { parseWithAI } = require('../services/aiParserService');
 const { createLog, updateLog } = require('../services/whatsappLogService');
 const { createTransaction } = require('../services/transactionService');
 const { resolvePayerName } = require('../utils/resolvePayerName');
-
-const FINANCIAL_KEYWORDS = ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando', 'receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'];
-
-// Só tenta processar se a mensagem começar com palavra financeira conhecida
-function looksLikeFinancialMessage(text) {
-  if (!text) return false;
-  const lower = text.trim().toLowerCase();
-  return FINANCIAL_KEYWORDS.some((k) => lower.startsWith(k));
-}
 
 function extractMessageData(payload) {
   try {
@@ -165,42 +157,61 @@ async function handleEvolutionWebhook(req, res) {
 
     // Passa lista de pagadores configurados para o parser detectar nome no final
     const configPayers = userConfig.payers || [];
-    const parsed = parseFinancialMessage(content, configPayers);
-    if (!parsed) {
+
+    // 1) Tenta o parser por regras (rápido e grátis). 2) Se falhar, cai para a IA,
+    //    que interpreta linguagem natural e pode extrair vários lançamentos.
+    let parsedList = [];
+    const regexParsed = parseFinancialMessage(content, configPayers);
+    if (regexParsed) {
+      parsedList = [regexParsed];
+    } else {
+      const aiList = await parseWithAI(content, configPayers);
+      if (Array.isArray(aiList)) parsedList = aiList;
+    }
+
+    if (!parsedList.length) {
       await updateLog(log.id, {
         processingStatus: 'ERROR',
-        errorMessage: `Não foi possível interpretar: "${content}". Use: gasto [descrição] [valor] [pagamento]`,
+        errorMessage: `Não foi possível interpretar: "${content}". Ex.: "mercado 84,90 pix" ou "paguei 50 de gasolina".`,
       });
       return;
     }
 
-    const [categoryId, paymentMethodId] = await Promise.all([
-      resolveCategoryId(userId, parsed.categoryName),
-      resolvePaymentMethodId(userId, parsed.paymentMethodName),
-    ]);
+    const txDate = new Date().toISOString();
+    const transactionIds = [];
 
-    if (!categoryId || !paymentMethodId) {
+    for (const parsed of parsedList) {
+      const [categoryId, paymentMethodId] = await Promise.all([
+        resolveCategoryId(userId, parsed.categoryName),
+        resolvePaymentMethodId(userId, parsed.paymentMethodName),
+      ]);
+
+      if (!categoryId || !paymentMethodId) continue;
+
+      // Resolve paidBy: 1) nome na msg, 2) telefone configurado, 3) pushName
+      const paidBy = resolvePayerName(parsed.paidBy, senderJid, pushName, configPayers);
+
+      const transaction = await createTransaction(userId, {
+        type: parsed.type,
+        description: parsed.description,
+        amount: parsed.amount,
+        categoryId,
+        paymentMethodId,
+        date: txDate,
+        notes: `Via WhatsApp (${origem}). Enviado por: ${sender || 'você'}`,
+        origin: 'WHATSAPP',
+        status: 'CONFIRMED',
+        paidBy,
+      });
+      transactionIds.push(transaction.id);
+    }
+
+    if (!transactionIds.length) {
       await updateLog(log.id, { processingStatus: 'ERROR', errorMessage: 'Categoria ou forma de pagamento não encontrada.' });
       return;
     }
 
-    // Resolve paidBy: 1) nome no final da msg, 2) telefone configurado, 3) pushName
-    const paidBy = resolvePayerName(parsed.paidBy, senderJid, pushName, configPayers);
-
-    const transaction = await createTransaction(userId, {
-      type: parsed.type,
-      description: parsed.description,
-      amount: parsed.amount,
-      categoryId,
-      paymentMethodId,
-      date: parsed.date.toISOString(),
-      notes: `Via WhatsApp (${origem}). Enviado por: ${sender || 'você'}`,
-      origin: 'WHATSAPP',
-      status: 'CONFIRMED',
-      paidBy,
-    });
-
-    await updateLog(log.id, { processingStatus: 'PROCESSED', transactionId: transaction.id });
+    await updateLog(log.id, { processingStatus: 'PROCESSED', transactionId: transactionIds[0] });
 
   } catch (err) {
     console.error('[Webhook] Erro:', err);

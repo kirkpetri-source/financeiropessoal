@@ -1,6 +1,7 @@
 const { db, admin } = require('../config/firebaseAdmin');
 const { fetchGroupMessages, fetchOwnJid } = require('./evolutionApiService');
-const { parseFinancialMessage } = require('../utils/financialParser');
+const { parseFinancialMessage, looksLikeFinancialMessage } = require('../utils/financialParser');
+const { parseWithAI } = require('./aiParserService');
 const { createTransaction } = require('./transactionService');
 const { resolvePayerName } = require('../utils/resolvePayerName');
 
@@ -13,13 +14,6 @@ async function getPayersForUser(userId) {
   _payersCache[userId] = payers;
   setTimeout(() => { delete _payersCache[userId]; }, 5 * 60 * 1000); // cache 5min
   return payers;
-}
-
-const FINANCIAL_KEYWORDS = ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando', 'receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'];
-
-function looksLikeFinancialMessage(text) {
-  if (!text) return false;
-  return FINANCIAL_KEYWORDS.some((k) => text.trim().toLowerCase().startsWith(k));
 }
 
 async function isAlreadyProcessed(messageId) {
@@ -105,8 +99,18 @@ async function processPolledMessage(msg, userId) {
     });
 
     const payers = userId ? await getPayersForUser(userId) : [];
-    const parsed = parseFinancialMessage(line, payers);
-    if (!parsed) {
+
+    // 1) Parser por regras. 2) Fallback de IA para linguagem natural (pode gerar vários).
+    let parsedList = [];
+    const regexParsed = parseFinancialMessage(line, payers);
+    if (regexParsed) {
+      parsedList = [regexParsed];
+    } else {
+      const aiList = await parseWithAI(line, payers);
+      if (Array.isArray(aiList)) parsedList = aiList;
+    }
+
+    if (!parsedList.length) {
       await logRef.update({
         processingStatus: 'ERROR',
         errorMessage: `Não foi possível interpretar: "${line}"`,
@@ -114,34 +118,40 @@ async function processPolledMessage(msg, userId) {
       continue;
     }
 
-    const [categoryId, paymentMethodId] = await Promise.all([
-      resolveCategoryId(userId, parsed.categoryName),
-      resolvePaymentMethodId(userId, parsed.paymentMethodName),
-    ]);
+    const transactionIds = [];
+    for (const parsed of parsedList) {
+      const [categoryId, paymentMethodId] = await Promise.all([
+        resolveCategoryId(userId, parsed.categoryName),
+        resolvePaymentMethodId(userId, parsed.paymentMethodName),
+      ]);
 
-    if (!categoryId || !paymentMethodId) {
+      if (!categoryId || !paymentMethodId) continue;
+
+      // Resolve paidBy: 1) nome na msg, 2) telefone configurado, 3) pushName
+      const paidBy = resolvePayerName(parsed.paidBy, senderJid, senderName, payers);
+
+      const transaction = await createTransaction(userId, {
+        type: parsed.type,
+        description: parsed.description,
+        amount: parsed.amount,
+        categoryId,
+        paymentMethodId,
+        date: txDate,
+        notes: `Via WhatsApp. Enviado por: ${senderName || 'Você'}`,
+        origin: 'WHATSAPP',
+        status: 'CONFIRMED',
+        paidBy,
+      });
+      transactionIds.push(transaction.id);
+    }
+
+    if (!transactionIds.length) {
       await logRef.update({ processingStatus: 'ERROR', errorMessage: 'Categoria ou forma de pagamento não encontrada.' });
       continue;
     }
 
-    // Resolve paidBy: 1) nome no final da msg, 2) telefone configurado, 3) pushName
-    const paidBy = resolvePayerName(parsed.paidBy, senderJid, senderName, payers);
-
-    const transaction = await createTransaction(userId, {
-      type: parsed.type,
-      description: parsed.description,
-      amount: parsed.amount,
-      categoryId,
-      paymentMethodId,
-      date: txDate,
-      notes: `Via WhatsApp. Enviado por: ${senderName || 'Você'}`,
-      origin: 'WHATSAPP',
-      status: 'CONFIRMED',
-      paidBy,
-    });
-
-    await logRef.update({ processingStatus: 'PROCESSED', transactionId: transaction.id });
-    created++;
+    await logRef.update({ processingStatus: 'PROCESSED', transactionId: transactionIds[0] });
+    created += transactionIds.length;
   }
 
   return created;
