@@ -344,11 +344,22 @@ export default function SettingsPage() {
           </div>
 
           <div className="pt-1 border-t border-gray-100">
-            <p className="text-xs font-medium text-gray-500 mb-1 mt-3">Webhook</p>
-            <p className="text-xs text-gray-400">
-              A URL do webhook inclui um token secreto e é fornecida pelo administrador do sistema.
-              Ela vai configurada <strong>dentro da Evolution API</strong>, e não em nenhum campo desta tela.
-            </p>
+            <p className="text-xs font-medium text-gray-500 mb-1 mt-3">Vincular o grupo do WhatsApp</p>
+            {household?.codigoVinculo ? (
+              <>
+                <p className="text-xs text-gray-400 mb-2">
+                  Crie o grupo da família, adicione o número do sistema e envie lá dentro:
+                </p>
+                <div className="bg-gray-50 rounded-lg px-3 py-2 font-mono text-sm text-gray-800 select-all">
+                  vincular {household.codigoVinculo}
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  O grupo é reconhecido na hora — não precisa descobrir nem digitar o ID dele.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-400">Carregando código...</p>
+            )}
           </div>
 
           <button type="submit" disabled={savingWhatsapp} className="btn-primary flex items-center gap-2">
