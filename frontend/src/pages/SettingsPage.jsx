@@ -191,8 +191,11 @@ export default function SettingsPage() {
 
         <form onSubmit={whatsappForm.handleSubmit(handleWhatsappSubmit)} className="space-y-3">
           <div>
-            <label className="label">URL da Evolution API</label>
-            <input type="url" className="input" placeholder="https://api.evolution.io" {...whatsappForm.register('evolutionApiUrl')} />
+            <label className="label">URL do servidor Evolution</label>
+            <input type="url" className="input" placeholder="https://evolution.seudominio.com" {...whatsappForm.register('evolutionApiUrl')} />
+            <p className="text-xs text-gray-400 mt-1">
+              Endereço do seu servidor Evolution. Não é a URL do webhook que aparece no fim desta página.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -266,11 +269,12 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          <div className="pt-1">
-            <p className="text-xs font-medium text-gray-500 mb-2">URL do Webhook para configurar na Evolution API:</p>
-            <div className="bg-gray-50 rounded-lg px-3 py-2 font-mono text-xs text-gray-700 break-all select-all">
-              {(import.meta.env.VITE_API_URL || '').replace('/api', '')}/api/webhooks/evolution
-            </div>
+          <div className="pt-1 border-t border-gray-100">
+            <p className="text-xs font-medium text-gray-500 mb-1 mt-3">Webhook</p>
+            <p className="text-xs text-gray-400">
+              A URL do webhook inclui um token secreto e é fornecida pelo administrador do sistema.
+              Ela vai configurada <strong>dentro da Evolution API</strong>, e não em nenhum campo desta tela.
+            </p>
           </div>
 
           <button type="submit" disabled={savingWhatsapp} className="btn-primary flex items-center gap-2">
