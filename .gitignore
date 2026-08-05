@@ -15,3 +15,6 @@ backups/
 # Lixo do macOS
 .DS_Store
 ._*
+
+.vercel
+.env*
