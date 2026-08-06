@@ -34,7 +34,6 @@ export default function SettingsPage() {
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [showCurrentPwd, setShowCurrentPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
-  const [allowPrivateChat, setAllowPrivateChat] = useState(false);
   const [nomeFamilia, setNomeFamilia] = useState('');
 
   const profileForm = useForm({ defaultValues: { name: user?.name || '', email: user?.email || '' } });
@@ -50,7 +49,6 @@ export default function SettingsPage() {
         groupId: data.groupId || '',
         confirmationMessageTemplate: data.confirmationMessageTemplate || '',
       });
-      setAllowPrivateChat(data.allowPrivateChat || false);
     }).catch(() => {});
     buscarHousehold().then((h) => { if (h) setNomeFamilia(h.name || ''); });
   }, [buscarHousehold]);
@@ -92,10 +90,10 @@ export default function SettingsPage() {
   async function handleWhatsappSubmit(data) {
     setSavingWhatsapp(true);
     try {
-      // `enabled` NÃO vai daqui: quem liga e desliga o canal é o assistente de
-      // conexão. Mandar o valor que a tela carregou desligaria a integração de
-      // quem conectou o WhatsApp depois de abrir esta página.
-      await api.put('/whatsapp/config', { ...data, allowPrivateChat });
+      // Só o que este formulário edita. `enabled` e `allowPrivateChat` são
+      // decididos pelo assistente de conexão e pelo modo de uso; mandá-los
+      // daqui sobrescreveria com o valor que a tela carregou lá atrás.
+      await api.put('/whatsapp/config', data);
       toast.success('Configurações do WhatsApp salvas!');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao salvar configurações.');
@@ -228,34 +226,32 @@ export default function SettingsPage() {
         />
       </Section>
 
-      {/* Ajustes do canal */}
+      {/* Ajustes do canal
+          O botão "Aceitar mensagens privadas" saiu daqui de propósito. Quem
+          decide isso é o modo de uso (individual liga, grupo desliga), e o
+          botão carregava o valor uma vez no início: depois de escolher o modo,
+          salvar a mensagem de confirmação mandava o valor velho junto e
+          desligava o canal do próprio cliente, sem nenhum aviso. */}
       <Section icon={MessageSquare} title="Ajustes do WhatsApp">
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-          <div>
-            <p className="text-sm font-medium text-gray-900">Aceitar mensagens privadas</p>
-            <p className="text-xs text-gray-500">
-              Processar lançamentos enviados diretamente para o número do bot.
-              Outros conteúdos (fotos, links, vídeos) são ignorados automaticamente.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setAllowPrivateChat(!allowPrivateChat)}
-            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ml-4 ${allowPrivateChat ? 'bg-primary-600' : 'bg-gray-300'}`}
-          >
-            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${allowPrivateChat ? 'translate-x-5' : 'translate-x-0.5'}`} />
-          </button>
-        </div>
-
         <form onSubmit={whatsappForm.handleSubmit(handleWhatsappSubmit)} className="space-y-3">
           <div>
-            <label className="label">Mensagem de Confirmação</label>
-            <input className="input" placeholder="✅ Lançamento registrado: {tipo} de R$ {valor}" {...whatsappForm.register('confirmationMessageTemplate')} />
-            <p className="text-xs text-gray-400 mt-1">Use: {'{tipo}'} {'{valor}'} {'{categoria}'}</p>
+            <label className="label">Mensagem de confirmação</label>
+            <input
+              className="input"
+              placeholder="✅ Lançamento registrado: {tipo} de R$ {valor} em {categoria}"
+              {...whatsappForm.register('confirmationMessageTemplate')}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              É o texto que o sistema responde no WhatsApp depois de registrar.
+              Onde você escrever <code className="bg-gray-100 px-1 rounded">{'{tipo}'}</code>,{' '}
+              <code className="bg-gray-100 px-1 rounded">{'{valor}'}</code> ou{' '}
+              <code className="bg-gray-100 px-1 rounded">{'{categoria}'}</code>, entram os dados
+              do lançamento. Deixe como está se não quiser mudar.
+            </p>
           </div>
 
           <button type="submit" disabled={savingWhatsapp} className="btn-primary flex items-center gap-2">
-            {savingWhatsapp ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar Configurações</>}
+            {savingWhatsapp ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar</>}
           </button>
         </form>
       </Section>

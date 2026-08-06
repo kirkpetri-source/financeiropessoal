@@ -110,12 +110,18 @@ async function resolverPagador(householdId, nomeNaMensagem, senderJid, pushName)
   );
   if (porTelefone) return porTelefone.name;
 
+  const membros = await householdService.listarMembros(householdId);
+
   if (pushName) {
-    const membros = await householdService.listarMembros(householdId);
     const perfil = String(pushName).toLowerCase();
     const casou = membros.find((m) => m.name && perfil.includes(String(m.name).toLowerCase()));
     if (casou) return casou.name;
   }
+
+  // Família de uma pessoa só: o gasto é dela, ponto. Sem isso, quem usa
+  // sozinho via chat privado ficava com TODOS os lançamentos sem dono — que foi
+  // exatamente o que aconteceu nos 14 primeiros lançamentos de teste.
+  if (membros.length === 1 && membros[0].name) return membros[0].name;
 
   return null;
 }
