@@ -6,20 +6,28 @@ import {
   Settings,
   MessageSquare,
   TrendingUp,
+  CreditCard,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAssinatura } from '../../contexts/AssinaturaContext';
 
 const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Lançamentos' },
   { to: '/categories', icon: Tag, label: 'Categorias' },
   { to: '/whatsapp-logs', icon: MessageSquare, label: 'WhatsApp' },
+  { to: '/assinatura', icon: CreditCard, label: 'Assinatura' },
   { to: '/settings', icon: Settings, label: 'Configurações' },
 ];
 
 export default function Sidebar({ open, onClose }) {
   const { user } = useAuth();
+  const { assinatura } = useAssinatura();
+
+  // Pastilha no menu quando a assinatura pede atenção — o cliente que ignorou o
+  // banner ainda vê que existe algo pendente.
+  const alertaDeAssinatura = assinatura && (!assinatura.podeLancar || assinatura.emCarencia);
 
   return (
     <aside
@@ -64,7 +72,10 @@ export default function Sidebar({ open, onClose }) {
             }
           >
             <Icon className="w-4 h-4 flex-shrink-0" />
-            {label}
+            <span className="flex-1">{label}</span>
+            {to === '/assinatura' && alertaDeAssinatura && (
+              <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+            )}
           </NavLink>
         ))}
       </nav>

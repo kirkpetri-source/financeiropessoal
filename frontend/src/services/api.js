@@ -14,10 +14,22 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Evento avisando que o backend recusou uma gravação por assinatura vencida.
+// O AssinaturaContext escuta e recarrega a situação, para o banner aparecer no
+// mesmo instante em que o botão falha — sem isso a tela continuaria dizendo
+// "trial ativo" enquanto o backend já estava bloqueando.
+export const EVENTO_ASSINATURA_INATIVA = 'assinatura:inativa';
+
 // Redireciona para login se token expirar
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (error.response?.status === 402) {
+      window.dispatchEvent(new CustomEvent(EVENTO_ASSINATURA_INATIVA, {
+        detail: error.response.data,
+      }));
+    }
+
     if (error.response?.status === 401) {
       // Tenta renovar o token antes de deslogar
       try {

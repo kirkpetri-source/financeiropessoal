@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { TrendingUp, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -105,6 +105,10 @@ export default function LoginPage() {
 
         <p className="text-center text-xs text-gray-400 mt-6">
           Controle Financeiro Pessoal © {new Date().getFullYear()}
+          <br />
+          <Link to="/termos" className="underline hover:text-gray-600">Termos de uso</Link>
+          {' · '}
+          <Link to="/privacidade" className="underline hover:text-gray-600">Política de privacidade</Link>
         </p>
       </div>
     </div>

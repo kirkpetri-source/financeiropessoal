@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { User, Lock, MessageSquare, Users, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { User, Lock, MessageSquare, Users, Loader2, Eye, EyeOff, CheckCircle2, ShieldCheck } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useHousehold } from '../hooks/useHousehold';
+import MeusDados from '../components/lgpd/MeusDados';
 import toast from 'react-hot-toast';
 
 function Section({ icon: Icon, title, children }) {
@@ -366,6 +367,11 @@ export default function SettingsPage() {
             {savingWhatsapp ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar Configurações</>}
           </button>
         </form>
+      </Section>
+
+      {/* LGPD */}
+      <Section icon={ShieldCheck} title="Meus dados (LGPD)">
+        <MeusDados podeExcluir={!!permissoes.gerirAssinatura} />
       </Section>
     </div>
   );
