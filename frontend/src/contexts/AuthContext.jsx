@@ -89,7 +89,7 @@ export function AuthProvider({ children }) {
    * é pior que falhar: o e-mail fica "já em uso" e a pessoa não consegue nem
    * tentar de novo.
    */
-  const signUp = useCallback(async ({ nome, email, senha, aceitouTermos }) => {
+  const signUp = useCallback(async ({ nome, email, senha, telefone, aceitouTermos }) => {
     const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, email, senha);
 
     try {
@@ -98,7 +98,7 @@ export function AuthProvider({ children }) {
       const token = await firebaseUser.getIdToken(true);
       localStorage.setItem('@financeiro:token', token);
 
-      const { data } = await api.post('/auth/register', { name: nome, email, aceitouTermos });
+      const { data } = await api.post('/auth/register', { name: nome, email, telefone, aceitouTermos });
 
       const profile = { ...data, firebaseUid: firebaseUser.uid };
       setUser(profile);

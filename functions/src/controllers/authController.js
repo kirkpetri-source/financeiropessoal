@@ -4,8 +4,10 @@ const authService = require('../services/authService');
 // Salva o perfil (nome) no Firestore
 async function register(req, res, next) {
   try {
-    const { name, email, aceitouTermos } = req.body;
-    const user = await authService.createOrUpdateProfile(req.userId, { name, email, aceitouTermos });
+    const { name, email, telefone, aceitouTermos } = req.body;
+    const user = await authService.createOrUpdateProfile(req.userId, {
+      name, email, telefone, aceitouTermos,
+    });
     res.status(201).json(user);
   } catch (err) {
     next(err);

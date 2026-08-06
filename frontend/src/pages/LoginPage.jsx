@@ -70,6 +70,7 @@ export default function LoginPage() {
         nome: dados.nome.trim(),
         email: dados.email.trim(),
         senha: dados.password,
+        telefone: (dados.telefone || '').replace(/\D/g, ''),
         aceitouTermos: true,
       });
       toast.success('Conta criada! Você tem 14 dias grátis.');
@@ -205,6 +206,28 @@ export default function LoginPage() {
                   />
                   {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
                 </div>
+
+                {ehCadastro && (
+                  <div>
+                    <label className="label">Seu WhatsApp</label>
+                    <input
+                      placeholder="(64) 99955-5364"
+                      inputMode="tel"
+                      className={`input ${errors.telefone ? 'border-red-400 focus:ring-red-400' : ''}`}
+                      {...register('telefone', {
+                        required: 'WhatsApp obrigatório.',
+                        validate: (v) => (v || '').replace(/\D/g, '').length >= 10 || 'Informe com DDD.',
+                      })}
+                    />
+                    {errors.telefone
+                      ? <p className="text-xs text-red-500 mt-1">{errors.telefone.message}</p>
+                      : (
+                        <p className="text-xs text-gray-400 mt-1">
+                          É por ele que o sistema sabe que o gasto é seu.
+                        </p>
+                      )}
+                  </div>
+                )}
 
                 <div>
                   <label className="label">Senha</label>
