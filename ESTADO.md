@@ -1,4 +1,4 @@
-# Estado do projeto — 06/08/2026
+# Estado do projeto — 06/08/2026 (Fase 5 concluída em código)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
@@ -40,6 +40,59 @@ Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 - `geladeira 1200 em 10x` vira 10 lançamentos de R$ 120, um por mês
 - Centavos e datas tratados (21 testes)
 
+**Fase 5 — cobrança, LGPD e operação** (código pronto, **não deployado ainda**)
+
+Assinatura
+- `src/assinatura/estado.js` — regra pura: trial de 14 dias, carência de 5
+  dias após o vencimento, bloqueio. O trial vale em paralelo ao status do
+  provedor, então iniciar o checkout no meio do teste não encurta o teste
+- `src/assinatura/mercadoPago.js` — preapproval mensal de R$ 24,90 (sem
+  `preapproval_plan`, valor no corpo), cliente HTTP injetável, HMAC do webhook
+  com janela de 10 min contra replay
+- `assinaturaService` — só o provedor promove para `active`; evento de cobrança
+  gravado com o id do provedor como id do documento, o que torna a reentrega
+  do webhook idempotente
+- Bloqueio em **toda escrita** (transactions, categories, paymentMethods) e no
+  lançamento por WhatsApp. Leitura e exportação seguem liberadas
+
+LGPD
+- Exportar tudo em JSON (sem a chave da Evolution nem o código de vínculo)
+- Excluir conta com 7 dias de arrependimento: congela na hora, job diário
+  (`executarExclusoes`, 03:00 BRT) apaga depois do prazo
+- `/termos` e `/privacidade` públicas, linkadas do login e do checkout
+
+Operação
+- `/admin/metricas` e `/admin/familias`; tela em `/admin` (sem link no menu)
+- Acesso por custom claim `admin` ou `ADMIN_EMAILS`, com e-mail verificado
+  obrigatório. Sem configuração, ninguém entra
+
+Testes: 92 → 171.
+
+## Pendências para a Fase 5 ir ao ar
+
+Nada disso está feito ainda — é configuração de conta, não código:
+
+1. Criar a aplicação no painel do Mercado Pago e pegar o access token de
+   produção
+2. `firebase functions:secrets:set MERCADOPAGO_ACCESS_TOKEN`
+3. `firebase functions:secrets:set MERCADOPAGO_WEBHOOK_SECRET` (o mesmo valor
+   que o painel do MP mostrar ao cadastrar o webhook)
+4. Cadastrar a URL do webhook no painel do MP:
+   `https://southamerica-east1-financeiropessoal-29b32.cloudfunctions.net/api/webhooks/mercadopago`
+   marcando os eventos **subscription_preapproval** e
+   **subscription_authorized_payment**
+5. Variáveis de ambiente da function: `ADMIN_EMAILS=kirkpetri@gmail.com` e
+   `APP_URL` (só se o domínio for diferente de `financeiropessoal.vercel.app` —
+   é para onde o Mercado Pago devolve o cliente depois de pagar)
+6. Testar ponta a ponta com credencial de **teste** antes de virar produção
+7. Conferir se a família do Kirk tem `subscription.trialEndsAt` preenchido; se
+   estiver vazio, ele mesmo se bloqueia no próximo deploy
+
+Ponto não verificado: o `mercadoPago.js` foi escrito conforme a documentação e
+os testes usam um `fetch` dublê. **Nenhuma chamada real à API do Mercado Pago
+foi feita.** Tratar como não verificado até o teste do item 6, do mesmo jeito
+que o `cloudApiProvider.js`.
+
 ## Falta
 
 **Fase 4 (restante)**
@@ -47,13 +100,6 @@ Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 - Contas fixas recorrentes com lembrete
 - Fatura de cartão de crédito (fechamento e vencimento)
 - Áudio transcrito e foto de cupom (OCR) — ambos via Gemini
-
-**Fase 5 — o que destrava a venda**
-- Integração Mercado Pago (assinatura recorrente)
-- Trial de 14 dias já modelado em `subscription.status = 'trialing'`;
-  falta o bloqueio quando vence — usar `householdService.assinaturaAtiva()`
-- Painel admin (MRR, churn, famílias ativas)
-- LGPD: termos, política, exclusão de conta, exportar dados
 
 **Fase 6 — landing page**
 - Requisito do Kirk: **fotos de pessoas reais**, tema controle financeiro
@@ -74,4 +120,7 @@ Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
   não ataque distribuído. App Check resolveria
 - `cloudApiProvider.js` está escrito conforme a documentação mas **nunca foi
   exercitado contra a API real**. Tratar como não verificado
-- Bundle do frontend em ~936 kB, sem code splitting
+- `mercadoPago.js` está na mesma situação (ver "Pendências para a Fase 5 ir ao ar")
+- Bundle do frontend em ~974 kB, sem code splitting
+- `/admin/metricas` lê todos os households a cada chamada. Serve de sobra para
+  dezenas ou centenas de famílias; passa a doer nos milhares

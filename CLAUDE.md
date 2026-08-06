@@ -16,6 +16,7 @@ e não podem ser perdidos.** Eles são a família #1 e o primeiro teste de tudo.
 | Auth | Firebase Auth (ID token no header, verificado pelo Admin SDK) |
 | IA | Gemini 2.0 Flash via REST, secret `GEMINI_API_KEY` |
 | Canal | Evolution API (VPS Hostinger) hoje; Cloud API oficial preparada |
+| Cobrança | Mercado Pago (preapproval mensal), secrets `MERCADOPAGO_ACCESS_TOKEN` e `MERCADOPAGO_WEBHOOK_SECRET` |
 
 O `README.md` descreve uma stack antiga (PostgreSQL + Prisma + JWT) que **não
 existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
@@ -25,7 +26,7 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 92 testes (vitest)
+npm test                 # 171 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed             # só categorias e formas de pagamento padrão
@@ -62,9 +63,18 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
    Para testar, injete um dublê (`criarEscopo(dbFalso)`), nunca mock de módulo.
 3. **Nenhuma query sem tenant.** Coleção de família só se acessa por
    `escopoDe(householdId)` (`src/data/escopo.js`). Usar `db` cru nos services é
-   contornar a proteção. 16 testes cobrem os cenários de vazamento.
+   contornar a proteção. 16 testes cobrem os cenários de vazamento. A exceção
+   declarada é `routes/admin.js`, que olha todas as famílias — por isso vive
+   atrás de `apenasAdmin` e em rota separada, visível na revisão.
 4. **Só faz push com a suíte verde.** `npm test` em `functions/` antes.
 5. **Sem emoji nas respostas ao Kirk.** Português direto, sem bajulação.
+6. **Bloqueio de assinatura nunca esconde dado.** Quem não paga perde o direito
+   de LANÇAR; continua lendo, consultando e exportando todo o histórico.
+   `exigirAssinatura` só entra em rota de escrita. Segurar dado financeiro de
+   família como refém é ruim de produto e frágil na LGPD.
+7. **Quem promove uma assinatura para `active` é o provedor.** O painel e o
+   cliente nunca escrevem esse status: só `sincronizarDoProvedor`, depois de
+   consultar a API do Mercado Pago. Status desconhecido não muda nada.
 
 ## Armadilhas já pagas (não repetir)
 
@@ -84,20 +94,27 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
 ## Modelo de dados
 
 ```
-households/{id}                    família = unidade de cobrança e isolamento
+households/{id}                     família = unidade de cobrança e isolamento
+  .subscription                     status, trialEndsAt, currentPeriodEnd,
+                                    provider, externalId, priceCents
+  .deletion                         pedido de exclusão LGPD (congela a conta)
 households/{id}/members/{userId}    papéis: owner | member | viewer
+households/{id}/billingEvents/{id}  id do provedor como id do doc = idempotência
 users/{uid}.householdId             atalho da família ativa (NÃO é autorização —
                                     quem manda é o doc em members/)
 transactions, whatsappLogs          têm householdId, sempre escopadas
 categories, paymentMethods          mistas: isDefault=true são globais
 whatsappConfigs/{householdId}       config do canal, uma por família
+deletionAudit                       prova de exclusão, sem dado pessoal dentro
 ```
 
 ## Estado (06/08/2026)
 
-Fases 0 a 3 e 4.1 concluídas e verificadas em produção. Detalhe do que foi
-feito, o que falta e as decisões tomadas: **`ESTADO.md`**.
+Fases 0 a 3 e 4.1 concluídas e verificadas em produção. **Fase 5 (cobrança,
+LGPD e painel de operação) está pronta em código e ainda não foi deployada** —
+depende de configurar a conta do Mercado Pago. A lista exata do que falta
+configurar, e o detalhe das decisões, está em **`ESTADO.md`**.
 
-Próximo passo em aberto: completar a Fase 4 (orçamento, contas recorrentes,
-fatura de cartão) ou pular para a Fase 5 (billing Mercado Pago), que é o que
-destrava a venda. O Kirk decide.
+Próximo passo em aberto: colocar a Fase 5 no ar (secrets + webhook do Mercado
+Pago + teste ponta a ponta com credencial de teste), ou fechar a Fase 4
+(orçamento, contas recorrentes, fatura de cartão). O Kirk decide.
