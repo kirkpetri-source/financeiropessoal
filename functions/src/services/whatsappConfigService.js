@@ -41,18 +41,28 @@ async function getConfig(householdId) {
   };
 }
 
+// Campos que o canal gerencia sozinho e que NENHUMA edição de cliente pode
+// tocar. Segunda barreira: o validador já os recusa, mas um esquecimento lá
+// voltaria a apagar o grupo de alguém em produção — como já aconteceu.
+const PROTEGIDOS = new Set([
+  'enabled', 'allowPrivateChat', 'modo',
+  'instanceName', 'groupId', 'groupInviteUrl', 'ownerJid',
+  'evolutionApiUrl', 'apiKey',
+  'householdId', 'conectadoEm', 'provisionadaEm', 'grupoCriadoEm',
+]);
+
 async function updateConfig(householdId, entrada) {
   const ref = db.collection('whatsappConfigs').doc(householdId);
   const doc = await ref.get();
 
-  const alteracao = { ...entrada, householdId, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+  const limpo = Object.fromEntries(
+    Object.entries(entrada || {})
+      // undefined em update() apaga o campo no Firestore; string vazia
+      // sobrescreve com vazio. Nenhum dos dois pode passar por descuido.
+      .filter(([chave, valor]) => !PROTEGIDOS.has(chave) && valor !== undefined),
+  );
 
-  // Formulário salvo sem mexer na chave devolve o valor mascarado — não pode
-  // virar a chave de verdade.
-  if (typeof alteracao.apiKey === 'string' && alteracao.apiKey.startsWith('••••')) {
-    delete alteracao.apiKey;
-  }
-  if (alteracao.evolutionApiUrl === '') alteracao.evolutionApiUrl = null;
+  const alteracao = { ...limpo, householdId, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
 
   if (doc.exists) {
     await ref.update(alteracao);

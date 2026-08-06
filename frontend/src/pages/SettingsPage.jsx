@@ -42,11 +42,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     api.get('/whatsapp/config').then(({ data }) => {
+      // Só o campo que este formulário edita. Carregar instância, credencial e
+      // grupo aqui fazia o "Salvar" mandá-los de volta vazios e apagar a
+      // configuração do canal — foi assim que uma conta perdeu o grupo.
       whatsappForm.reset({
-        evolutionApiUrl: data.evolutionApiUrl || '',
-        instanceName: data.instanceName || '',
-        apiKey: data.apiKey || '',
-        groupId: data.groupId || '',
         confirmationMessageTemplate: data.confirmationMessageTemplate || '',
       });
     }).catch(() => {});

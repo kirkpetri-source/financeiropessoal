@@ -1,30 +1,24 @@
 const { z } = require('zod');
 
-const payerSchema = z.object({
-  name: z.string().min(1).max(50),
-  phone: z.string().max(20).optional().nullable(),
-});
-
+/**
+ * O que o CLIENTE pode editar na configuração do canal. Só isso.
+ *
+ * Antes o schema aceitava evolutionApiUrl, instanceName, apiKey, groupId,
+ * enabled e allowPrivateChat — e `enabled` e `allowPrivateChat` tinham
+ * `.default(false)`. Isso destruiu uma conta em produção:
+ *
+ *   20:05:32  grupo criado e gravado
+ *   20:06:05  cliente salva a mensagem de confirmação
+ *             -> o formulário mandava groupId e apiKey vazios
+ *             -> o zod preenchia enabled: false por causa do default
+ *             -> canal desligado, grupo perdido, mensagens descartadas
+ *
+ * O cliente não configura infraestrutura: instância, credencial, grupo e o
+ * liga/desliga do canal são decididos pelo assistente de conexão e pelo modo
+ * de uso. Nada disso entra por aqui, nem com valor padrão.
+ */
 const whatsappConfigSchema = z.object({
-  enabled: z.boolean().default(false),
-  // Endereço do SERVIDOR Evolution (ex.: https://evolution.seudominio.com).
-  // Recusa a URL do nosso próprio webhook: são dois campos parecidos na tela e
-  // colar um no lugar do outro derruba o polling inteiro com erro 404.
-  evolutionApiUrl: z.string()
-    .url('URL inválida.')
-    .refine((v) => !/\/webhooks?\//i.test(v), {
-      message: 'Esse é o endereço do webhook, não o do servidor Evolution. Use algo como https://evolution.seudominio.com',
-    })
-    .refine((v) => !/cloudfunctions\.net|run\.app/i.test(v), {
-      message: 'Esse é o endereço da própria API do sistema. Informe o endereço do seu servidor Evolution.',
-    })
-    .optional().nullable().or(z.literal('')),
-  instanceName: z.string().max(100).optional().nullable(),
-  apiKey: z.string().max(500).optional().nullable(),
-  groupId: z.string().max(100).optional().nullable(),
   confirmationMessageTemplate: z.string().max(500).optional().nullable(),
-  allowPrivateChat: z.boolean().default(false),
-  payers: z.array(payerSchema).optional().nullable(),
-});
+}).strict('Esse campo não é editável por aqui.');
 
 module.exports = { whatsappConfigSchema };
