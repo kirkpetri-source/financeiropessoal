@@ -16,8 +16,15 @@ const { situacaoDaAssinatura, mensagemDaSituacao } = require('../assinatura/esta
  * mensagem). Agora existe um caminho só.
  */
 
-/** Localiza a família dona de um grupo do WhatsApp (ou da instância, no chat privado). */
+/**
+ * Localiza a família dona de um grupo do WhatsApp (ou da instância, no chat privado).
+ *
+ * A config sai por `configEfetiva`, e não crua do documento: a família
+ * provisionada pelo sistema não guarda URL nem API key, e sem isso a resposta
+ * de confirmação falharia em silêncio no catch do respostaWhatsapp.
+ */
 async function acharHouseholdPorOrigem(remoteJid, instanceName) {
+  const { configEfetiva } = require('../config/evolutionServidor');
   const ehGrupo = remoteJid?.endsWith('@g.us');
 
   if (ehGrupo && remoteJid) {
@@ -25,7 +32,7 @@ async function acharHouseholdPorOrigem(remoteJid, instanceName) {
       .where('enabled', '==', true)
       .where('groupId', '==', remoteJid)
       .limit(1).get();
-    if (!snap.empty) return { householdId: snap.docs[0].id, config: snap.docs[0].data() };
+    if (!snap.empty) return { householdId: snap.docs[0].id, config: configEfetiva(snap.docs[0].data()) };
   }
 
   if (!ehGrupo && instanceName) {
@@ -34,7 +41,7 @@ async function acharHouseholdPorOrigem(remoteJid, instanceName) {
       .where('instanceName', '==', instanceName)
       .where('allowPrivateChat', '==', true)
       .limit(1).get();
-    if (!snap.empty) return { householdId: snap.docs[0].id, config: snap.docs[0].data() };
+    if (!snap.empty) return { householdId: snap.docs[0].id, config: configEfetiva(snap.docs[0].data()) };
   }
 
   return null;

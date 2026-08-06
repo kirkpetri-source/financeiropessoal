@@ -200,12 +200,17 @@ async function pollForHousehold(householdId, config) {
 
 /** Polling de todas as famílias com a integração ativa. */
 async function pollAllHouseholds() {
+  const { configEfetiva } = require('../config/evolutionServidor');
   const snap = await db.collection('whatsappConfigs').where('enabled', '==', true).get();
 
   const resultados = [];
   for (const doc of snap.docs) {
-    const config = doc.data();
-    if (!config.groupId || !config.evolutionApiUrl || !config.apiKey) continue;
+    // Sem configEfetiva, toda família provisionada pelo sistema era pulada
+    // aqui: o documento dela só guarda instanceName e groupId, e a credencial
+    // do servidor nunca entrava. O cliente ficava com o canal ligado na tela e
+    // nenhum lançamento chegando.
+    const config = configEfetiva(doc.data());
+    if (!config.groupId || !config.evolutionApiUrl || !config.apiKey || !config.instanceName) continue;
     resultados.push({ householdId: doc.id, ...(await pollForHousehold(doc.id, config)) });
   }
 

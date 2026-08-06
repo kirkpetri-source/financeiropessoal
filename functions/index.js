@@ -24,11 +24,17 @@ const EVOLUTION_WEBHOOK_TOKEN = defineSecret('EVOLUTION_WEBHOOK_TOKEN');
 const MERCADOPAGO_ACCESS_TOKEN = defineSecret('MERCADOPAGO_ACCESS_TOKEN');
 const MERCADOPAGO_WEBHOOK_SECRET = defineSecret('MERCADOPAGO_WEBHOOK_SECRET');
 
+// Chave global do servidor Evolution do operador. É com ela que o sistema cria
+// a instância de cada família — o cliente nunca vê nem informa credencial.
+// firebase functions:secrets:set EVOLUTION_API_KEY
+const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
+
 const SEGREDOS = [
   GEMINI_API_KEY,
   EVOLUTION_WEBHOOK_TOKEN,
   MERCADOPAGO_ACCESS_TOKEN,
   MERCADOPAGO_WEBHOOK_SECRET,
+  EVOLUTION_API_KEY,
 ];
 
 // API principal — todas as rotas sob /api (o webhook usa a IA no fallback)
@@ -44,7 +50,7 @@ exports.api = onRequest(
 
 // Polling automático a cada 2 minutos
 exports.pollWhatsapp = onSchedule(
-  { schedule: 'every 2 minutes', region: 'southamerica-east1', timeoutSeconds: 120, memory: '256MiB', secrets: [GEMINI_API_KEY] },
+  { schedule: 'every 2 minutes', region: 'southamerica-east1', timeoutSeconds: 120, memory: '256MiB', secrets: [GEMINI_API_KEY, EVOLUTION_API_KEY] },
   async () => {
     console.log('[Polling] Iniciando verificação automática...');
     const results = await pollAllHouseholds();

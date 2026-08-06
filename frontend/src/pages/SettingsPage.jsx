@@ -5,6 +5,7 @@ import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useHousehold } from '../hooks/useHousehold';
 import MeusDados from '../components/lgpd/MeusDados';
+import ConectarWhatsapp from '../components/whatsapp/ConectarWhatsapp';
 import toast from 'react-hot-toast';
 
 function Section({ icon: Icon, title, children }) {
@@ -32,7 +33,6 @@ export default function SettingsPage() {
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [showCurrentPwd, setShowCurrentPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
-  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
   const [allowPrivateChat, setAllowPrivateChat] = useState(false);
   const [novoMembro, setNovoMembro] = useState({ nome: '', telefone: '' });
   const [salvandoMembro, setSalvandoMembro] = useState(false);
@@ -51,7 +51,6 @@ export default function SettingsPage() {
         groupId: data.groupId || '',
         confirmationMessageTemplate: data.confirmationMessageTemplate || '',
       });
-      setWhatsappEnabled(data.enabled || false);
       setAllowPrivateChat(data.allowPrivateChat || false);
     }).catch(() => {});
     buscarHousehold().then((h) => { if (h) setNomeFamilia(h.name || ''); });
@@ -94,7 +93,10 @@ export default function SettingsPage() {
   async function handleWhatsappSubmit(data) {
     setSavingWhatsapp(true);
     try {
-      await api.put('/whatsapp/config', { ...data, enabled: whatsappEnabled, allowPrivateChat });
+      // `enabled` NÃO vai daqui: quem liga e desliga o canal é o assistente de
+      // conexão. Mandar o valor que a tela carregou desligaria a integração de
+      // quem conectou o WhatsApp depois de abrir esta página.
+      await api.put('/whatsapp/config', { ...data, allowPrivateChat });
       toast.success('Configurações do WhatsApp salvas!');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao salvar configurações.');
@@ -282,22 +284,13 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* WhatsApp / Evolution API */}
-      <Section icon={MessageSquare} title="Integração WhatsApp (Evolution API)">
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-          <div>
-            <p className="text-sm font-medium text-gray-900">Integração ativa</p>
-            <p className="text-xs text-gray-500">Receber lançamentos via WhatsApp</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setWhatsappEnabled(!whatsappEnabled)}
-            className={`relative w-11 h-6 rounded-full transition-colors ${whatsappEnabled ? 'bg-primary-600' : 'bg-gray-300'}`}
-          >
-            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${whatsappEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
-          </button>
-        </div>
+      {/* WhatsApp — conexão em três passos */}
+      <Section icon={MessageSquare} title="WhatsApp">
+        <ConectarWhatsapp podeGerir={!!permissoes.gerirCanal} />
+      </Section>
 
+      {/* Ajustes do canal */}
+      <Section icon={MessageSquare} title="Ajustes do WhatsApp">
         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
           <div>
             <p className="text-sm font-medium text-gray-900">Aceitar mensagens privadas</p>
@@ -317,50 +310,9 @@ export default function SettingsPage() {
 
         <form onSubmit={whatsappForm.handleSubmit(handleWhatsappSubmit)} className="space-y-3">
           <div>
-            <label className="label">URL do servidor Evolution</label>
-            <input type="url" className="input" placeholder="https://evolution.seudominio.com" {...whatsappForm.register('evolutionApiUrl')} />
-            <p className="text-xs text-gray-400 mt-1">
-              Endereço do seu servidor Evolution. Não é a URL do webhook que aparece no fim desta página.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Nome da Instância</label>
-              <input className="input" placeholder="minha-instancia" {...whatsappForm.register('instanceName')} />
-            </div>
-            <div>
-              <label className="label">API Key / Token</label>
-              <input className="input" placeholder="••••••••" {...whatsappForm.register('apiKey')} />
-            </div>
-          </div>
-          <div>
-            <label className="label">ID do Grupo Financeiro</label>
-            <input className="input" placeholder="120363000000000@g.us" {...whatsappForm.register('groupId')} />
-            <p className="text-xs text-gray-400 mt-1">ID do grupo do WhatsApp onde os lançamentos serão enviados.</p>
-          </div>
-          <div>
             <label className="label">Mensagem de Confirmação</label>
             <input className="input" placeholder="✅ Lançamento registrado: {tipo} de R$ {valor}" {...whatsappForm.register('confirmationMessageTemplate')} />
             <p className="text-xs text-gray-400 mt-1">Use: {'{tipo}'} {'{valor}'} {'{categoria}'}</p>
-          </div>
-
-          <div className="pt-1 border-t border-gray-100">
-            <p className="text-xs font-medium text-gray-500 mb-1 mt-3">Vincular o grupo do WhatsApp</p>
-            {household?.codigoVinculo ? (
-              <>
-                <p className="text-xs text-gray-400 mb-2">
-                  Crie o grupo da família, adicione o número do sistema e envie lá dentro:
-                </p>
-                <div className="bg-gray-50 rounded-lg px-3 py-2 font-mono text-sm text-gray-800 select-all">
-                  vincular {household.codigoVinculo}
-                </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  O grupo é reconhecido na hora — não precisa descobrir nem digitar o ID dele.
-                </p>
-              </>
-            ) : (
-              <p className="text-xs text-gray-400">Carregando código...</p>
-            )}
           </div>
 
           <button type="submit" disabled={savingWhatsapp} className="btn-primary flex items-center gap-2">

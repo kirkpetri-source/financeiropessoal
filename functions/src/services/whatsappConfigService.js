@@ -63,10 +63,22 @@ async function updateConfig(householdId, entrada) {
   return getConfig(householdId);
 }
 
-/** Configuração completa, com a chave em texto puro. Uso interno apenas. */
+/**
+ * Configuração completa e utilizável, com a chave em texto puro. Uso interno.
+ *
+ * Passa por `configEfetiva`: a URL e a API key vêm do SERVIDOR do operador
+ * quando a família não tem as próprias. É o que permite ao cliente usar o
+ * canal sem nunca ter visto essas palavras — ele só leu um QR Code.
+ *
+ * Família com credencial própria (a do Kirk, criada antes disto) continua
+ * usando a dela.
+ */
 async function getRawConfig(householdId) {
   const doc = await db.collection('whatsappConfigs').doc(householdId).get();
-  return doc.exists ? { householdId, ...doc.data() } : null;
+  if (!doc.exists) return null;
+
+  const { configEfetiva } = require('../config/evolutionServidor');
+  return configEfetiva({ householdId, ...doc.data() });
 }
 
 module.exports = { getConfig, updateConfig, getRawConfig, PADROES };
