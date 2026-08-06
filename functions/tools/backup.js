@@ -20,6 +20,9 @@ const { admin, db } = require('../src/config/firebaseAdmin');
 // mas manter a lista explícita documenta o modelo de dados e serve de conferência.
 const COLECOES_ESPERADAS = [
   'users',
+  // households traz members/ e billingEvents/ em subcoleção; exportarColecao
+  // desce sozinho, mas a família é a raiz do modelo e merece estar na lista.
+  'households',
   'transactions',
   'categories',
   'paymentMethods',

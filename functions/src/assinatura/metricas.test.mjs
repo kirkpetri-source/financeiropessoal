@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resumirFamilias } from './metricas.js';
+import { resumirFamilias, PLANO_INTERNO } from './metricas.js';
 import { STATUS } from './estado.js';
 
 const AGORA = new Date('2026-08-06T12:00:00Z');
@@ -139,6 +139,46 @@ describe('churn e conversão', () => {
 
     // 1 pagante, 1 trial vencido, 0 cancelada -> 1/2. O trial em curso não conta.
     expect(r.conversaoDeTrial).toBeCloseTo(0.5, 4);
+  });
+});
+
+describe('contas internas (cortesia)', () => {
+  const interna = {
+    createdAt: emDias(-200),
+    subscription: { status: STATUS.ATIVA, plan: PLANO_INTERNO, priceCents: 0, activatedAt: emDias(-2) },
+  };
+
+  it('usa o produto sem entrar na receita', () => {
+    const r = resumirFamilias([interna, pagante()], AGORA);
+
+    expect(r.ativas).toBe(2);
+    expect(r.internas).toBe(1);
+    expect(r.pagantes).toBe(1);
+    expect(r.mrrCentavos).toBe(2490);
+  });
+
+  it('não conta como ativação nem como cadastro novo', () => {
+    const r = resumirFamilias([
+      { ...interna, createdAt: emDias(-3) },
+    ], AGORA);
+
+    expect(r.novasNaJanela).toBe(0);
+    expect(r.ativadasNaJanela).toBe(0);
+  });
+
+  it('não distorce churn nem conversão', () => {
+    const soInternas = resumirFamilias([interna, interna], AGORA);
+    expect(soInternas.churnMensal).toBe(0);
+    expect(soInternas.conversaoDeTrial).toBe(0);
+    expect(soInternas.ticketMedioCentavos).toBe(0);
+  });
+
+  it('cortesia com preço cheio no campo ainda não vira MRR', () => {
+    const r = resumirFamilias([
+      { subscription: { status: STATUS.ATIVA, plan: PLANO_INTERNO, priceCents: 2490 } },
+    ], AGORA);
+    expect(r.mrrCentavos).toBe(0);
+    expect(r.pagantes).toBe(0);
   });
 });
 

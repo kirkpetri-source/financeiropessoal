@@ -15,7 +15,14 @@ const { STATUS, situacaoDaAssinatura, paraData, PRECO_MENSAL_CENTAVOS } = requir
  *            janela). É o churn de logo, não de receita.
  *   Ativas — famílias que podem lançar hoje, incluindo trial e carência. É a
  *            métrica de uso, não a de dinheiro.
+ *
+ * Contas internas (`plan: 'interno'`) — a família do Kirk e futuras cortesias —
+ * usam o sistema de graça e para sempre. Contam em "ativas", porque usam mesmo,
+ * e ficam FORA de pagantes, MRR, churn e conversão. Somar a própria casa no MRR
+ * seria mentir para si mesmo sobre o tamanho do negócio.
  */
+
+const PLANO_INTERNO = 'interno';
 
 const DIA_EM_MS = 24 * 60 * 60 * 1000;
 const JANELA_PADRAO_DIAS = 30;
@@ -38,6 +45,7 @@ function resumirFamilias(familias, agora = new Date(), janelaDias = JANELA_PADRA
     pendentes: 0,
     emCarencia: 0,
     aguardandoExclusao: 0,
+    internas: 0,      // cortesias: usam o produto, não entram na receita
   };
 
   let mrrCentavos = 0;
@@ -52,6 +60,13 @@ function resumirFamilias(familias, agora = new Date(), janelaDias = JANELA_PADRA
     if (situacao.podeLancar) contagem.ativas += 1;
     if (situacao.emCarencia) contagem.emCarencia += 1;
     if (familia.deletion) contagem.aguardandoExclusao += 1;
+
+    // Cortesia entra em "ativas" e para por aí: nada de receita, churn ou
+    // conversão. Sai antes do switch para não cair em nenhum outro balde.
+    if (assinatura.plan === PLANO_INTERNO) {
+      contagem.internas += 1;
+      continue;
+    }
 
     switch (assinatura.status) {
       case STATUS.ATIVA:
@@ -98,4 +113,4 @@ function resumirFamilias(familias, agora = new Date(), janelaDias = JANELA_PADRA
   };
 }
 
-module.exports = { resumirFamilias, JANELA_PADRAO_DIAS };
+module.exports = { resumirFamilias, JANELA_PADRAO_DIAS, PLANO_INTERNO };
