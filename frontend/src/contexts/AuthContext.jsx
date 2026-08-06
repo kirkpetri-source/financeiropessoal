@@ -1,6 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile as atualizarPerfilDoAuth,
   signOut,
   onAuthStateChanged,
   updatePassword,
@@ -75,6 +78,47 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  /**
+   * Cadastro.
+   *
+   * Duas etapas que precisam acontecer juntas: o Firebase cria o login, e o
+   * nosso backend cria o perfil e a FAMÍLIA com trial de 14 dias. Sem a
+   * segunda, o usuário entra e esbarra em SEM_HOUSEHOLD em toda tela.
+   *
+   * Se a segunda falhar, apagamos o login recém-criado. Deixar um login órfão
+   * é pior que falhar: o e-mail fica "já em uso" e a pessoa não consegue nem
+   * tentar de novo.
+   */
+  const signUp = useCallback(async ({ nome, email, senha, aceitouTermos }) => {
+    const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, email, senha);
+
+    try {
+      await atualizarPerfilDoAuth(firebaseUser, { displayName: nome });
+
+      const token = await firebaseUser.getIdToken(true);
+      localStorage.setItem('@financeiro:token', token);
+
+      const { data } = await api.post('/auth/register', { name: nome, email, aceitouTermos });
+
+      const profile = { ...data, firebaseUid: firebaseUser.uid };
+      setUser(profile);
+      return profile;
+    } catch (err) {
+      try { await firebaseUser.delete(); } catch { /* já foi, ou o token expirou */ }
+      localStorage.removeItem('@financeiro:token');
+      throw err;
+    }
+  }, []);
+
+  /**
+   * Recuperação de senha. Sem isso, quem esquece a senha fica fora da própria
+   * conta financeira em definitivo — e a única saída seria pedir socorro por
+   * WhatsApp, o que não escala e não é aceitável num serviço pago.
+   */
+  const resetPassword = useCallback(async (email) => {
+    await sendPasswordResetEmail(auth, email);
+  }, []);
+
   const logout = useCallback(async () => {
     await signOut(auth);
     localStorage.removeItem('@financeiro:token');
@@ -127,7 +171,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateUser, changePassword }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, signUp, resetPassword, logout, updateUser, changePassword }}
+    >
       {children}
     </AuthContext.Provider>
   );

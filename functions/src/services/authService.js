@@ -1,5 +1,9 @@
 const { admin, db } = require('../config/firebaseAdmin');
 
+// Versão dos termos aceita no cadastro. Mudou o contrato de forma relevante?
+// Suba a data aqui — é o que permite saber depois quem aceitou o quê.
+const TERMOS_VIGENTES = '2026-08-06';
+
 async function getProfile(userId) {
   const doc = await db.collection('users').doc(userId).get();
   if (!doc.exists) throw Object.assign(new Error('Usuário não encontrado.'), { statusCode: 404 });
@@ -25,6 +29,16 @@ async function createOrUpdateProfile(userId, data) {
 
   if (!doc.exists) {
     payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+
+    // Aceite dos termos, carimbado no cadastro. Num serviço pago, "o cliente
+    // concordou" precisa de data e versão registradas — depois do fato não há
+    // como reconstruir isso. Só no primeiro cadastro: atualizar o perfil não
+    // reabre o aceite.
+    if (data.aceitouTermos) {
+      payload.termsAcceptedAt = admin.firestore.FieldValue.serverTimestamp();
+      payload.termsVersion = TERMOS_VIGENTES;
+    }
+
     await ref.set(payload);
   } else {
     await ref.update(payload);
@@ -60,4 +74,4 @@ async function updateProfile(userId, name, email) {
 // updatePassword() do próprio Firebase Auth, que exige a senha atual de fato.
 // Ver frontend/src/contexts/AuthContext.jsx.
 
-module.exports = { getProfile, createOrUpdateProfile, updateProfile };
+module.exports = { getProfile, createOrUpdateProfile, updateProfile, TERMOS_VIGENTES };
