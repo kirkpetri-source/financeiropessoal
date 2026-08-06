@@ -16,6 +16,17 @@
  * aberta — use --manter, leia o QR e rode de novo.
  */
 
+// Antes de qualquer require que leia process.env: carrega o .env do projeto e
+// puxa os segredos do Secret Manager, para o script rodar sem preparação.
+const { carregar } = require('./carregarAmbiente');
+
+const ambiente = carregar(['EVOLUTION_API_KEY', 'EVOLUTION_WEBHOOK_TOKEN']);
+if (!ambiente.ok) {
+  console.error(`Não consegui obter: ${ambiente.faltando.join(', ')}`);
+  console.error('Confira se você está logado: firebase login');
+  process.exit(1);
+}
+
 const { admin, db } = require('../src/config/firebaseAdmin');
 const provider = require('../src/canais/evolutionProvider');
 const householdService = require('../src/services/householdService');
