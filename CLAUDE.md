@@ -31,6 +31,9 @@ npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed             # só categorias e formas de pagamento padrão
 
+node tools/diagnostico-assinatura.js     # leitura: quem seria bloqueado hoje
+node tools/marcar-conta-interna.js <id>  # cortesia; --confirmar para gravar
+
 firebase deploy --only functions --project financeiropessoal-29b32
 cd .. && vercel deploy --prod --yes    # frontend
 ```

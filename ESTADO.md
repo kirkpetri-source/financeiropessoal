@@ -85,8 +85,18 @@ Nada disso está feito ainda — é configuração de conta, não código:
    `APP_URL` (só se o domínio for diferente de `financeiropessoal.vercel.app` —
    é para onde o Mercado Pago devolve o cliente depois de pagar)
 6. Testar ponta a ponta com credencial de **teste** antes de virar produção
-7. Conferir se a família do Kirk tem `subscription.trialEndsAt` preenchido; se
-   estiver vazio, ele mesmo se bloqueia no próximo deploy
+
+Feito em 06/08/2026 (era o item 7): a família do Kirk virou **conta interna**
+(`plan: 'interno'`, `status: 'active'`, `priceCents: 0`). O trial dela vencia em
+19/08 e o próprio produto o bloquearia. As métricas contam conta interna em
+"ativas" e "internas", nunca em pagantes, MRR, churn ou conversão.
+
+```bash
+node tools/diagnostico-assinatura.js         # leitura: quem seria bloqueado
+node tools/marcar-conta-interna.js <id>      # simulação
+node tools/marcar-conta-interna.js <id> --confirmar
+node tools/marcar-conta-interna.js <id> --reverter --confirmar
+```
 
 Ponto não verificado: o `mercadoPago.js` foi escrito conforme a documentação e
 os testes usam um `fetch` dublê. **Nenhuma chamada real à API do Mercado Pago
