@@ -34,6 +34,23 @@ firebase deploy --only functions --project financeiropessoal-29b32
 cd .. && vercel deploy --prod --yes    # frontend
 ```
 
+## Git — push liberado
+
+Repositório: `github.com/kirkpetri-source/financeiropessoal` (branch `main`).
+
+O Kirk autorizou o push em 06/08/2026. **Commite e faça push ao fim de cada
+bloco de trabalho concluído e testado** — não deixe dezenas de commits parados
+na máquina como aconteceu na primeira sessão.
+
+Antes de qualquer push, conferir que nada sensível está rastreado:
+
+```bash
+git ls-files | grep -iE 'serviceAccountKey|\.env$|backups/' || echo ok
+```
+
+Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.json`,
+`.env*`, `backups/` (contêm dados financeiros reais), `.vercel`.
+
 ## Regras que não se quebram
 
 1. **Backup antes de qualquer script que escreva no Firestore.** Já salvou o
@@ -46,8 +63,7 @@ cd .. && vercel deploy --prod --yes    # frontend
 3. **Nenhuma query sem tenant.** Coleção de família só se acessa por
    `escopoDe(householdId)` (`src/data/escopo.js`). Usar `db` cru nos services é
    contornar a proteção. 16 testes cobrem os cenários de vazamento.
-4. **Não subir para o GitHub sem autorização do Kirk.** Commit local, sim;
-   push, só com o ok dele.
+4. **Só faz push com a suíte verde.** `npm test` em `functions/` antes.
 5. **Sem emoji nas respostas ao Kirk.** Português direto, sem bajulação.
 
 ## Armadilhas já pagas (não repetir)

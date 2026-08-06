@@ -63,7 +63,6 @@ Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 ## Pendências operacionais do Kirk
 
 - Aplicar para **Meta Verified** se quiser o canal oficial (2 a 8 semanas)
-- Decidir sobre `git push` — 13+ commits locais aguardando autorização
 - Vault Obsidian desatualizado: `projetos/financeiro.md` e `sistema/painel.md`
   ainda marcam o projeto como "em-planejamento"
 
