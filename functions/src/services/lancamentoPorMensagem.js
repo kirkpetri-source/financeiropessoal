@@ -5,6 +5,7 @@ const { detectarParcelamento, montarParcelas } = require('../utils/parcelamento'
 const { parseWithAI } = require('./aiParserService');
 const { createTransaction } = require('./transactionService');
 const householdService = require('./householdService');
+const { situacaoDaAssinatura, mensagemDaSituacao } = require('../assinatura/estado');
 
 /**
  * Transforma uma mensagem de texto em lançamento(s), para a família certa.
@@ -94,10 +95,26 @@ async function resolverPagador(householdId, nomeNaMensagem, senderJid, pushName)
 }
 
 /**
+ * Assinatura vencida bloqueia o lançamento também pelo WhatsApp — senão o
+ * canal principal do produto vira uma porta dos fundos para usar de graça.
+ * Devolve a mensagem a mandar no grupo, ou null quando está tudo em dia.
+ */
+async function bloqueioPorAssinatura(householdId) {
+  const doc = await db.collection('households').doc(householdId).get();
+  if (!doc.exists) return 'Família não encontrada.';
+
+  const situacao = situacaoDaAssinatura(doc.data().subscription, new Date());
+  return situacao.podeLancar ? null : mensagemDaSituacao(situacao);
+}
+
+/**
  * Interpreta o texto e cria os lançamentos.
  * @returns {Promise<{transacoes: string[], erro: string|null}>}
  */
 async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaMensagem, origem }) {
+  const bloqueio = await bloqueioPorAssinatura(householdId);
+  if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
+
   const dados = escopoDe(householdId);
 
   const membros = await householdService.listarMembros(householdId);
@@ -208,6 +225,7 @@ async function jaProcessada(messageId) {
 
 module.exports = {
   acharHouseholdPorOrigem,
+  bloqueioPorAssinatura,
   lancarPorTexto,
   jaProcessada,
   resolverPagador,

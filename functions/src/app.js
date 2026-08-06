@@ -8,7 +8,11 @@ const categoryRoutes = require('./routes/categories');
 const paymentMethodRoutes = require('./routes/paymentMethods');
 const whatsappRoutes = require('./routes/whatsapp');
 const householdRoutes = require('./routes/households');
+const assinaturaRoutes = require('./routes/assinatura');
+const lgpdRoutes = require('./routes/lgpd');
+const adminRoutes = require('./routes/admin');
 const { handleEvolutionWebhook } = require('./webhooks/evolutionWebhook');
+const { handleMercadoPagoWebhook } = require('./webhooks/mercadoPagoWebhook');
 const errorHandler = require('./middlewares/errorHandler');
 const { webhookAuth } = require('./middlewares/webhookAuth');
 const { limiteWebhook, limiteAuth, limitePolling, limiteGeral } = require('./middlewares/rateLimit');
@@ -54,6 +58,11 @@ app.post('/webhooks/evolution', limiteWebhook, (req, res) => {
   res.status(401).json({ error: 'Webhook exige token na URL. Atualize a configuração na Evolution API.' });
 });
 
+// Webhook do Mercado Pago. Não leva token na URL como o do Evolution porque
+// aqui existe assinatura HMAC de verdade no cabeçalho — o handler confere antes
+// de encostar em qualquer coisa.
+app.post('/webhooks/mercadopago', limiteWebhook, handleMercadoPagoWebhook);
+
 app.use(limiteGeral);
 
 app.use('/auth', limiteAuth, authRoutes);
@@ -61,6 +70,9 @@ app.use('/transactions', transactionRoutes);
 app.use('/categories', categoryRoutes);
 app.use('/payment-methods', paymentMethodRoutes);
 app.use('/households', householdRoutes);
+app.use('/subscription', assinaturaRoutes);
+app.use('/lgpd', lgpdRoutes);
+app.use('/admin', adminRoutes);
 app.use('/whatsapp/poll', limitePolling);
 app.use('/whatsapp', whatsappRoutes);
 
