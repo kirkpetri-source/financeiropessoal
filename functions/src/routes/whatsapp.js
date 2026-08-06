@@ -47,6 +47,13 @@ router.get('/status', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/** Passo 0 — como a família vai usar: sozinho ou em grupo. */
+router.post('/modo', exigir('gerirCanal'), async (req, res, next) => {
+  try {
+    res.json(await servicoDeInstancia().definirModo(req.householdId, req.body?.modo));
+  } catch (err) { next(err); }
+});
+
 /** Passo 1 — cria a instância e devolve o QR Code para ler no celular. */
 router.post('/conectar', exigir('gerirCanal'), async (req, res, next) => {
   try {

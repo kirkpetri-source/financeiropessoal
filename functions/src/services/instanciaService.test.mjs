@@ -39,7 +39,12 @@ const fakeAdmin = {
 
 const householdFalso = {
   async listarMembros() { return membros; },
+  async buscarHousehold() { return { id: 'fam-1', ownerId: 'dono', name: 'Família Teste' }; },
   async adicionarMembro(_id, m) { membros.push({ id: m.userId, name: m.nome, phone: m.telefone, role: m.papel }); },
+  async atualizarMembro(_id, userId, dados) {
+    const alvo = membros.find((m) => m.id === userId);
+    if (alvo && dados.telefone !== undefined) alvo.phone = dados.telefone;
+  },
 };
 
 function providerFalso(sobrescritas = {}) {
@@ -48,6 +53,7 @@ function providerFalso(sobrescritas = {}) {
     async criarInstancia(_c, args) { chamadas.push(['criarInstancia', args]); return { criada: true, jaExistia: false }; },
     async obterQrCode() { chamadas.push(['obterQrCode']); return { conectada: false, qrcode: 'data:image/png;base64,AAA', pairingCode: null }; },
     async estadoDaConexao() { return { estado: 'open', conectada: true }; },
+    async obterIdentidadePropria() { return '5564999555364@s.whatsapp.net'; },
     async criarGrupo(_c, args) { chamadas.push(['criarGrupo', args]); return { groupId: '12036@g.us' }; },
     async linkDeConvite() { return { linkConvite: 'https://chat.whatsapp.com/ABC', codigo: 'ABC' }; },
     async participantesDoGrupo() { return []; },
@@ -73,11 +79,111 @@ const CONFIG = { evolutionApiUrl: 'https://evo.exemplo', apiKey: 'chave-do-servi
 
 beforeEach(() => {
   docs = {};
-  membros = [{ id: 'dono', name: 'Kirk', phone: '5564999555364', role: 'owner' }];
+  // O dono se cadastra sem telefone: é o estado real depois do signup, e o
+  // sistema precisa preencher sozinho ao conectar.
+  membros = [
+    { id: 'dono', name: 'Kirk', phone: null, role: 'owner' },
+    { id: 'wa-5564988887777', name: 'Raquel', phone: '5564988887777', role: 'member' },
+  ];
+});
+
+/** Atalho: a maioria dos testes pressupõe o modo já escolhido. */
+function comModo(modo, extra = {}) {
+  docs['fam-1'] = { modo, allowPrivateChat: modo === 'individual', ...extra };
+}
+
+describe('modo de uso', () => {
+  it('grava o modo e liga o chat privado só no individual', async () => {
+    const svc = servicoCom(providerFalso());
+
+    await svc.definirModo('fam-1', 'individual');
+    expect(docs['fam-1']).toMatchObject({ modo: 'individual', allowPrivateChat: true });
+
+    await svc.definirModo('fam-1', 'grupo');
+    expect(docs['fam-1']).toMatchObject({ modo: 'grupo', allowPrivateChat: false });
+  });
+
+  it('recusa modo inventado', async () => {
+    await expect(servicoCom(providerFalso()).definirModo('fam-1', 'telepatia'))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('status sem modo escolhido pede a escolha primeiro', async () => {
+    expect(await servicoCom(providerFalso()).status('fam-1', CONFIG))
+      .toMatchObject({ etapa: 'sem_modo', modo: null });
+  });
+
+  it('não conecta antes de escolher o modo', async () => {
+    await expect(servicoCom(providerFalso()).conectar('fam-1', CONFIG))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'SEM_MODO' });
+  });
+
+  it('no modo grupo, exige participante cadastrado antes do QR', async () => {
+    comModo('grupo');
+    membros = [{ id: 'dono', name: 'Kirk', phone: null, role: 'owner' }];
+
+    await expect(servicoCom(providerFalso()).conectar('fam-1', CONFIG))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'SEM_PARTICIPANTES' });
+  });
+
+  it('no modo individual, conecta sem exigir participante', async () => {
+    comModo('individual');
+    membros = [{ id: 'dono', name: 'Kirk', phone: null, role: 'owner' }];
+
+    const r = await servicoCom(providerFalso()).conectar('fam-1', CONFIG);
+    expect(r.instanceName).toBe('fam-fam-1');
+  });
+
+  it('individual conectado já está pronto — não pede grupo', async () => {
+    comModo('individual', { instanceName: 'fam-fam-1', conectadoEm: '<antes>' });
+    expect(await servicoCom(providerFalso()).status('fam-1', CONFIG))
+      .toMatchObject({ etapa: 'pronto', temGrupo: false });
+  });
+});
+
+describe('ao conectar', () => {
+  it('preenche o telefone do dono com o número que leu o QR', async () => {
+    comModo('individual', { instanceName: 'fam-fam-1' });
+
+    await servicoCom(providerFalso()).status('fam-1', CONFIG);
+
+    expect(membros.find((m) => m.id === 'dono').phone).toBe('5564999555364');
+    expect(docs['fam-1'].ownerJid).toBe('5564999555364@s.whatsapp.net');
+  });
+
+  it('não sobrescreve telefone que o dono já tinha', async () => {
+    comModo('individual', { instanceName: 'fam-fam-1' });
+    membros[0].phone = '5564911112222';
+
+    await servicoCom(providerFalso()).status('fam-1', CONFIG);
+    expect(membros.find((m) => m.id === 'dono').phone).toBe('5564911112222');
+  });
+
+  it('no modo grupo, cria o grupo sozinho com quem já está cadastrado', async () => {
+    comModo('grupo', { instanceName: 'fam-fam-1' });
+    const p = providerFalso();
+
+    await servicoCom(p).status('fam-1', CONFIG);
+
+    const [, args] = p.chamadas.find(([m]) => m === 'criarGrupo');
+    expect(args.participantes).toEqual(['5564988887777']);
+    expect(docs['fam-1'].groupId).toBe('12036@g.us');
+  });
+
+  it('falha ao criar o grupo não derruba a conexão', async () => {
+    comModo('grupo', { instanceName: 'fam-fam-1' });
+    const p = providerFalso({ criarGrupo: async () => { throw new Error('WhatsApp recusou'); } });
+
+    const s = await servicoCom(p).status('fam-1', CONFIG);
+
+    expect(s.conectada).toBe(true);
+    expect(docs['fam-1'].enabled).toBe(true);
+  });
 });
 
 describe('conectar', () => {
   it('cria a instância com nome derivado da família e devolve o QR', async () => {
+    comModo('grupo');
     const p = providerFalso();
     const r = await servicoCom(p).conectar('fam-1', CONFIG);
 
@@ -90,17 +196,20 @@ describe('conectar', () => {
   });
 
   it('não habilita o canal enquanto ninguém leu o QR', async () => {
+    comModo('grupo');
     await servicoCom(providerFalso()).conectar('fam-1', CONFIG);
     expect(docs['fam-1'].enabled).toBeUndefined();
   });
 
   it('instância que já existe não vira erro', async () => {
+    comModo('grupo');
     const p = providerFalso({ criarInstancia: async () => ({ criada: false, jaExistia: true }) });
     const r = await servicoCom(p).conectar('fam-1', CONFIG);
     expect(r.jaExistia).toBe(true);
   });
 
   it('se já estiver conectada, marca habilitada e não devolve QR', async () => {
+    comModo('grupo');
     const p = providerFalso({ obterQrCode: async () => ({ conectada: true, qrcode: null }) });
     const r = await servicoCom(p).conectar('fam-1', CONFIG);
 
@@ -111,18 +220,23 @@ describe('conectar', () => {
 
 describe('status', () => {
   it('sem instância, a etapa é a primeira', async () => {
+    comModo('grupo');
     expect(await servicoCom(providerFalso()).status('fam-1', CONFIG))
       .toMatchObject({ etapa: 'sem_instancia', conectada: false });
   });
 
   it('conectada e sem grupo, pede o grupo', async () => {
-    docs['fam-1'] = { instanceName: 'fam-fam-1' };
-    expect(await servicoCom(providerFalso()).status('fam-1', CONFIG))
+    comModo('grupo', { instanceName: 'fam-fam-1', conectadoEm: '<antes>' });
+    const p = providerFalso({ criarGrupo: async () => { throw new Error('sem participantes'); } });
+    expect(await servicoCom(p).status('fam-1', CONFIG))
       .toMatchObject({ etapa: 'sem_grupo', conectada: true });
   });
 
   it('com grupo, está pronto', async () => {
-    docs['fam-1'] = { instanceName: 'fam-fam-1', groupId: '12036@g.us', groupInviteUrl: 'https://chat.whatsapp.com/ABC' };
+    comModo('grupo', {
+      instanceName: 'fam-fam-1', conectadoEm: '<antes>',
+      groupId: '12036@g.us', groupInviteUrl: 'https://chat.whatsapp.com/ABC',
+    });
     const s = await servicoCom(providerFalso()).status('fam-1', CONFIG);
 
     expect(s).toMatchObject({ etapa: 'pronto', temGrupo: true, maxMembros: 8 });
@@ -130,7 +244,7 @@ describe('status', () => {
   });
 
   it('aguardando leitura quando a conexão não abriu', async () => {
-    docs['fam-1'] = { instanceName: 'fam-fam-1' };
+    comModo('grupo', { instanceName: 'fam-fam-1' });
     const p = providerFalso({ estadoDaConexao: async () => ({ estado: 'connecting', conectada: false }) });
     expect(await servicoCom(p).status('fam-1', CONFIG)).toMatchObject({ etapa: 'aguardando_leitura' });
   });
@@ -152,6 +266,8 @@ describe('criar grupo', () => {
 
   it('exige pelo menos um participante — o WhatsApp não cria grupo de um', async () => {
     docs['fam-1'] = { instanceName: 'fam-fam-1' };
+    // Só o dono cadastrado: não há ninguém para entrar no grupo.
+    membros = [{ id: 'dono', name: 'Kirk', phone: null, role: 'owner' }];
 
     await expect(servicoCom(providerFalso()).criarGrupoDaFamilia('fam-1', CONFIG, { telefones: [] }))
       .rejects.toMatchObject({ statusCode: 400, codigo: 'SEM_PARTICIPANTE' });
@@ -159,6 +275,16 @@ describe('criar grupo', () => {
     // Telefone curto demais não conta como participante.
     await expect(servicoCom(providerFalso()).criarGrupoDaFamilia('fam-1', CONFIG, { telefones: ['123'] }))
       .rejects.toMatchObject({ codigo: 'SEM_PARTICIPANTE' });
+  });
+
+  it('sem lista explícita, usa quem já está cadastrado (menos o dono)', async () => {
+    docs['fam-1'] = { instanceName: 'fam-fam-1' };
+    const p = providerFalso();
+
+    await servicoCom(p).criarGrupoDaFamilia('fam-1', CONFIG, {});
+
+    const [, args] = p.chamadas.find(([m]) => m === 'criarGrupo');
+    expect(args.participantes).toEqual(['5564988887777']);
   });
 
   it('manda os participantes normalizados para a Evolution', async () => {
@@ -220,6 +346,12 @@ describe('normalizarTelefone', () => {
 });
 
 describe('sincronizar membros', () => {
+  // Aqui a família começa só com o dono, já com telefone: é o estado de quem
+  // acabou de conectar e ainda não chamou ninguém para o grupo.
+  beforeEach(() => {
+    membros = [{ id: 'dono', name: 'Kirk', phone: '5564999555364', role: 'owner' }];
+  });
+
   function comParticipantes(lista) {
     return providerFalso({ participantesDoGrupo: async () => lista });
   }

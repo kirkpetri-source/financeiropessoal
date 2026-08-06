@@ -20,6 +20,18 @@ const { MAX_MEMBROS, nomeDaInstancia } = require('../config/evolutionServidor');
 const COLECAO = 'whatsappConfigs';
 
 /**
+ * Como a família vai usar o canal. Escolhido ANTES de conectar, porque muda o
+ * que acontece depois da leitura do QR.
+ *
+ *   individual — a pessoa lança sozinha, na conversa dela consigo mesma
+ *                ("Mensagens para mim mesmo" no WhatsApp). Nenhum grupo é criado.
+ *
+ *   grupo      — a família lança junto. Os participantes são cadastrados antes,
+ *                e o grupo nasce pronto assim que o WhatsApp conecta.
+ */
+const MODOS = { INDIVIDUAL: 'individual', GRUPO: 'grupo' };
+
+/**
  * Telefone no formato que o WhatsApp entende: só dígitos, com DDI.
  *
  * O cliente digita "(64) 99955-5364" ou "64999555364". Sem o 55 na frente o
@@ -55,7 +67,47 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
    * de novo. Recriar a instância a cada pedido perderia a sessão de quem já
    * tinha lido.
    */
+  /** Guarda o modo escolhido. Só antes de conectar — trocar depois refaria tudo. */
+  async function definirModo(householdId, modo) {
+    if (!Object.values(MODOS).includes(modo)) {
+      throw Object.assign(new Error('Modo inválido.'), { statusCode: 400 });
+    }
+
+    await ref(householdId).set({
+      householdId,
+      modo,
+      // No individual o canal é a conversa privada; no grupo, não.
+      allowPrivateChat: modo === MODOS.INDIVIDUAL,
+      updatedAt: agora(),
+    }, { merge: true });
+
+    return { modo };
+  }
+
   async function conectar(householdId, config) {
+    const doc = await docDaFamilia(householdId);
+
+    if (!doc.modo) {
+      throw Object.assign(
+        new Error('Escolha primeiro como você vai usar: sozinho ou em família.'),
+        { statusCode: 409, codigo: 'SEM_MODO' },
+      );
+    }
+
+    // No modo grupo, os participantes vêm ANTES do QR: o grupo é criado sozinho
+    // assim que a conexão abre, e grupo sem participante não existe no WhatsApp.
+    if (doc.modo === MODOS.GRUPO) {
+      const comTelefone = (await householdService.listarMembros(householdId))
+        .filter((m) => m.phone && normalizarTelefone(m.phone));
+
+      if (!comTelefone.length) {
+        throw Object.assign(
+          new Error('Cadastre quem vai participar, com o WhatsApp de cada um, antes de conectar.'),
+          { statusCode: 409, codigo: 'SEM_PARTICIPANTES' },
+        );
+      }
+    }
+
     const instanceName = config.instanceName || nomeDaInstancia(householdId);
 
     const criacao = await provider.criarInstancia(config, { instanceName, webhookUrl });
@@ -72,7 +124,7 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
     const qr = await provider.obterQrCode({ ...config, instanceName }, instanceName);
 
     if (qr.conectada) {
-      await marcarConectada(householdId);
+      await aoConectar(householdId, { ...config, instanceName });
       return { conectada: true, instanceName, jaExistia: criacao.jaExistia };
     }
 
@@ -83,6 +135,57 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
       pairingCode: qr.pairingCode,
       jaExistia: criacao.jaExistia,
     };
+  }
+
+  /**
+   * Tudo que acontece no instante em que o WhatsApp conecta.
+   *
+   * Roda uma vez só (guardado por `conectadoEm`), tanto pelo `conectar` quanto
+   * pela consulta de status — porque a leitura do QR acontece no celular, e é a
+   * consulta em laço da tela que costuma perceber primeiro.
+   */
+  async function aoConectar(householdId, config) {
+    const doc = await docDaFamilia(householdId);
+
+    // Número do próprio cliente. É o que identifica a auto-conversa no modo
+    // individual e o que preenche o telefone do dono — que antes ficava vazio
+    // e sem como editar, deixando os gastos dele sem atribuição.
+    const ownerJid = await provider.obterIdentidadePropria(config);
+    const telefoneDoDono = ownerJid ? String(ownerJid).replace(/@.*/, '').replace(/\D/g, '') : null;
+
+    await ref(householdId).set({
+      enabled: true,
+      conectadoEm: doc.conectadoEm || agora(),
+      ownerJid: ownerJid || null,
+      lastPollError: admin.firestore.FieldValue.delete(),
+      updatedAt: agora(),
+    }, { merge: true });
+
+    if (telefoneDoDono) await preencherTelefoneDoDono(householdId, telefoneDoDono);
+
+    // Modo grupo: o grupo nasce agora, sem o cliente precisar tocar em nada.
+    if (doc.modo === MODOS.GRUPO && !doc.groupId) {
+      try {
+        await criarGrupoDaFamilia(householdId, config, {});
+      } catch (err) {
+        console.warn(`[Instância] Não criou o grupo de ${householdId} agora: ${err.message}`);
+      }
+    }
+  }
+
+  /** O dono normalmente se cadastra sem telefone — aqui ele ganha o próprio. */
+  async function preencherTelefoneDoDono(householdId, telefone) {
+    try {
+      const familia = await householdService.buscarHousehold(householdId);
+      const membros = await householdService.listarMembros(householdId);
+      const dono = membros.find((m) => m.id === familia.ownerId);
+
+      if (dono && !dono.phone) {
+        await householdService.atualizarMembro(householdId, dono.id, { telefone });
+      }
+    } catch (err) {
+      console.warn(`[Instância] Não preencheu o telefone do dono de ${householdId}: ${err.message}`);
+    }
   }
 
   async function marcarConectada(householdId) {
@@ -98,26 +201,33 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
   async function status(householdId, config) {
     const doc = await docDaFamilia(householdId);
 
-    if (!doc.instanceName) {
-      return { etapa: 'sem_instancia', conectada: false, temGrupo: false };
-    }
-
-    const conexao = await provider.estadoDaConexao(config, doc.instanceName);
-
-    if (conexao.conectada && !doc.enabled) await marcarConectada(householdId);
-
-    return {
-      etapa: !conexao.conectada ? 'aguardando_leitura'
-        : !doc.groupId ? 'sem_grupo'
-          : 'pronto',
-      conectada: conexao.conectada,
-      estado: conexao.estado,
-      instanceName: doc.instanceName,
+    const base = {
+      modo: doc.modo || null,
+      maxMembros: MAX_MEMBROS,
       temGrupo: !!doc.groupId,
       groupId: doc.groupId || null,
       linkConvite: doc.groupInviteUrl || null,
-      maxMembros: MAX_MEMBROS,
+      instanceName: doc.instanceName || null,
     };
+
+    if (!doc.modo) return { ...base, etapa: 'sem_modo', conectada: false };
+    if (!doc.instanceName) return { ...base, etapa: 'sem_instancia', conectada: false };
+
+    const conexao = await provider.estadoDaConexao(config, doc.instanceName);
+
+    // A leitura do QR acontece no celular; é esta consulta que percebe. Daqui
+    // saem o telefone do dono e a criação automática do grupo.
+    if (conexao.conectada && !doc.conectadoEm) {
+      await aoConectar(householdId, { ...config, instanceName: doc.instanceName });
+      return { ...(await status(householdId, config)) };
+    }
+
+    const etapa = !conexao.conectada ? 'aguardando_leitura'
+      : doc.modo === MODOS.INDIVIDUAL ? 'pronto'
+        : !doc.groupId ? 'sem_grupo'
+          : 'pronto';
+
+    return { ...base, etapa, conectada: conexao.conectada, estado: conexao.estado };
   }
 
   /**
@@ -146,11 +256,30 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
       );
     }
 
+    // Sem lista explícita, usa quem já está cadastrado como membro — que é o
+    // caminho normal: os participantes foram informados antes de conectar, e o
+    // grupo é criado sozinho quando o WhatsApp abre.
+    const daChamada = telefones.map(normalizarTelefone).filter(Boolean);
+
+    let doCadastro = [];
+    if (!daChamada.length) {
+      const [familia, membros] = await Promise.all([
+        householdService.buscarHousehold(householdId),
+        householdService.listarMembros(householdId),
+      ]);
+
+      // O dono fica de fora: ele é quem cria o grupo, e o WhatsApp recusa
+      // adicionar a própria conta como participante.
+      doCadastro = membros
+        .filter((m) => m.id !== familia.ownerId)
+        .map((m) => normalizarTelefone(m.phone))
+        .filter(Boolean);
+    }
+
     // O WhatsApp não cria grupo de uma pessoa só, e a Evolution devolve
     // "participants does not meet minimum length of 1". Em vez de repassar esse
-    // erro, exigimos aqui o telefone de quem vai participar — que é o passo
-    // natural: o produto existe para DUAS pessoas ou mais lançarem juntas.
-    const participantes = telefones.map(normalizarTelefone).filter(Boolean);
+    // erro cru, a mensagem aqui diz o que fazer.
+    const participantes = [...new Set([...daChamada, ...doCadastro])];
 
     if (!participantes.length) {
       throw Object.assign(
@@ -265,13 +394,15 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
   }
 
   return {
+    definirModo,
     conectar,
     status,
     criarGrupoDaFamilia,
     sincronizarMembros,
     desconectar,
     marcarConectada,
+    aoConectar,
   };
 }
 
-module.exports = { criarServicoDeInstancia, normalizarTelefone };
+module.exports = { criarServicoDeInstancia, normalizarTelefone, MODOS };

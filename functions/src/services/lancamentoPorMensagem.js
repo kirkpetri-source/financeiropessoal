@@ -41,7 +41,26 @@ async function acharHouseholdPorOrigem(remoteJid, instanceName) {
       .where('instanceName', '==', instanceName)
       .where('allowPrivateChat', '==', true)
       .limit(1).get();
-    if (!snap.empty) return { householdId: snap.docs[0].id, config: configEfetiva(snap.docs[0].data()) };
+
+    if (!snap.empty) {
+      const dados = snap.docs[0].data();
+
+      // TRAVA DO MODO INDIVIDUAL.
+      //
+      // Neste modo o robô roda no número do próprio cliente, então TODA conversa
+      // privada dele chega aqui. Sem esta verificação, um amigo mandando
+      // "te devo 50" viraria despesa no financeiro da família.
+      //
+      // Só a auto-conversa vale — o "Mensagens para mim mesmo" do WhatsApp, onde
+      // o destinatário é o próprio número. É lá que o cliente lança.
+      if (dados.ownerJid) {
+        const proprio = String(dados.ownerJid).replace(/@.*/, '').replace(/\D/g, '');
+        const destino = String(remoteJid || '').replace(/@.*/, '').replace(/\D/g, '');
+        if (!proprio || !destino || proprio !== destino) return null;
+      }
+
+      return { householdId: snap.docs[0].id, config: configEfetiva(dados) };
+    }
   }
 
   return null;

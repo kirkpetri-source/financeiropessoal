@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useHousehold } from '../hooks/useHousehold';
 import MeusDados from '../components/lgpd/MeusDados';
 import ConectarWhatsapp from '../components/whatsapp/ConectarWhatsapp';
+import ParticipantesDaFamilia from '../components/whatsapp/ParticipantesDaFamilia';
 import toast from 'react-hot-toast';
 
 function Section({ icon: Icon, title, children }) {
@@ -34,8 +35,6 @@ export default function SettingsPage() {
   const [showCurrentPwd, setShowCurrentPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [allowPrivateChat, setAllowPrivateChat] = useState(false);
-  const [novoMembro, setNovoMembro] = useState({ nome: '', telefone: '' });
-  const [salvandoMembro, setSalvandoMembro] = useState(false);
   const [nomeFamilia, setNomeFamilia] = useState('');
 
   const profileForm = useForm({ defaultValues: { name: user?.name || '', email: user?.email || '' } });
@@ -197,85 +196,16 @@ export default function SettingsPage() {
             automaticamente quem pagou, pelo número que enviou a mensagem.
           </p>
 
-          <div className="space-y-2">
-            {membros.map((m) => (
-              <div key={m.id} className="flex items-center gap-3 p-2.5 bg-gray-50 rounded-xl">
-                <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-primary-700 text-xs font-bold">
-                    {(m.name || '?').charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {m.name}
-                    {m.role === 'owner' && (
-                      <span className="ml-2 text-xs font-normal text-primary-600">dono</span>
-                    )}
-                    {m.pendenteDeConta && (
-                      <span className="ml-2 text-xs font-normal text-gray-400">sem login</span>
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-400 truncate">
-                    {m.phone || 'sem telefone'}{m.email ? ` · ${m.email}` : ''}
-                  </p>
-                </div>
-                {permissoes.gerirMembros && m.role !== 'owner' && (
-                  <button
-                    type="button"
-                    onClick={() => removerMembro(m.id).catch((e) =>
-                      toast.error(e.response?.data?.error || 'Erro ao remover.'))}
-                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                    title="Remover da família"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {permissoes.gerirMembros && (
-            <div className="flex gap-2 items-center mt-3">
-              <input
-                className="input flex-1"
-                placeholder="Nome (ex: Raquel)"
-                value={novoMembro.nome}
-                onChange={(e) => setNovoMembro((n) => ({ ...n, nome: e.target.value }))}
-              />
-              <input
-                className="input flex-1"
-                placeholder="WhatsApp (ex: 5564999555364)"
-                value={novoMembro.telefone}
-                onChange={(e) => setNovoMembro((n) => ({ ...n, telefone: e.target.value.replace(/\D/g, '') }))}
-              />
-              <button
-                type="button"
-                disabled={!novoMembro.nome.trim() || salvandoMembro}
-                onClick={async () => {
-                  setSalvandoMembro(true);
-                  try {
-                    // Sem conta ainda: entra com ID sintético e já é reconhecido
-                    // pelo telefone no WhatsApp. Ao criar login, o convite liga
-                    // a conta real a este registro.
-                    await adicionarMembro({
-                      userId: `pendente-${novoMembro.nome.trim().toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-                      nome: novoMembro.nome.trim(),
-                      telefone: novoMembro.telefone || null,
-                      papel: 'member',
-                    });
-                    setNovoMembro({ nome: '', telefone: '' });
-                  } catch (e) {
-                    toast.error(e.response?.data?.error || 'Erro ao adicionar membro.');
-                  } finally {
-                    setSalvandoMembro(false);
-                  }
-                }}
-                className="btn-secondary text-sm flex-shrink-0"
-              >
-                {salvandoMembro ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Adicionar'}
-              </button>
-            </div>
-          )}
+          {/* Mesmo componente do assistente do WhatsApp: uma lista só, com
+              edição de telefone. Antes o telefone era só de leitura, e o dono
+              — que se cadastra sem telefone — ficava sem como corrigir. */}
+          <ParticipantesDaFamilia
+            membros={membros}
+            onAdicionar={adicionarMembro}
+            onAtualizar={atualizarMembro}
+            onRemover={(id) => removerMembro(id).catch((e) =>
+              toast.error(e.response?.data?.error || 'Erro ao remover.'))}
+          />
 
           <p className="text-xs text-gray-400 mt-2">
             Também dá para indicar no fim da mensagem:{' '}
@@ -284,9 +214,18 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* WhatsApp — conexão em três passos */}
+      {/* WhatsApp — escolha do modo e conexão */}
       <Section icon={MessageSquare} title="WhatsApp">
-        <ConectarWhatsapp podeGerir={!!permissoes.gerirCanal} />
+        <ConectarWhatsapp
+          podeGerir={!!permissoes.gerirCanal}
+          membros={membros}
+          acoesDeMembro={{
+            adicionar: adicionarMembro,
+            atualizar: atualizarMembro,
+            remover: removerMembro,
+            recarregar: buscarHousehold,
+          }}
+        />
       </Section>
 
       {/* Ajustes do canal */}
