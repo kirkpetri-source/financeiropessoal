@@ -19,8 +19,11 @@ const cancelamentoSchema = z.object({
 });
 
 // A URL para onde o Mercado Pago devolve o cliente depois de autorizar.
+// O padrão é o domínio de produção; APP_URL sobrescreve (ambiente de teste,
+// domínio próprio). Errar aqui manda quem acabou de pagar para uma página que
+// não existe, então o valor vive em functions/.env.<projeto>.
 function urlDeRetorno() {
-  const base = process.env.APP_URL || 'https://financeiropessoal.vercel.app';
+  const base = process.env.APP_URL || 'https://financeiropessoal-tau.vercel.app';
   return `${base.replace(/\/$/, '')}/assinatura?retorno=1`;
 }
 
