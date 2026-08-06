@@ -40,7 +40,7 @@ Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 - `geladeira 1200 em 10x` vira 10 lançamentos de R$ 120, um por mês
 - Centavos e datas tratados (21 testes)
 
-**Fase 5 — cobrança, LGPD e operação** (código pronto, **não deployado ainda**)
+**Fase 5 — cobrança, LGPD e operação** (no ar desde 06/08/2026)
 
 Assinatura
 - `src/assinatura/estado.js` — regra pura: trial de 14 dias, carência de 5
@@ -66,61 +66,149 @@ Operação
 - Acesso por custom claim `admin` ou `ADMIN_EMAILS`, com e-mail verificado
   obrigatório. Sem configuração, ninguém entra
 
-Testes: 92 → 171.
+**Fase 5.1 — conta, canal e onboarding** (no ar desde 06/08/2026)
 
-## Pendências para a Fase 5 ir ao ar
+Sem isto a Fase 5 não vendia nada: não existia cadastro, e o canal exigia que o
+cliente tivesse VPS própria.
 
-Nada disso está feito ainda — é configuração de conta, não código:
+Conta
+- **Cadastro** na tela de login (não existia; `createUserWithEmailAndPassword`
+  não era chamado em lugar nenhum e só havia usuários criados à mão no console).
+  Pede nome, e-mail, **WhatsApp** e aceite dos termos
+- Falha no meio apaga o login recém-criado — login órfão deixaria o e-mail como
+  "já em uso" sem conta utilizável
+- Aceite gravado com data e versão (`termsAcceptedAt`, `termsVersion`)
+- Recuperação de senha por e-mail; resposta igual exista ou não a conta, para
+  não virar sonda de lista de clientes
 
-1. Criar a aplicação no painel do Mercado Pago e pegar o access token de
-   produção
-2. `firebase functions:secrets:set MERCADOPAGO_ACCESS_TOKEN`
-3. `firebase functions:secrets:set MERCADOPAGO_WEBHOOK_SECRET` (o mesmo valor
-   que o painel do MP mostrar ao cadastrar o webhook)
-4. Cadastrar a URL do webhook no painel do MP:
-   `https://southamerica-east1-financeiropessoal-29b32.cloudfunctions.net/api/webhooks/mercadopago`
-   marcando os eventos **subscription_preapproval** e
-   **subscription_authorized_payment**
-5. Variáveis de ambiente da function: `ADMIN_EMAILS=kirkpetri@gmail.com` e
-   `APP_URL` (só se o domínio for diferente de `financeiropessoal.vercel.app` —
-   é para onde o Mercado Pago devolve o cliente depois de pagar)
-6. Testar ponta a ponta com credencial de **teste** antes de virar produção
+Canal WhatsApp — o cliente não informa mais nada de infraestrutura
+- `src/config/evolutionServidor.js`: URL e API key são do OPERADOR, vindas de
+  `EVOLUTION_SERVER_URL` e do secret `EVOLUTION_API_KEY`. `configEfetiva()`
+  resolve por família, com precedência para credencial própria (a do Kirk, que
+  roda em instância criada à mão antes disto)
+- Uma instância por família, criada pelo sistema, com o webhook já apontado
+- **Modo de uso escolhido primeiro**: `individual` (lança na auto-conversa) ou
+  `grupo` (o sistema cria o grupo). No individual, só a auto-conversa é aceita —
+  sem isso um amigo mandando "te devo 50" viraria despesa
+- No grupo, os participantes são cadastrados ANTES do QR; o grupo nasce pronto
+  quando o WhatsApp conecta. O WhatsApp não cria grupo vazio
+- Quem entra no grupo vira membro autorizado pelo telefone, até 8 por família.
+  Não precisa de login para lançar
+- Conexão por **QR** ou por **código de pareamento**. O método é escolhido antes
+  de criar a instância porque o Baileys recusa pareamento em sessão que já
+  emitiu QR (`qrcode: false` na criação é o que faz o código valer)
 
-Feito em 06/08/2026 (era o item 7): a família do Kirk virou **conta interna**
-(`plan: 'interno'`, `status: 'active'`, `priceCents: 0`). O trial dela vencia em
-19/08 e o próprio produto o bloquearia. As métricas contam conta interna em
+Validação
+- `src/utils/telefoneBR.js`: DDD da lista oficial, 9 obrigatório, 11 dígitos.
+  Fixo recusado. Roda no backend (fonte da verdade) e no frontend (máscara)
+
+Testes: 92 → 246.
+
+## Verificado em produção nesta sessão
+
+| O quê | Como |
+|---|---|
+| Webhook do Mercado Pago | HMAC conferido em produção; simulação do painel passou |
+| Criação de preapproval | `id=60d6522d…`, R$ 24,90, `external_reference` correto |
+| Provisionamento de instância | criada, webhook apontado, QR devolvido |
+| Cadastro → família → trial | conta nova nasce com 14 dias |
+| Isolamento entre famílias | 5 famílias, dados não se cruzam |
+| **Lançamento em grupo, 2 pessoas** | **passou** — era o objetivo do produto |
+
+Não verificado: transição `pending → active` do Mercado Pago (depende de cartão
+real no checkout) e o código de pareamento contra um celular de verdade.
+
+## Configuração já feita (não repetir)
+
+Tudo abaixo está no ar e funcionando:
+
+| Item | Estado |
+|---|---|
+| Aplicação no Mercado Pago | "SistemaFinancas", solução **Assinaturas** |
+| `MERCADOPAGO_ACCESS_TOKEN` | credencial de **TESTE** |
+| `MERCADOPAGO_WEBHOOK_SECRET` | modo de teste, HMAC verificado em produção |
+| Webhook no painel do MP | URL cadastrada, evento "Planos e assinaturas" |
+| `EVOLUTION_API_KEY` | secret, chave global do servidor Hostinger |
+| `EVOLUTION_SERVER_URL` | `.env.financeiropessoal-29b32` |
+| `ADMIN_EMAILS`, `APP_URL` | idem, domínio `financeiropessoal-tau.vercel.app` |
+
+Conta interna: a família do Kirk é `plan: 'interno'`, `priceCents: 0`. Entra em
 "ativas" e "internas", nunca em pagantes, MRR, churn ou conversão.
 
 ```bash
-node tools/diagnostico-assinatura.js         # leitura: quem seria bloqueado
-node tools/marcar-conta-interna.js <id>      # simulação
+node tools/diagnostico-assinatura.js          # quem seria bloqueado hoje
+node tools/testar-credencial-mp.js            # valida token, sem imprimir
+node tools/testar-assinatura-ponta-a-ponta.js <id>
+node tools/testar-canal-ponta-a-ponta.js <id> --manter
 node tools/marcar-conta-interna.js <id> --confirmar
-node tools/marcar-conta-interna.js <id> --reverter --confirmar
+node tools/apagar-familia.js <id> --confirmar # limpa conta de teste
 ```
 
-Ponto não verificado: o `mercadoPago.js` foi escrito conforme a documentação e
-os testes usam um `fetch` dublê. **Nenhuma chamada real à API do Mercado Pago
-foi feita.** Tratar como não verificado até o teste do item 6, do mesmo jeito
-que o `cloudApiProvider.js`.
+Todos carregam `.env` e segredos sozinhos (`tools/carregarAmbiente.js`).
+
+## Para vender de verdade, falta
+
+1. Trocar `MERCADOPAGO_ACCESS_TOKEN` pela credencial de **produção**
+2. Cadastrar o webhook também na aba **Modo de produção** do MP e gravar o
+   segredo de lá
+3. Fazer uma assinatura real e conferir a transição `pending → active`
 
 ## Falta
+
+**Parser — falhas reais observadas no teste**
+- `Pagamento cartão 1830` e `Lanche 38,00 crédito` não são interpretados.
+  A primeira palavra precisa ser um verbo/substantivo de tipo
+  (`detectType(words[0])`); "pagamento" e "lanche" não estão na lista.
+  Vale ampliar as palavras e melhorar o fallback da IA
+
+**Convite de membro com login próprio**
+- Quem entra pelo grupo lança pelo WhatsApp, mas não abre o painel. O
+  `authService.createOrUpdateProfile` cria uma família NOVA para quem se
+  cadastra, então hoje um segundo login vira outra família (e outra cobrança).
+  Falta o fluxo de convite ligando conta ao membro já existente
 
 **Fase 4 (restante)**
 - Orçamento por categoria com alerta de estouro
 - Contas fixas recorrentes com lembrete
 - Fatura de cartão de crédito (fechamento e vencimento)
 - Áudio transcrito e foto de cupom (OCR) — ambos via Gemini
+- Custo escondido: lembrete e alerta são mensagens FORA da janela de 24h do
+  WhatsApp, ou seja, template utility pago (~US$ 0,008 a 0,03 cada)
+
+**Tutorial de primeiro uso** — o Kirk pediu para deixar por último
 
 **Fase 6 — landing page**
 - Requisito do Kirk: **fotos de pessoas reais**, tema controle financeiro
 - Detalhe técnico: página publicada bloqueia recurso externo — imagens
   precisam ir embutidas (data URI)
 
+## Decisão revista: 1:1 vs grupo (pesquisado em 06/08/2026)
+
+O Kirk perguntou se conversa individual com um número do sistema não seria
+melhor que grupo. Pesquisado e decidido **manter grupo**, porque o objetivo do
+produto é a visão compartilhada — marido e mulher verem o gasto um do outro.
+
+Fatos apurados, para não repesquisar:
+- Resposta dentro da janela de 24h é **grátis, sem teto**, em 1:1 e em grupo.
+  Custo não é critério de escolha
+- O limite de 250 contatos/dia **não se aplica**: só vale para mensagem
+  iniciada pelo negócio fora da janela
+- Groups API oficial exige **Official Business Account** (logo, Meta Verified);
+  1:1 não exige
+- **Grupo não suporta botões nem listas interativas.** Limita confirmação do
+  tipo "está certo? [Sim] [Corrigir]"
+- Groups API: 8 participantes por grupo, 10.000 grupos por número
+
 ## Pendências operacionais do Kirk
 
+- Corrigir o telefone do membro "Johnny" na família do Deryck: está
+  `6499715453` (10 dígitos, sem o 9). A validação nova impede casos novos, mas
+  não corrige o que já está gravado
 - Aplicar para **Meta Verified** se quiser o canal oficial (2 a 8 semanas)
 - Vault Obsidian desatualizado: `projetos/financeiro.md` e `sistema/painel.md`
   ainda marcam o projeto como "em-planejamento"
+- Limpar as famílias de teste: `TESTUSER587309038995717462` e
+  `TESTUSER8066625080459611528` (`node tools/apagar-familia.js <id> --confirmar`)
 
 ## Dívidas conhecidas
 
@@ -130,7 +218,26 @@ que o `cloudApiProvider.js`.
   não ataque distribuído. App Check resolveria
 - `cloudApiProvider.js` está escrito conforme a documentação mas **nunca foi
   exercitado contra a API real**. Tratar como não verificado
-- `mercadoPago.js` está na mesma situação (ver "Pendências para a Fase 5 ir ao ar")
-- Bundle do frontend em ~974 kB, sem code splitting
+- Bundle do frontend em ~985 kB, sem code splitting
+- Zero testes no frontend (backend tem 246)
 - `/admin/metricas` lê todos os households a cada chamada. Serve de sobra para
   dezenas ou centenas de famílias; passa a doer nos milhares
+- Uma instância Evolution por família consome recursos da VPS. Dezenas de
+  clientes cabem; centenas precisam de medição antes
+
+## Armadilhas descobertas nesta sessão
+
+Custaram horas. Estão nos comentários do código, repetidas aqui:
+
+- **Baileys recusa pareamento em sessão que já emitiu QR.** Criar a instância
+  com `qrcode: false` é o que faz o código de 8 dígitos valer
+- **O painel do Mercado Pago confere a URL do webhook com GET** antes de
+  salvar. Endpoint só com POST devolve 404 e o painel recusa com erro genérico
+- **`POST /preapproval` responde 500 com `payer_email` em `@testuser.com`.**
+  Mesmo payload com e-mail comum funciona
+- **Autorizar assinatura por API dá 404 `Card token service not found`**: o
+  token de cartão precisa vir da chave pública no navegador
+- **Public Key e Access Token de teste ambos começam com `TEST-`.** A Public
+  Key é um UUID; o Access Token não
+- **Zod com `.default()` inventa valor em corpo que não menciona o campo.** Foi
+  assim que "salvar a mensagem de confirmação" desligou o canal de um cliente

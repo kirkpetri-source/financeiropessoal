@@ -26,13 +26,18 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 171 testes (vitest)
+npm test                 # 246 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed             # só categorias e formas de pagamento padrão
 
-node tools/diagnostico-assinatura.js     # leitura: quem seria bloqueado hoje
-node tools/marcar-conta-interna.js <id>  # cortesia; --confirmar para gravar
+# Ferramentas — todas carregam .env e segredos sozinhas
+node tools/diagnostico-assinatura.js          # quem seria bloqueado hoje
+node tools/testar-credencial-mp.js            # valida token do MP, sem imprimir
+node tools/testar-assinatura-ponta-a-ponta.js <id>   # cria e sincroniza
+node tools/testar-canal-ponta-a-ponta.js <id> --manter
+node tools/marcar-conta-interna.js <id> --confirmar  # cortesia vitalícia
+node tools/apagar-familia.js <id> --confirmar        # limpa conta de teste
 
 firebase deploy --only functions --project financeiropessoal-29b32
 cd .. && vercel deploy --prod --yes    # frontend
@@ -78,6 +83,18 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
 7. **Quem promove uma assinatura para `active` é o provedor.** O painel e o
    cliente nunca escrevem esse status: só `sincronizarDoProvedor`, depois de
    consultar a API do Mercado Pago. Status desconhecido não muda nada.
+8. **Resolver por CLI/API, nunca mandar o Kirk clicar em painel.** Está escrito
+   em `eu/preferencias.md` do vault dele e foi ignorado uma vez, custando uma
+   tarde. Antes de pedir qualquer coisa: "eu consigo fazer isso por script?"
+   Só sobra para ele o que exige a conta dele, o cartão dele, uma aprovação de
+   deploy, ou presença física.
+9. **O cliente nunca configura infraestrutura.** Instância, credencial, grupo e
+   o liga/desliga do canal são do sistema. Se um campo desses aparecer num
+   formulário de cliente, está errado. `whatsappConfigSchema` é `strict` e
+   `whatsappConfigService` tem lista de campos protegidos — as duas barreiras
+   existem porque um "Salvar" apagou o canal de um cliente em produção.
+10. **Nada de `.default()` em schema de update.** O zod preenche o campo mesmo
+    quando o corpo não o menciona, e o valor inventado sobrescreve o real.
 
 ## Armadilhas já pagas (não repetir)
 
@@ -93,6 +110,16 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   `impostos`. Use `contemPalavra()` do parser, não `includes`.
 - **`parseFloat('10x')` devolve 10.** Por isso `parseBrazilianAmount` recusa
   número com letra colada.
+- **A mensagem tem que COMEÇAR dizendo se é gasto ou recebimento.**
+  `detectType(words[0])` decide o tipo pela primeira palavra; `mercado 84,90`
+  não casa com regra nenhuma e cai na IA, que erra. Toda instrução ao cliente
+  precisa ensinar isso — havia sete textos ensinando o caminho errado.
+- **Baileys recusa pareamento em sessão que já emitiu QR.** A instância tem que
+  nascer com `qrcode: false` para o código de 8 dígitos valer.
+- **O painel do Mercado Pago confere a URL do webhook com GET** antes de salvar.
+- **`POST /preapproval` responde 500 com `payer_email` em `@testuser.com`.**
+- **Celular sem o 9 vira destino inexistente e o gasto fica sem dono.** Validar
+  com `src/utils/telefoneBR.js` — DDD da lista, 9 obrigatório, 11 dígitos.
 
 ## Modelo de dados
 
@@ -108,16 +135,32 @@ users/{uid}.householdId             atalho da família ativa (NÃO é autorizaç
 transactions, whatsappLogs          têm householdId, sempre escopadas
 categories, paymentMethods          mistas: isDefault=true são globais
 whatsappConfigs/{householdId}       config do canal, uma por família
+  .modo                             individual | grupo (escolhido antes do QR)
+  .metodoConexao                    qr | codigo (muda como a instância nasce)
+  .instanceName                     fam-<householdId>, criada pelo sistema
+  .ownerJid                         número que leu o QR; trava a auto-conversa
+  .groupId / .groupInviteUrl        grupo criado automaticamente
 deletionAudit                       prova de exclusão, sem dado pessoal dentro
 ```
 
+Membro que só usa o WhatsApp tem id `wa-<telefone>` e **não precisa de login**:
+o telefone é a chave de atribuição. Login só serve para abrir o painel.
+
 ## Estado (06/08/2026)
 
-Fases 0 a 3 e 4.1 concluídas e verificadas em produção. **Fase 5 (cobrança,
-LGPD e painel de operação) está pronta em código e ainda não foi deployada** —
-depende de configurar a conta do Mercado Pago. A lista exata do que falta
-configurar, e o detalhe das decisões, está em **`ESTADO.md`**.
+Fases 0 a 5.1 no ar e verificadas em produção. O produto já faz o ciclo
+completo: **cadastro → conexão do WhatsApp → grupo criado sozinho → duas
+pessoas lançando, cada gasto no nome de quem gastou**. Esse teste passou.
 
-Próximo passo em aberto: colocar a Fase 5 no ar (secrets + webhook do Mercado
-Pago + teste ponta a ponta com credencial de teste), ou fechar a Fase 4
-(orçamento, contas recorrentes, fatura de cartão). O Kirk decide.
+Cobrança está no ar com credencial de **teste**. Para vender de verdade faltam
+três passos, listados em `ESTADO.md`.
+
+Próximo passo em aberto, o Kirk decide:
+1. Ampliar o parser (`Pagamento cartão 1830` e `Lanche 38,00 crédito` falham)
+2. Convite de membro com login próprio (hoje um segundo login vira outra família)
+3. Fechar a Fase 4 (orçamento, contas recorrentes, fatura de cartão)
+4. Virar o Mercado Pago para produção
+5. Tutorial de primeiro uso e landing page
+
+O detalhe de tudo — o que foi verificado, o que não foi, e as armadilhas que já
+custaram horas — está em **`ESTADO.md`**.
