@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { criarServicoDeInstancia } from './instanciaService.js';
+import { criarServicoDeInstancia, normalizarTelefone } from './instanciaService.js';
 
 /**
  * Firestore, Evolution e householdService dublados por injeção.
@@ -150,11 +150,34 @@ describe('criar grupo', () => {
       .rejects.toMatchObject({ statusCode: 409, codigo: 'NAO_CONECTADO' });
   });
 
+  it('exige pelo menos um participante — o WhatsApp não cria grupo de um', async () => {
+    docs['fam-1'] = { instanceName: 'fam-fam-1' };
+
+    await expect(servicoCom(providerFalso()).criarGrupoDaFamilia('fam-1', CONFIG, { telefones: [] }))
+      .rejects.toMatchObject({ statusCode: 400, codigo: 'SEM_PARTICIPANTE' });
+
+    // Telefone curto demais não conta como participante.
+    await expect(servicoCom(providerFalso()).criarGrupoDaFamilia('fam-1', CONFIG, { telefones: ['123'] }))
+      .rejects.toMatchObject({ codigo: 'SEM_PARTICIPANTE' });
+  });
+
+  it('manda os participantes normalizados para a Evolution', async () => {
+    docs['fam-1'] = { instanceName: 'fam-fam-1' };
+    const p = providerFalso();
+
+    await servicoCom(p).criarGrupoDaFamilia('fam-1', CONFIG, { telefones: ['(64) 99955-5364'] });
+
+    const [, args] = p.chamadas.find(([m]) => m === 'criarGrupo');
+    expect(args.participantes).toEqual(['5564999555364']);
+  });
+
   it('cria com o nome da família e guarda o link de convite', async () => {
     docs['fam-1'] = { instanceName: 'fam-fam-1' };
     const p = providerFalso();
 
-    const r = await servicoCom(p).criarGrupoDaFamilia('fam-1', CONFIG, { nomeDaFamilia: 'Família Petri' });
+    const r = await servicoCom(p).criarGrupoDaFamilia('fam-1', CONFIG, {
+      nomeDaFamilia: 'Família Petri', telefones: ['64999555364'],
+    });
 
     expect(r).toMatchObject({ groupId: '12036@g.us', jaExistia: false });
     expect(r.linkConvite).toBe('https://chat.whatsapp.com/ABC');
@@ -173,6 +196,26 @@ describe('criar grupo', () => {
 
     expect(r).toMatchObject({ groupId: 'ja-existe@g.us', jaExistia: true });
     expect(p.chamadas.some(([m]) => m === 'criarGrupo')).toBe(false);
+  });
+});
+
+describe('normalizarTelefone', () => {
+  it('põe o DDI 55 em número brasileiro sem ele', () => {
+    expect(normalizarTelefone('64999555364')).toBe('5564999555364');
+    expect(normalizarTelefone('(64) 99955-5364')).toBe('5564999555364');
+    expect(normalizarTelefone('6433211234')).toBe('556433211234');
+  });
+
+  it('não duplica o DDI de quem já mandou completo', () => {
+    expect(normalizarTelefone('5564999555364')).toBe('5564999555364');
+    expect(normalizarTelefone('+55 64 99955-5364')).toBe('5564999555364');
+  });
+
+  it('recusa o que não é telefone', () => {
+    expect(normalizarTelefone('')).toBeNull();
+    expect(normalizarTelefone('123')).toBeNull();
+    expect(normalizarTelefone(null)).toBeNull();
+    expect(normalizarTelefone('abc')).toBeNull();
   });
 });
 

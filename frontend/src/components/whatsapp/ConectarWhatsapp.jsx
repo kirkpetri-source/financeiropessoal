@@ -56,6 +56,7 @@ export default function ConectarWhatsapp({ podeGerir }) {
   const [conectando, setConectando] = useState(false);
   const [criandoGrupo, setCriandoGrupo] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
+  const [telefone, setTelefone] = useState('');
   const consultaRef = useRef(null);
 
   const buscarStatus = useCallback(async () => {
@@ -110,10 +111,17 @@ export default function ConectarWhatsapp({ podeGerir }) {
   }
 
   async function criarGrupo() {
+    const digitos = telefone.replace(/\D/g, '');
+    if (digitos.length < 10) {
+      toast.error('Informe o WhatsApp com DDD. Ex.: (64) 99955-5364');
+      return;
+    }
+
     setCriandoGrupo(true);
     try {
-      const { data } = await api.post('/whatsapp/grupo');
+      const { data } = await api.post('/whatsapp/grupo', { telefones: [digitos] });
       toast.success(data.jaExistia ? 'O grupo já existia.' : 'Grupo criado!');
+      setTelefone('');
       buscarStatus();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Não foi possível criar o grupo.');
@@ -230,6 +238,20 @@ export default function ConectarWhatsapp({ podeGerir }) {
         <p className="text-sm text-gray-600 mb-3">
           Criamos um grupo no seu WhatsApp. É nele que a família vai mandar os gastos.
         </p>
+
+        <label className="label">WhatsApp de quem vai participar</label>
+        <input
+          className="input mb-1"
+          placeholder="(64) 99955-5364"
+          value={telefone}
+          onChange={(e) => setTelefone(e.target.value)}
+          inputMode="tel"
+        />
+        <p className="text-xs text-gray-400 mb-3">
+          O WhatsApp não cria grupo com uma pessoa só. Comece por quem divide as
+          contas com você — depois dá para chamar mais gente pelo link.
+        </p>
+
         <button
           type="button"
           onClick={criarGrupo}

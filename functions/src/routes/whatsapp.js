@@ -55,13 +55,20 @@ router.post('/conectar', exigir('gerirCanal'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/** Passo 2 — cria o grupo da família e devolve o link de convite. */
+/**
+ * Passo 2 — cria o grupo da família e devolve o link de convite.
+ * Exige pelo menos um telefone: o WhatsApp não cria grupo de uma pessoa só.
+ */
 router.post('/grupo', exigir('gerirCanal'), async (req, res, next) => {
   try {
+    const telefones = Array.isArray(req.body?.telefones)
+      ? req.body.telefones
+      : [req.body?.telefone].filter(Boolean);
+
     const resultado = await servicoDeInstancia().criarGrupoDaFamilia(
       req.householdId,
       configDoServidor(),
-      { nomeDaFamilia: req.household?.name },
+      { nomeDaFamilia: req.household?.name, telefones },
     );
     res.status(201).json(resultado);
   } catch (err) { next(err); }

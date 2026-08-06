@@ -19,6 +19,20 @@ const { MAX_MEMBROS, nomeDaInstancia } = require('../config/evolutionServidor');
 
 const COLECAO = 'whatsappConfigs';
 
+/**
+ * Telefone no formato que o WhatsApp entende: só dígitos, com DDI.
+ *
+ * O cliente digita "(64) 99955-5364" ou "64999555364". Sem o 55 na frente o
+ * WhatsApp não encontra o contato e o grupo nasce sem a pessoa — falha que
+ * aparece só lá na frente, quando ninguém consegue lançar.
+ */
+function normalizarTelefone(entrada) {
+  const digitos = String(entrada || '').replace(/\D/g, '');
+  if (digitos.length < 10) return null;
+  // 10 ou 11 dígitos = número brasileiro sem DDI (DDD + número).
+  return digitos.length <= 11 ? `55${digitos}` : digitos;
+}
+
 function criarServicoDeInstancia({ db, admin, provider, householdService, webhookUrl }) {
   function ref(householdId) {
     return db.collection(COLECAO).doc(householdId);
@@ -112,7 +126,7 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
    * Só depois de conectado: criar grupo com a instância desconectada falha na
    * Evolution com erro obscuro, e o cliente ficaria olhando "erro interno".
    */
-  async function criarGrupoDaFamilia(householdId, config, { nomeDaFamilia }) {
+  async function criarGrupoDaFamilia(householdId, config, { nomeDaFamilia, telefones = [] }) {
     const doc = await docDaFamilia(householdId);
 
     if (!doc.instanceName) {
@@ -132,11 +146,25 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
       );
     }
 
+    // O WhatsApp não cria grupo de uma pessoa só, e a Evolution devolve
+    // "participants does not meet minimum length of 1". Em vez de repassar esse
+    // erro, exigimos aqui o telefone de quem vai participar — que é o passo
+    // natural: o produto existe para DUAS pessoas ou mais lançarem juntas.
+    const participantes = telefones.map(normalizarTelefone).filter(Boolean);
+
+    if (!participantes.length) {
+      throw Object.assign(
+        new Error('Informe o WhatsApp de pelo menos uma pessoa da família para criar o grupo.'),
+        { statusCode: 400, codigo: 'SEM_PARTICIPANTE' },
+      );
+    }
+
     const configComInstancia = { ...config, instanceName: doc.instanceName };
 
     const { groupId } = await provider.criarGrupo(configComInstancia, {
       nome: `Financeiro — ${nomeDaFamilia || 'Nossa Família'}`,
       descricao: 'Mande seus gastos aqui. Ex.: "mercado 84,90 pix". Digite "ajuda" para ver os comandos.',
+      participantes,
     });
 
     const convite = await provider.linkDeConvite(configComInstancia, groupId);
@@ -246,4 +274,4 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
   };
 }
 
-module.exports = { criarServicoDeInstancia };
+module.exports = { criarServicoDeInstancia, normalizarTelefone };
