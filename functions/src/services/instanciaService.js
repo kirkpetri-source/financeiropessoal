@@ -127,17 +127,9 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
       updatedAt: agora(),
     }, { merge: true });
 
-    // Instância recém-criada já devolveu QR e código juntos. Reaproveitar evita
-    // uma segunda chamada que geraria um QR diferente do código de pareamento.
-    if (criacao.criada && (criacao.qrcode || criacao.pairingCode)) {
-      return {
-        conectada: false,
-        instanceName,
-        qrcode: criacao.qrcode,
-        pairingCode: criacao.pairingCode,
-        temPareamento: !!criacao.pairingCode,
-        jaExistia: false,
-      };
+    // A criação já devolve o QR; aproveitar evita uma segunda chamada.
+    if (criacao.criada && criacao.qrcode) {
+      return { conectada: false, instanceName, qrcode: criacao.qrcode, jaExistia: false };
     }
 
     const qr = await provider.obterQrCode({ ...config, instanceName }, instanceName, numero);
@@ -151,8 +143,6 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
       conectada: false,
       instanceName,
       qrcode: qr.qrcode,
-      pairingCode: qr.pairingCode,
-      temPareamento: !!qr.pairingCode,
       jaExistia: criacao.jaExistia,
     };
   }

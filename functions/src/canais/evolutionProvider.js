@@ -113,10 +113,12 @@ async function criarInstancia(config, { instanceName, webhookUrl, numero = null 
       instanceName,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
-      // Com o número aqui, a Evolution devolve TAMBÉM um código de pareamento
-      // de 8 caracteres. É o que salva quem se cadastra pelo celular e não tem
-      // como ler um QR exibido na própria tela. Verificado na v2.3.7: sem este
-      // campo na criação, nem o /instance/connect?number= devolve o código.
+      // O número identifica a instância no painel da Evolution.
+      //
+      // Ele TAMBÉM faz a Evolution devolver um código de pareamento de 8
+      // caracteres — que não usamos: o pareamento está quebrado no Baileys e o
+      // WhatsApp responde "código inválido" (issues 2033, 2215 e 1471 do
+      // projeto). Quem depende dele fica sem conectar. A conexão é só por QR.
       ...(digitos ? { number: digitos } : {}),
       // Só MESSAGES_UPSERT: é o que o webhook trata. Assinar todos os eventos
       // multiplicaria por dez o tráfego para o Cloud Functions sem uso nenhum.

@@ -230,28 +230,27 @@ describe('conectar', () => {
     expect(docs['fam-1'].enabled).toBe(true);
   });
 
-  it('manda o número do dono na criação — é o que gera o código de pareamento', async () => {
+  it('manda o número do dono na criação da instância', async () => {
     comModo('grupo');
     membros[0].phone = '5564999555364';
     const p = providerFalso();
 
-    const r = await servicoCom(p).conectar('fam-1', CONFIG);
+    await servicoCom(p).conectar('fam-1', CONFIG);
 
     const [, args] = p.chamadas.find(([m]) => m === 'criarInstancia');
     expect(args.numero).toBe('5564999555364');
-    expect(r.pairingCode).toBe('4JSR5FGE');
-    expect(r.temPareamento).toBe(true);
   });
 
-  it('dono sem telefone: conecta só com QR, sem prometer pareamento', async () => {
+  it('a conexão é sempre por QR — pareamento não é oferecido', async () => {
     comModo('grupo');
-    const p = providerFalso();
+    membros[0].phone = '5564999555364';
 
-    const r = await servicoCom(p).conectar('fam-1', CONFIG);
+    const r = await servicoCom(providerFalso()).conectar('fam-1', CONFIG);
 
     expect(r.qrcode).toBeTruthy();
-    expect(r.pairingCode).toBeNull();
-    expect(r.temPareamento).toBe(false);
+    // O Baileys devolve pairingCode, mas ele não funciona (issues 2033/2215/1471
+    // da Evolution). Não pode vazar para a resposta e virar caminho oferecido.
+    expect(r.pairingCode).toBeUndefined();
   });
 });
 
