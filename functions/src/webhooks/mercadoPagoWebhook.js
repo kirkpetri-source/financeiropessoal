@@ -38,6 +38,21 @@ async function handleMercadoPagoWebhook(req, res) {
   const tipo = extrairTipo(req);
   const id = extrairId(req);
 
+  // Sonda de conectividade do painel do Mercado Pago.
+  //
+  // Ao salvar a configuração do webhook, o painel bate na URL para conferir que
+  // ela existe. Essa chamada vem sem assinatura e sem id — e, recebendo 401,
+  // o painel recusa salvar com "não foi possível salvar seus ajustes".
+  //
+  // Responder 200 aqui não abre brecha: sem id não há o que processar, e este
+  // caminho não executa nenhuma regra de negócio. Qualquer requisição que
+  // carregue um id — ou seja, que peça alguma ação — continua exigindo
+  // assinatura válida logo abaixo.
+  if (!id && !req.headers['x-signature']) {
+    console.log('[MP Webhook] Sonda de verificação respondida (sem id e sem assinatura).');
+    return res.status(200).json({ recebido: true, verificacao: true });
+  }
+
   const conferencia = assinaturaDoWebhookConfere({
     assinatura: req.headers['x-signature'],
     requestId: req.headers['x-request-id'],
