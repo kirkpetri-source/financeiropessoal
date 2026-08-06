@@ -103,7 +103,7 @@ async function chamarBruto(url, apiKey, corpo, metodo = 'POST') {
  * isso vira sucesso com `jaExistia`. O cliente pode clicar duas vezes em
  * "conectar" sem quebrar nada.
  */
-async function criarInstancia(config, { instanceName, webhookUrl, numero = null }) {
+async function criarInstancia(config, { instanceName, webhookUrl, numero = null, comQrCode = true }) {
   const digitos = numero ? String(numero).replace(/\D/g, '') : null;
 
   const { ok, status, dados } = await chamarBruto(
@@ -112,7 +112,17 @@ async function criarInstancia(config, { instanceName, webhookUrl, numero = null 
     {
       instanceName,
       integration: 'WHATSAPP-BAILEYS',
-      qrcode: true,
+      // Aqui está o que faz o código de pareamento funcionar.
+      //
+      // No Baileys, uma sessão que já emitiu QR não aceita pareamento: o
+      // WhatsApp responde "código inválido" mesmo com o código correto.
+      // Comprovado contra o servidor: criando com qrcode:true o código sai
+      // junto do QR e é recusado; criando com qrcode:false e pedindo o código
+      // depois, a sessão nasce só para pareamento.
+      //
+      // Por isso o método é escolhido ANTES de criar a instância, e trocar de
+      // método recria a instância do zero.
+      qrcode: comQrCode,
       // O número identifica a instância no painel da Evolution.
       //
       // Ele TAMBÉM faz a Evolution devolver um código de pareamento de 8

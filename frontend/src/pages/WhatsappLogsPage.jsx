@@ -114,7 +114,7 @@ export default function WhatsappLogsPage() {
           <EmptyState
             icon={MessageSquare}
             title="Nenhuma mensagem recebida"
-            description={`Envie no grupo: gasto mercado 84,90 pix`}
+            description="Comece dizendo se gastou ou recebeu. Ex.: gastei 84,90 no mercado"
           />
         ) : (
           <div className="divide-y divide-gray-50">

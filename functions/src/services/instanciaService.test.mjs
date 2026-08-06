@@ -241,16 +241,70 @@ describe('conectar', () => {
     expect(args.numero).toBe('5564999555364');
   });
 
-  it('a conexão é sempre por QR — pareamento não é oferecido', async () => {
+  it('QR é o padrão e a instância nasce com qrcode ligado', async () => {
     comModo('grupo');
     membros[0].phone = '5564999555364';
+    const p = providerFalso();
 
-    const r = await servicoCom(providerFalso()).conectar('fam-1', CONFIG);
+    const r = await servicoCom(p).conectar('fam-1', CONFIG);
 
+    const [, args] = p.chamadas.find(([m]) => m === 'criarInstancia');
+    expect(args.comQrCode).toBe(true);
     expect(r.qrcode).toBeTruthy();
-    // O Baileys devolve pairingCode, mas ele não funciona (issues 2033/2215/1471
-    // da Evolution). Não pode vazar para a resposta e virar caminho oferecido.
-    expect(r.pairingCode).toBeUndefined();
+    expect(r.pairingCode).toBeNull();
+  });
+});
+
+describe('conexão por código de pareamento', () => {
+  it('cria a instância SEM qr — sessão que emitiu QR recusa pareamento', async () => {
+    comModo('grupo');
+    membros[0].phone = '5564999555364';
+    const p = providerFalso({
+      criarInstancia: async (_c, args) => {
+        p.chamadas.push(['criarInstancia', args]);
+        return { criada: true, jaExistia: false, qrcode: null, pairingCode: null };
+      },
+      obterQrCode: async () => ({ conectada: false, qrcode: null, pairingCode: 'WX9SGV3G' }),
+    });
+
+    const r = await servicoCom(p).conectar('fam-1', CONFIG, { metodo: 'codigo' });
+
+    const [, args] = p.chamadas.find(([m]) => m === 'criarInstancia');
+    expect(args.comQrCode).toBe(false);
+    expect(args.numero).toBe('5564999555364');
+    expect(r.pairingCode).toBe('WX9SGV3G');
+    expect(r.qrcode).toBeNull();
+  });
+
+  it('exige o telefone do dono — é a ele que o código se associa', async () => {
+    comModo('grupo');
+
+    await expect(servicoCom(providerFalso()).conectar('fam-1', CONFIG, { metodo: 'codigo' }))
+      .rejects.toMatchObject({ statusCode: 409, codigo: 'SEM_TELEFONE_DO_DONO' });
+  });
+
+  it('trocar de método apaga a instância antiga', async () => {
+    comModo('grupo', { instanceName: 'fam-fam-1', metodoConexao: 'qr' });
+    membros[0].phone = '5564999555364';
+    const p = providerFalso({
+      obterQrCode: async () => ({ conectada: false, qrcode: null, pairingCode: 'ABC12345' }),
+    });
+
+    await servicoCom(p).conectar('fam-1', CONFIG, { metodo: 'codigo' });
+
+    // Sem apagar, a sessão antiga (que já emitiu QR) invalidaria o código.
+    expect(p.chamadas.some(([m]) => m === 'apagarInstancia')).toBe(true);
+    expect(docs['fam-1'].metodoConexao).toBe('codigo');
+  });
+
+  it('mesmo método não recria a instância', async () => {
+    comModo('grupo', { instanceName: 'fam-fam-1', metodoConexao: 'qr' });
+    membros[0].phone = '5564999555364';
+    const p = providerFalso();
+
+    await servicoCom(p).conectar('fam-1', CONFIG, { metodo: 'qr' });
+
+    expect(p.chamadas.some(([m]) => m === 'apagarInstancia')).toBe(false);
   });
 });
 

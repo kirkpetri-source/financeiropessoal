@@ -24,13 +24,19 @@ function normalizar(texto) {
 
 const AJUDA = [
   '*Como lançar*',
-  'Escreva naturalmente no grupo:',
-  '• mercado 84,90 pix',
-  '• paguei 50 de gasolina',
-  '• recebi 250 de serviço',
+  'Comece dizendo se *gastou* ou *recebeu*:',
   '',
-  'Para dizer quem pagou, cite o nome:',
-  '• mercado 84,90 pix raquel',
+  '_Gastos_',
+  '• gastei 84,90 no mercado',
+  '• paguei 50 de gasolina no pix',
+  '• comprei 1200 de geladeira em 10x',
+  '',
+  '_Recebimentos_',
+  '• recebi 2500 de salário',
+  '• ganhei 250 de um serviço',
+  '',
+  'Para dizer quem pagou, cite o nome no fim:',
+  '• gastei 84,90 no mercado raquel',
   '',
   '*Comandos*',
   '• *resumo* — totais do mês',
@@ -151,7 +157,11 @@ async function comandoVincular(codigo, remoteJid) {
   }, { merge: true });
 
   const familia = snap.docs[0].data();
-  return `✅ Grupo vinculado a *${familia.name}*!\n\nJá pode lançar: "mercado 84,90 pix".\nDigite *ajuda* para ver os comandos.`;
+  return `✅ Grupo vinculado a *${familia.name}*!\n\n`
+    + 'Comece dizendo se gastou ou recebeu:\n'
+    + '• gastei 84,90 no mercado\n'
+    + '• recebi 2500 de salário\n\n'
+    + 'Digite *ajuda* para ver os comandos.';
 }
 
 /**

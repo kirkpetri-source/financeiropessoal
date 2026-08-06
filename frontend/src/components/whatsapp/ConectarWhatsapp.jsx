@@ -82,7 +82,10 @@ function pareceCelular() {
 export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembro }) {
   const [status, setStatus] = useState(null);
   const [qrcode, setQrcode] = useState(null);
+  const [pairingCode, setPairingCode] = useState(null);
   const noCelular = pareceCelular();
+  // Quem está no celular não tem como ler o QR da própria tela; começa no código.
+  const [metodo, setMetodo] = useState(() => (pareceCelular() ? 'codigo' : 'qr'));
   const [carregando, setCarregando] = useState(true);
   const [conectando, setConectando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
@@ -92,7 +95,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
     try {
       const { data } = await api.get('/whatsapp/status');
       setStatus(data);
-      if (data.conectada) setQrcode(null);
+      if (data.conectada) { setQrcode(null); setPairingCode(null); }
       return data;
     } catch (err) {
       if (err.response?.status !== 503) toast.error('Não foi possível verificar a conexão.');
@@ -105,7 +108,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
   useEffect(() => { buscarStatus(); }, [buscarStatus]);
 
   useEffect(() => {
-    if (!qrcode) {
+    if (!qrcode && !pairingCode) {
       clearInterval(consultaRef.current);
       return undefined;
     }
@@ -118,7 +121,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
     }, INTERVALO_DE_CONSULTA);
 
     return () => clearInterval(consultaRef.current);
-  }, [qrcode, buscarStatus]);
+  }, [qrcode, pairingCode, buscarStatus]);
 
   async function escolherModo(modo) {
     try {
@@ -129,21 +132,32 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
     }
   }
 
-  async function conectar() {
+  async function conectar(metodoEscolhido = metodo) {
     setConectando(true);
+    setQrcode(null);
+    setPairingCode(null);
     try {
-      const { data } = await api.post('/whatsapp/conectar');
+      const { data } = await api.post('/whatsapp/conectar', { metodo: metodoEscolhido });
       if (data.conectada) {
         toast.success('WhatsApp já está conectado.');
         buscarStatus();
+      } else if (metodoEscolhido === 'codigo') {
+        if (!data.pairingCode) throw new Error('O servidor não devolveu o código. Tente pelo QR Code.');
+        setPairingCode(data.pairingCode);
       } else {
         setQrcode(data.qrcode);
       }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Não foi possível gerar o QR Code.');
+      toast.error(err.response?.data?.error || err.message || 'Não foi possível gerar o código.');
     } finally {
       setConectando(false);
     }
+  }
+
+  function trocarMetodo(novo) {
+    setMetodo(novo);
+    setQrcode(null);
+    setPairingCode(null);
   }
 
   async function sincronizarMembros() {
@@ -235,11 +249,14 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
           <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-medium">Tudo pronto.</p>
-            <p className="text-xs mt-0.5">
+            <p className="text-xs mt-1">
               {emGrupo
-                ? 'Mande no grupo: '
-                : 'Abra a conversa com você mesmo no WhatsApp e mande: '}
-              <code className="bg-white px-1.5 py-0.5 rounded">mercado 84,90 pix</code>
+                ? 'No grupo, comece dizendo se gastou ou recebeu:'
+                : 'Na conversa com você mesmo no WhatsApp, comece dizendo se gastou ou recebeu:'}
+            </p>
+            <p className="text-xs mt-1 space-x-1">
+              <code className="bg-white px-1.5 py-0.5 rounded">gastei 84,90 no mercado</code>
+              <code className="bg-white px-1.5 py-0.5 rounded">recebi 2500 de salário</code>
             </p>
           </div>
         </div>
@@ -281,63 +298,101 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
         Icone={Smartphone}
         estado={estadoDoPasso(emGrupo ? 2 : 1)}
       >
-        {!qrcode ? (
+        {/* O método é escolhido ANTES de gerar. O Baileys não aceita pareamento
+            numa sessão que já emitiu QR, então trocar aqui recria a instância. */}
+        {!qrcode && !pairingCode && (
+          <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-3">
+            {[
+              { id: 'codigo', rotulo: 'Estou neste celular' },
+              { id: 'qr', rotulo: 'Tenho outro aparelho' },
+            ].map(({ id, rotulo }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => trocarMetodo(id)}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                  metodo === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                }`}
+              >
+                {rotulo}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!qrcode && !pairingCode ? (
           <>
             <p className="text-sm text-gray-600 mb-3">
-              Você vai ler um QR Code com o WhatsApp. É o mesmo processo do WhatsApp Web.
+              {metodo === 'codigo'
+                ? 'Você vai digitar um código de 8 letras dentro do WhatsApp deste mesmo celular. Não precisa de outro aparelho.'
+                : 'Você vai ler um QR Code com a câmera do WhatsApp, de outro aparelho. É o mesmo processo do WhatsApp Web.'}
               {emGrupo && ' Assim que conectar, o grupo é criado sozinho.'}
             </p>
 
-            {noCelular && (
-              <div className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-3">
-                <p className="font-medium">Você está no celular.</p>
-                <p className="text-xs mt-1 leading-relaxed">
-                  O WhatsApp lê o QR Code pela câmera, então não dá para ler um código
-                  que aparece na tela do mesmo aparelho. Você vai precisar de um
-                  segundo aparelho — o computador, um tablet, ou o celular de outra
-                  pessoa da família.
-                </p>
-              </div>
-            )}
-
             <button
               type="button"
-              onClick={conectar}
+              onClick={() => conectar()}
               disabled={conectando || !podeConectar}
               className="btn-primary text-sm flex items-center gap-2"
             >
               {conectando
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Gerando código...</>
-                : <><QrCode className="w-4 h-4" /> Gerar QR Code</>}
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Gerando...</>
+                : <><QrCode className="w-4 h-4" /> {metodo === 'codigo' ? 'Gerar código' : 'Gerar QR Code'}</>}
             </button>
           </>
         ) : (
           <div className="space-y-3">
-            <div className="bg-white border border-gray-200 rounded-xl p-3 inline-block">
-              <img src={qrcode} alt="QR Code para conectar o WhatsApp" className="w-56 h-56 max-w-full" />
-            </div>
-
-            <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-              <li>Abra o WhatsApp {noCelular && <strong>em outro aparelho</strong>}</li>
-              <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
-              <li>Toque em <strong>Conectar dispositivo</strong> e aponte a câmera para o código</li>
-            </ol>
-
-            {noCelular && (
-              <button
-                type="button"
-                onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copiado! Abra no computador.'); }}
-                className="btn-secondary text-sm flex items-center gap-1.5"
-              >
-                <Copy className="w-4 h-4" /> Copiar link para abrir no computador
-              </button>
+            {pairingCode ? (
+              <>
+                <p className="text-sm text-gray-600">Digite este código no WhatsApp:</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="font-mono text-2xl tracking-[0.25em] font-bold text-gray-900 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 select-all">
+                    {pairingCode}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(pairingCode); toast.success('Código copiado!'); }}
+                    className="btn-secondary text-sm flex items-center gap-1.5"
+                  >
+                    <Copy className="w-4 h-4" /> Copiar
+                  </button>
+                </div>
+                <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                  <li>Abra o WhatsApp neste celular</li>
+                  <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
+                  <li>Toque em <strong>Conectar dispositivo</strong></li>
+                  <li>Toque em <strong>Conectar com número de telefone</strong></li>
+                  <li>Digite o código acima</li>
+                </ol>
+                <p className="text-xs text-gray-400">
+                  O código vale por poucos minutos. Se expirar, gere outro.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="bg-white border border-gray-200 rounded-xl p-3 inline-block">
+                  <img src={qrcode} alt="QR Code para conectar o WhatsApp" className="w-56 h-56 max-w-full" />
+                </div>
+                <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                  <li>Abra o WhatsApp {noCelular && <strong>em outro aparelho</strong>}</li>
+                  <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
+                  <li>Toque em <strong>Conectar dispositivo</strong> e aponte a câmera para o código</li>
+                </ol>
+              </>
             )}
 
             <div className="flex items-center gap-2 flex-wrap">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-              <span className="text-xs text-gray-400">Esperando a leitura...</span>
-              <button type="button" onClick={conectar} className="text-xs text-primary-600 underline ml-2">
-                Gerar outro código
+              <span className="text-xs text-gray-400">Esperando a confirmação...</span>
+              <button type="button" onClick={() => conectar()} className="text-xs text-primary-600 underline">
+                Gerar outro
+              </button>
+              <button
+                type="button"
+                onClick={() => trocarMetodo(metodo === 'codigo' ? 'qr' : 'codigo')}
+                className="text-xs text-gray-500 underline"
+              >
+                {metodo === 'codigo' ? 'Usar QR Code' : 'Usar código'}
               </button>
             </div>
           </div>

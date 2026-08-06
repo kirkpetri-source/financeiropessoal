@@ -233,8 +233,8 @@ export default function SettingsPage() {
           />
 
           <p className="text-xs text-gray-400 mt-2">
-            Também dá para indicar no fim da mensagem:{' '}
-            <code className="bg-gray-100 px-1 rounded">gasto mercado 84,90 pix raquel</code>
+            Para lançar no nome de outra pessoa, cite o nome no fim:{' '}
+            <code className="bg-gray-100 px-1 rounded">gastei 84,90 no mercado raquel</code>
           </p>
         </div>
       </Section>

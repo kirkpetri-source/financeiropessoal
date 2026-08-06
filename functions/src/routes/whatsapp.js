@@ -58,7 +58,10 @@ router.post('/modo', exigir('gerirCanal'), async (req, res, next) => {
 router.post('/conectar', exigir('gerirCanal'), async (req, res, next) => {
   try {
     const config = { ...configDoServidor(), ...(await getRawConfig(req.householdId) || {}) };
-    res.json(await servicoDeInstancia().conectar(req.householdId, config));
+    // 'codigo' para quem está no celular; 'qr' quando há um segundo aparelho.
+    const metodo = req.body?.metodo === 'codigo' ? 'codigo' : 'qr';
+
+    res.json(await servicoDeInstancia().conectar(req.householdId, config, { metodo }));
   } catch (err) { next(err); }
 });
 

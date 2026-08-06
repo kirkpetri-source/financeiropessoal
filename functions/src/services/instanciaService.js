@@ -32,6 +32,18 @@ const COLECAO = 'whatsappConfigs';
 const MODOS = { INDIVIDUAL: 'individual', GRUPO: 'grupo' };
 
 /**
+ * Como o cliente vai autenticar o WhatsApp.
+ *
+ *   qr      — lê o QR Code com a câmera. Precisa de um segundo aparelho.
+ *   codigo  — digita um código de 8 letras dentro do WhatsApp. Funciona com
+ *             um aparelho só, que é o caso de quem se cadastra pelo celular.
+ *
+ * A escolha acontece antes de criar a instância porque o Baileys não deixa
+ * uma sessão que já emitiu QR aceitar pareamento.
+ */
+const METODOS = { QR: 'qr', CODIGO: 'codigo' };
+
+/**
  * Telefone no formato que o WhatsApp entende: só dígitos, com DDI.
  *
  * O cliente digita "(64) 99955-5364" ou "64999555364". Sem o 55 na frente o
@@ -92,7 +104,7 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
     return { modo };
   }
 
-  async function conectar(householdId, config) {
+  async function conectar(householdId, config, { metodo = METODOS.QR } = {}) {
     const doc = await docDaFamilia(householdId);
 
     if (!doc.modo) {
@@ -117,40 +129,68 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
     }
 
     const instanceName = config.instanceName || nomeDaInstancia(householdId);
+    const porCodigo = metodo === METODOS.CODIGO;
 
-    // O número do dono habilita o código de pareamento — o único caminho para
-    // quem se cadastra pelo próprio celular e não tem como ler um QR exibido
-    // na mesma tela. Precisa ir na CRIAÇÃO: sem ele ali, nem o /connect
-    // devolve o código depois (verificado na Evolution v2.3.7).
+    // O número do dono é obrigatório para o pareamento — é para ele que o
+    // WhatsApp associa o código.
     const numero = await telefoneDoDono(householdId);
 
-    const criacao = await provider.criarInstancia(config, { instanceName, webhookUrl, numero });
+    if (porCodigo && !numero) {
+      throw Object.assign(
+        new Error('Cadastre seu WhatsApp antes de conectar por código.'),
+        { statusCode: 409, codigo: 'SEM_TELEFONE_DO_DONO' },
+      );
+    }
+
+    // Trocar de método exige instância nova: uma sessão que já emitiu QR não
+    // aceita pareamento, e vice-versa. Como ninguém conectou ainda, apagar não
+    // custa nada — e é a diferença entre o código funcionar ou dar "inválido".
+    if (doc.instanceName && doc.metodoConexao && doc.metodoConexao !== metodo) {
+      try {
+        await provider.apagarInstancia(config, doc.instanceName);
+      } catch (err) {
+        console.warn(`[Instância] Não apagou ${doc.instanceName} ao trocar de método: ${err.message}`);
+      }
+    }
+
+    const criacao = await provider.criarInstancia(config, {
+      instanceName, webhookUrl, numero, comQrCode: !porCodigo,
+    });
 
     await ref(householdId).set({
       householdId,
       instanceName,
+      metodoConexao: metodo,
       // enabled só vira true quando a conexão de fato abrir — senão o polling
       // sairia batendo numa instância que ninguém leu o QR.
       provisionadaEm: agora(),
       updatedAt: agora(),
     }, { merge: true });
 
-    // A criação já devolve o QR; aproveitar evita uma segunda chamada.
-    if (criacao.criada && criacao.qrcode) {
-      return { conectada: false, instanceName, qrcode: criacao.qrcode, jaExistia: false };
+    // Só no QR a criação já devolve o que a tela precisa. No pareamento o
+    // código vem da chamada seguinte, numa sessão que nunca emitiu QR.
+    if (!porCodigo && criacao.criada && criacao.qrcode) {
+      // pairingCode explícito em null: a tela decide o que mostrar por este
+      // campo, e `undefined` some no JSON, deixando o contrato ambíguo.
+      return {
+        conectada: false, instanceName, metodo, jaExistia: false,
+        qrcode: criacao.qrcode, pairingCode: null,
+      };
     }
 
-    const qr = await provider.obterQrCode({ ...config, instanceName }, instanceName, numero);
+    const resposta = await provider.obterQrCode({ ...config, instanceName }, instanceName, numero);
 
-    if (qr.conectada) {
+    if (resposta.conectada) {
       await aoConectar(householdId, { ...config, instanceName });
-      return { conectada: true, instanceName, jaExistia: criacao.jaExistia };
+      return { conectada: true, instanceName, metodo, jaExistia: criacao.jaExistia };
     }
 
     return {
       conectada: false,
       instanceName,
-      qrcode: qr.qrcode,
+      metodo,
+      qrcode: porCodigo ? null : resposta.qrcode,
+      pairingCode: porCodigo ? resposta.pairingCode : null,
       jaExistia: criacao.jaExistia,
     };
   }
@@ -323,7 +363,13 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
 
     const { groupId } = await provider.criarGrupo(configComInstancia, {
       nome: `Financeiro — ${nomeDaFamilia || 'Nossa Família'}`,
-      descricao: 'Mande seus gastos aqui. Ex.: "mercado 84,90 pix". Digite "ajuda" para ver os comandos.',
+      // A mensagem PRECISA começar dizendo se é gasto ou recebimento — é a
+      // primeira palavra que o parser usa para decidir o tipo. Instrução sem
+      // isso levava o cliente a mandar "mercado 84,90" e não acontecer nada.
+      descricao: 'Comece dizendo se gastou ou recebeu.\n\n'
+        + 'Ex.: gastei 84,90 no mercado\n'
+        + 'Ex.: recebi 2500 de salário\n\n'
+        + 'Digite "ajuda" para ver todos os comandos.',
       participantes,
     });
 
@@ -436,4 +482,4 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
   };
 }
 
-module.exports = { criarServicoDeInstancia, normalizarTelefone, MODOS };
+module.exports = { criarServicoDeInstancia, normalizarTelefone, MODOS, METODOS };

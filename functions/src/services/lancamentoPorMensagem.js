@@ -170,7 +170,13 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
   if (!interpretados.length) {
     return {
       transacoes: [],
-      erro: `Não foi possível interpretar: "${texto}". Ex.: "mercado 84,90 pix" ou "paguei 50 de gasolina".`,
+      // O erro precisa ensinar a regra, não só reclamar: começar dizendo se
+      // gastou ou recebeu é o que faz a mensagem ser entendida.
+      erro: `Não entendi "${texto}".\n\n`
+        + 'Comece dizendo se gastou ou recebeu:\n'
+        + '• gastei 84,90 no mercado\n'
+        + '• paguei 50 de gasolina no pix\n'
+        + '• recebi 2500 de salário',
     };
   }
 
