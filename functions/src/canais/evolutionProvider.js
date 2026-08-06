@@ -129,6 +129,20 @@ async function criarInstancia(config, { instanceName, webhookUrl }) {
     return { criada: false, jaExistia: true, bruto: dados };
   }
 
+  // 401 aqui quase sempre significa chave DE INSTÂNCIA no lugar da chave global
+  // do servidor. Só a global (AUTHENTICATION_API_KEY, do ambiente da VPS) pode
+  // criar instâncias; a de instância só opera a própria. O erro cru da Evolution
+  // é só "Unauthorized", que não ajuda ninguém a resolver.
+  if (status === 401) {
+    throw Object.assign(
+      new Error(
+        'O servidor de WhatsApp recusou a credencial. Verifique se EVOLUTION_API_KEY '
+        + 'é a chave GLOBAL do servidor (AUTHENTICATION_API_KEY), e não o token de uma instância.',
+      ),
+      { statusCode: 503, codigo: 'CREDENCIAL_DO_SERVIDOR_INVALIDA' },
+    );
+  }
+
   throw new Error(`Evolution ${status} ao criar instância: ${mensagem.slice(0, 200)}`);
 }
 
