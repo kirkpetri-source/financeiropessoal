@@ -362,10 +362,9 @@ describe('criar grupo', () => {
 });
 
 describe('normalizarTelefone', () => {
-  it('põe o DDI 55 em número brasileiro sem ele', () => {
+  it('põe o DDI 55 em celular brasileiro sem ele', () => {
     expect(normalizarTelefone('64999555364')).toBe('5564999555364');
     expect(normalizarTelefone('(64) 99955-5364')).toBe('5564999555364');
-    expect(normalizarTelefone('6433211234')).toBe('556433211234');
   });
 
   it('não duplica o DDI de quem já mandou completo', () => {
@@ -373,11 +372,24 @@ describe('normalizarTelefone', () => {
     expect(normalizarTelefone('+55 64 99955-5364')).toBe('5564999555364');
   });
 
+  it('recusa fixo e celular sem o 9 — não recebem WhatsApp', () => {
+    // Era o buraco: `6433211234` virava `556433211234` e o grupo nascia com um
+    // destino que não existe.
+    expect(normalizarTelefone('6433211234')).toBeNull();
+    expect(normalizarTelefone('6499715453')).toBeNull();
+  });
+
   it('recusa o que não é telefone', () => {
     expect(normalizarTelefone('')).toBeNull();
     expect(normalizarTelefone('123')).toBeNull();
     expect(normalizarTelefone(null)).toBeNull();
     expect(normalizarTelefone('abc')).toBeNull();
+  });
+
+  it('aceita número estrangeiro vindo do próprio WhatsApp', () => {
+    // Participante que a Evolution devolveu: o provedor não entregaria um
+    // destino inexistente, então não é papel nosso recusar.
+    expect(normalizarTelefone('351912345678')).toBe('351912345678');
   });
 });
 

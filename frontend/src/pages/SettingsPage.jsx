@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+  const [trocandoSenha, setTrocandoSenha] = useState(false);
   const [showCurrentPwd, setShowCurrentPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [nomeFamilia, setNomeFamilia] = useState('');
@@ -79,6 +80,7 @@ export default function SettingsPage() {
       await changePassword(data.currentPassword, data.newPassword);
       toast.success('Senha alterada com sucesso!');
       passwordForm.reset();
+      setTrocandoSenha(false);
     } catch (err) {
       toast.error(err.message || 'Erro ao alterar senha.');
     } finally {
@@ -120,8 +122,24 @@ export default function SettingsPage() {
         </form>
       </Section>
 
-      {/* Senha */}
-      <Section icon={Lock} title="Alterar Senha">
+      {/* Senha — fechada por padrão.
+          Trocar senha é ação rara; três campos permanentemente abertos empurram
+          para baixo o que a pessoa realmente veio fazer. */}
+      <Section icon={Lock} title="Senha">
+        {!trocandoSenha ? (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-gray-500">
+              Sua senha de acesso ao painel.
+            </p>
+            <button
+              type="button"
+              onClick={() => setTrocandoSenha(true)}
+              className="btn-secondary text-sm flex-shrink-0"
+            >
+              Trocar senha
+            </button>
+          </div>
+        ) : (
         <form onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)} className="space-y-3">
           <div>
             <label className="label">Senha Atual</label>
@@ -154,10 +172,20 @@ export default function SettingsPage() {
             <label className="label">Confirmar Nova Senha</label>
             <input type="password" className="input" {...passwordForm.register('confirmPassword', { required: true })} />
           </div>
-          <button type="submit" disabled={savingPassword} className="btn-primary flex items-center gap-2">
-            {savingPassword ? <><Loader2 className="w-4 h-4 animate-spin" /> Alterando...</> : <><CheckCircle2 className="w-4 h-4" /> Alterar Senha</>}
-          </button>
+          <div className="flex gap-2">
+            <button type="submit" disabled={savingPassword} className="btn-primary flex items-center gap-2">
+              {savingPassword ? <><Loader2 className="w-4 h-4 animate-spin" /> Alterando...</> : <><CheckCircle2 className="w-4 h-4" /> Alterar senha</>}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTrocandoSenha(false); passwordForm.reset(); }}
+              className="btn-secondary text-sm"
+            >
+              Cancelar
+            </button>
+          </div>
         </form>
+        )}
       </Section>
 
       {/* Família */}

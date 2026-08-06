@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Trash2, Pencil, Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { mascararTelefone, erroDoTelefone, paraApi, formatarParaLeitura } from '../../utils/telefone';
 
 /**
  * Cadastro de quem vai lançar gastos.
@@ -23,17 +24,22 @@ export default function ParticipantesDaFamilia({
 
   const cheio = membros.length >= maxMembros;
 
+  const erroNovo = novo.telefone ? erroDoTelefone(novo.telefone) : null;
+
   async function adicionar() {
-    const digitos = novo.telefone.replace(/\D/g, '');
     if (!novo.nome.trim()) return toast.error('Informe o nome.');
-    if (digitos.length < 10) return toast.error('Informe o WhatsApp com DDD.');
+
+    const erro = erroDoTelefone(novo.telefone);
+    if (erro) return toast.error(erro);
+
+    const e164 = paraApi(novo.telefone);
 
     setSalvando(true);
     try {
       await onAdicionar({
-        userId: `wa-${digitos.length <= 11 ? `55${digitos}` : digitos}`,
+        userId: `wa-${e164}`,
         nome: novo.nome.trim(),
-        telefone: digitos,
+        telefone: e164,
         papel: 'member',
       });
       setNovo({ nome: '', telefone: '' });
@@ -45,11 +51,15 @@ export default function ParticipantesDaFamilia({
   }
 
   async function salvarEdicao(id) {
-    const digitos = rascunho.telefone.replace(/\D/g, '');
-    if (digitos && digitos.length < 10) return toast.error('Telefone incompleto.');
+    // Telefone é opcional na edição — mas se veio algo, tem que estar certo.
+    const erro = erroDoTelefone(rascunho.telefone, { obrigatorio: false });
+    if (erro) return toast.error(erro);
 
     try {
-      await onAtualizar(id, { nome: rascunho.nome.trim(), telefone: digitos || null });
+      await onAtualizar(id, {
+        nome: rascunho.nome.trim(),
+        telefone: paraApi(rascunho.telefone) || null,
+      });
       setEditando(null);
       toast.success('Atualizado.');
     } catch (err) {
@@ -72,9 +82,9 @@ export default function ParticipantesDaFamilia({
               <input
                 className="input flex-1 text-sm"
                 value={rascunho.telefone}
-                onChange={(e) => setRascunho((r) => ({ ...r, telefone: e.target.value }))}
+                onChange={(e) => setRascunho((r) => ({ ...r, telefone: mascararTelefone(e.target.value) }))}
                 placeholder="(64) 99955-5364"
-                inputMode="tel"
+                inputMode="numeric"
               />
               <button type="button" onClick={() => salvarEdicao(m.id)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg">
                 <Check className="w-4 h-4" />
@@ -96,7 +106,7 @@ export default function ParticipantesDaFamilia({
                   {m.role === 'owner' && <span className="ml-2 text-xs font-normal text-primary-600">você</span>}
                 </p>
                 <p className={`text-xs truncate ${m.phone ? 'text-gray-400' : 'text-amber-600'}`}>
-                  {m.phone || 'sem telefone — os gastos não serão identificados'}
+                  {m.phone ? formatarParaLeitura(m.phone) : 'sem telefone — os gastos não serão identificados'}
                 </p>
               </div>
               <button
@@ -127,28 +137,31 @@ export default function ParticipantesDaFamilia({
           Limite de {maxMembros} pessoas por família atingido.
         </p>
       ) : (
-        <div className="flex gap-2 items-center pt-1">
-          <input
-            className="input flex-1"
-            placeholder="Nome (ex: Raquel)"
-            value={novo.nome}
-            onChange={(e) => setNovo((n) => ({ ...n, nome: e.target.value }))}
-          />
-          <input
-            className="input flex-1"
-            placeholder="(64) 99955-5364"
-            value={novo.telefone}
-            onChange={(e) => setNovo((n) => ({ ...n, telefone: e.target.value }))}
-            inputMode="tel"
-          />
-          <button
-            type="button"
-            onClick={adicionar}
-            disabled={salvando}
-            className="btn-secondary text-sm flex-shrink-0"
-          >
-            {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Adicionar'}
-          </button>
+        <div className="pt-1">
+          <div className="flex gap-2 items-center">
+            <input
+              className="input flex-1"
+              placeholder="Nome (ex: Raquel)"
+              value={novo.nome}
+              onChange={(e) => setNovo((n) => ({ ...n, nome: e.target.value }))}
+            />
+            <input
+              className={`input flex-1 ${erroNovo ? 'border-red-400 focus:ring-red-400' : ''}`}
+              placeholder="(64) 99955-5364"
+              value={novo.telefone}
+              onChange={(e) => setNovo((n) => ({ ...n, telefone: mascararTelefone(e.target.value) }))}
+              inputMode="numeric"
+            />
+            <button
+              type="button"
+              onClick={adicionar}
+              disabled={salvando || !!erroNovo || !novo.nome.trim()}
+              className="btn-secondary text-sm flex-shrink-0"
+            >
+              {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Adicionar'}
+            </button>
+          </div>
+          {erroNovo && <p className="text-xs text-red-500 mt-1">{erroNovo}</p>}
         </div>
       )}
     </div>

@@ -4,20 +4,37 @@ const authMiddleware = require('../middlewares/auth');
 const { resolverHousehold, exigir } = require('../middlewares/household');
 const validate = require('../middlewares/validate');
 const householdService = require('../services/householdService');
+const { validarCelular } = require('../utils/telefoneBR');
 
 const router = express.Router();
+
+/**
+ * Telefone validado e já normalizado para o formato do WhatsApp.
+ *
+ * O backend é a fonte da verdade: a máscara da tela ajuda, mas quem chama a
+ * API direto — ou um formulário com bug — não pode gravar `6499715453` e
+ * deixar os gastos da pessoa sem atribuição, como já aconteceu.
+ */
+const telefoneSchema = z.string()
+  .transform((v) => (v ?? '').trim())
+  .superRefine((valor, ctx) => {
+    if (!valor) return;
+    const r = validarCelular(valor);
+    if (!r.valido) ctx.addIssue({ code: z.ZodIssueCode.custom, message: r.erro });
+  })
+  .transform((valor) => (valor ? validarCelular(valor).e164 : null));
 
 const membroSchema = z.object({
   userId: z.string().min(1, 'userId obrigatorio.'),
   nome: z.string().min(1).max(60).optional().nullable(),
   email: z.string().email().optional().nullable(),
-  telefone: z.string().max(20).optional().nullable(),
+  telefone: telefoneSchema.optional().nullable(),
   papel: z.enum(['owner', 'member', 'viewer']).default('member'),
 });
 
 const membroUpdateSchema = z.object({
   nome: z.string().min(1).max(60).optional(),
-  telefone: z.string().max(20).optional().nullable(),
+  telefone: telefoneSchema.optional().nullable(),
   papel: z.enum(['owner', 'member', 'viewer']).optional(),
 });
 

@@ -40,9 +40,17 @@ const MODOS = { INDIVIDUAL: 'individual', GRUPO: 'grupo' };
  */
 function normalizarTelefone(entrada) {
   const digitos = String(entrada || '').replace(/\D/g, '');
-  if (digitos.length < 10) return null;
-  // 10 ou 11 dígitos = número brasileiro sem DDI (DDD + número).
-  return digitos.length <= 11 ? `55${digitos}` : digitos;
+  if (!digitos) return null;
+
+  const { normalizarCelular } = require('../utils/telefoneBR');
+  const valido = normalizarCelular(digitos);
+  if (valido) return valido;
+
+  // Número que não segue o padrão brasileiro mas veio do próprio WhatsApp
+  // (participante estrangeiro, por exemplo): aceita como está, porque o
+  // provedor não devolveria um destino inexistente. O que o CLIENTE digita
+  // passa pela validação estrita antes de chegar aqui.
+  return digitos.length >= 12 ? digitos : null;
 }
 
 function criarServicoDeInstancia({ db, admin, provider, householdService, webhookUrl }) {

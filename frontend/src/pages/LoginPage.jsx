@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { TrendingUp, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { mascararTelefone, erroDoTelefone, paraApi } from '../utils/telefone';
 import toast from 'react-hot-toast';
 
 /**
@@ -70,7 +71,7 @@ export default function LoginPage() {
         nome: dados.nome.trim(),
         email: dados.email.trim(),
         senha: dados.password,
-        telefone: (dados.telefone || '').replace(/\D/g, ''),
+        telefone: paraApi(dados.telefone),
         aceitouTermos: true,
       });
       toast.success('Conta criada! Você tem 14 dias grátis.');
@@ -212,11 +213,14 @@ export default function LoginPage() {
                     <label className="label">Seu WhatsApp</label>
                     <input
                       placeholder="(64) 99955-5364"
-                      inputMode="tel"
+                      inputMode="numeric"
                       className={`input ${errors.telefone ? 'border-red-400 focus:ring-red-400' : ''}`}
                       {...register('telefone', {
                         required: 'WhatsApp obrigatório.',
-                        validate: (v) => (v || '').replace(/\D/g, '').length >= 10 || 'Informe com DDD.',
+                        // A máscara já impede a maior parte do erro; a validação
+                        // pega DDD inexistente e fixo, que a máscara não vê.
+                        validate: (v) => erroDoTelefone(v) || true,
+                        onChange: (e) => { e.target.value = mascararTelefone(e.target.value); },
                       })}
                     />
                     {errors.telefone

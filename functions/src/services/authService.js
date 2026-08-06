@@ -4,12 +4,7 @@ const { admin, db } = require('../config/firebaseAdmin');
 // Suba a data aqui — é o que permite saber depois quem aceitou o quê.
 const TERMOS_VIGENTES = '2026-08-06';
 
-/** Só dígitos, com DDI. Igual ao do instanciaService, mas sem acoplar os dois. */
-function normalizarTelefone(entrada) {
-  const digitos = String(entrada || '').replace(/\D/g, '');
-  if (digitos.length < 10) return null;
-  return digitos.length <= 11 ? `55${digitos}` : digitos;
-}
+const { normalizarCelular } = require('../utils/telefoneBR');
 
 async function getProfile(userId) {
   const doc = await db.collection('users').doc(userId).get();
@@ -63,7 +58,7 @@ async function createOrUpdateProfile(userId, data) {
       ownerEmail: data.email,
       // Telefone pedido já no cadastro. Sem ele, o dono entrava sem número e
       // os gastos dele ficavam sem atribuição até alguém perceber e editar.
-      ownerTelefone: normalizarTelefone(data.telefone),
+      ownerTelefone: normalizarCelular(data.telefone),
     });
   }
 
