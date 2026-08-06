@@ -63,9 +63,24 @@ function Passo({ numero, titulo, Icone, estado, children }) {
   );
 }
 
+/**
+ * Celular não lê QR Code exibido na própria tela.
+ *
+ * Quem se cadastra pelo telefone ficava travado no passo da conexão: o código
+ * aparecia, e não havia segundo aparelho para lê-lo. Nesses casos o padrão
+ * passa a ser o código de pareamento, que é digitado dentro do WhatsApp.
+ */
+function pareceCelular() {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia?.('(pointer: coarse)')?.matches
+    || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+}
+
 export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembro }) {
   const [status, setStatus] = useState(null);
   const [qrcode, setQrcode] = useState(null);
+  const [pairingCode, setPairingCode] = useState(null);
+  const [metodo, setMetodo] = useState(() => (pareceCelular() ? 'codigo' : 'qr'));
   const [carregando, setCarregando] = useState(true);
   const [conectando, setConectando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
@@ -75,7 +90,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
     try {
       const { data } = await api.get('/whatsapp/status');
       setStatus(data);
-      if (data.conectada) setQrcode(null);
+      if (data.conectada) { setQrcode(null); setPairingCode(null); }
       return data;
     } catch (err) {
       if (err.response?.status !== 503) toast.error('Não foi possível verificar a conexão.');
@@ -88,7 +103,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
   useEffect(() => { buscarStatus(); }, [buscarStatus]);
 
   useEffect(() => {
-    if (!qrcode) {
+    if (!qrcode && !pairingCode) {
       clearInterval(consultaRef.current);
       return undefined;
     }
@@ -101,7 +116,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
     }, INTERVALO_DE_CONSULTA);
 
     return () => clearInterval(consultaRef.current);
-  }, [qrcode, buscarStatus]);
+  }, [qrcode, pairingCode, buscarStatus]);
 
   async function escolherModo(modo) {
     try {
@@ -121,6 +136,10 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
         buscarStatus();
       } else {
         setQrcode(data.qrcode);
+        setPairingCode(data.pairingCode || null);
+        // Sem código de pareamento não há caminho pelo celular; volta para o QR
+        // em vez de mostrar uma aba vazia.
+        if (!data.pairingCode) setMetodo('qr');
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'Não foi possível gerar o QR Code.');
@@ -264,11 +283,12 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
         Icone={Smartphone}
         estado={estadoDoPasso(emGrupo ? 2 : 1)}
       >
-        {!qrcode ? (
+        {!qrcode && !pairingCode ? (
           <>
             <p className="text-sm text-gray-600 mb-3">
-              Você vai ler um código com o WhatsApp do celular. É o mesmo processo
-              do WhatsApp Web.
+              {pareceCelular()
+                ? 'Você vai digitar um código de 8 letras dentro do WhatsApp deste celular.'
+                : 'Você vai ler um código com o WhatsApp do celular. É o mesmo processo do WhatsApp Web.'}
               {emGrupo && ' Assim que conectar, o grupo é criado sozinho.'}
             </p>
             <button
@@ -284,17 +304,67 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
           </>
         ) : (
           <div className="space-y-3">
-            <div className="bg-white border border-gray-200 rounded-xl p-3 inline-block">
-              <img src={qrcode} alt="QR Code para conectar o WhatsApp" className="w-56 h-56" />
-            </div>
-            <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-              <li>Abra o WhatsApp no celular</li>
-              <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
-              <li>Toque em <strong>Conectar dispositivo</strong> e aponte para o código</li>
-            </ol>
-            <div className="flex items-center gap-2">
+            {/* Dois caminhos. No celular o QR é inútil (não dá para ler o código
+                da própria tela), então o padrão lá é o código digitado. */}
+            {pairingCode && qrcode && (
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-xl">
+                {[
+                  { id: 'codigo', rotulo: 'Estou neste celular' },
+                  { id: 'qr', rotulo: 'Ler QR Code' },
+                ].map(({ id, rotulo }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setMetodo(id)}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      metodo === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                    }`}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {metodo === 'codigo' && pairingCode ? (
+              <>
+                <p className="text-sm text-gray-600">Digite este código no WhatsApp:</p>
+                <div className="flex items-center gap-2">
+                  <div className="font-mono text-2xl tracking-[0.25em] font-bold text-gray-900 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 select-all">
+                    {pairingCode}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(pairingCode); toast.success('Código copiado!'); }}
+                    className="btn-secondary text-sm flex items-center gap-1.5"
+                  >
+                    <Copy className="w-4 h-4" /> Copiar
+                  </button>
+                </div>
+                <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                  <li>Abra o WhatsApp neste celular</li>
+                  <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
+                  <li>Toque em <strong>Conectar dispositivo</strong></li>
+                  <li>Toque em <strong>Conectar com número de telefone</strong></li>
+                  <li>Digite o código acima</li>
+                </ol>
+              </>
+            ) : (
+              <>
+                <div className="bg-white border border-gray-200 rounded-xl p-3 inline-block">
+                  <img src={qrcode} alt="QR Code para conectar o WhatsApp" className="w-56 h-56 max-w-full" />
+                </div>
+                <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                  <li>Abra o WhatsApp em <strong>outro</strong> celular</li>
+                  <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
+                  <li>Toque em <strong>Conectar dispositivo</strong> e aponte para o código</li>
+                </ol>
+              </>
+            )}
+
+            <div className="flex items-center gap-2 flex-wrap">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-              <span className="text-xs text-gray-400">Esperando a leitura...</span>
+              <span className="text-xs text-gray-400">Esperando a confirmação...</span>
               <button type="button" onClick={conectar} className="text-xs text-primary-600 underline ml-2">
                 Gerar outro código
               </button>

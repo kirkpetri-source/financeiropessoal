@@ -110,7 +110,13 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
 
     const instanceName = config.instanceName || nomeDaInstancia(householdId);
 
-    const criacao = await provider.criarInstancia(config, { instanceName, webhookUrl });
+    // O número do dono habilita o código de pareamento — o único caminho para
+    // quem se cadastra pelo próprio celular e não tem como ler um QR exibido
+    // na mesma tela. Precisa ir na CRIAÇÃO: sem ele ali, nem o /connect
+    // devolve o código depois (verificado na Evolution v2.3.7).
+    const numero = await telefoneDoDono(householdId);
+
+    const criacao = await provider.criarInstancia(config, { instanceName, webhookUrl, numero });
 
     await ref(householdId).set({
       householdId,
@@ -121,7 +127,20 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
       updatedAt: agora(),
     }, { merge: true });
 
-    const qr = await provider.obterQrCode({ ...config, instanceName }, instanceName);
+    // Instância recém-criada já devolveu QR e código juntos. Reaproveitar evita
+    // uma segunda chamada que geraria um QR diferente do código de pareamento.
+    if (criacao.criada && (criacao.qrcode || criacao.pairingCode)) {
+      return {
+        conectada: false,
+        instanceName,
+        qrcode: criacao.qrcode,
+        pairingCode: criacao.pairingCode,
+        temPareamento: !!criacao.pairingCode,
+        jaExistia: false,
+      };
+    }
+
+    const qr = await provider.obterQrCode({ ...config, instanceName }, instanceName, numero);
 
     if (qr.conectada) {
       await aoConectar(householdId, { ...config, instanceName });
@@ -133,8 +152,22 @@ function criarServicoDeInstancia({ db, admin, provider, householdService, webhoo
       instanceName,
       qrcode: qr.qrcode,
       pairingCode: qr.pairingCode,
+      temPareamento: !!qr.pairingCode,
       jaExistia: criacao.jaExistia,
     };
+  }
+
+  async function telefoneDoDono(householdId) {
+    try {
+      const [familia, membros] = await Promise.all([
+        householdService.buscarHousehold(householdId),
+        householdService.listarMembros(householdId),
+      ]);
+      const dono = membros.find((m) => m.id === familia.ownerId);
+      return dono?.phone ? normalizarTelefone(dono.phone) : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

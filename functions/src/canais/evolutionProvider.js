@@ -103,7 +103,9 @@ async function chamarBruto(url, apiKey, corpo, metodo = 'POST') {
  * isso vira sucesso com `jaExistia`. O cliente pode clicar duas vezes em
  * "conectar" sem quebrar nada.
  */
-async function criarInstancia(config, { instanceName, webhookUrl }) {
+async function criarInstancia(config, { instanceName, webhookUrl, numero = null }) {
+  const digitos = numero ? String(numero).replace(/\D/g, '') : null;
+
   const { ok, status, dados } = await chamarBruto(
     `${base(config)}/instance/create`,
     config.apiKey,
@@ -111,6 +113,11 @@ async function criarInstancia(config, { instanceName, webhookUrl }) {
       instanceName,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
+      // Com o número aqui, a Evolution devolve TAMBÉM um código de pareamento
+      // de 8 caracteres. É o que salva quem se cadastra pelo celular e não tem
+      // como ler um QR exibido na própria tela. Verificado na v2.3.7: sem este
+      // campo na criação, nem o /instance/connect?number= devolve o código.
+      ...(digitos ? { number: digitos } : {}),
       // Só MESSAGES_UPSERT: é o que o webhook trata. Assinar todos os eventos
       // multiplicaria por dez o tráfego para o Cloud Functions sem uso nenhum.
       webhook: {
@@ -122,7 +129,17 @@ async function criarInstancia(config, { instanceName, webhookUrl }) {
     },
   );
 
-  if (ok) return { criada: true, jaExistia: false, bruto: dados };
+  if (ok) {
+    return {
+      criada: true,
+      jaExistia: false,
+      // A criação já traz o QR e o código de pareamento; aproveitar evita uma
+      // segunda chamada e, com ela, um QR diferente do que gerou o código.
+      qrcode: dados?.qrcode?.base64 || null,
+      pairingCode: dados?.qrcode?.pairingCode || null,
+      bruto: dados,
+    };
+  }
 
   const mensagem = JSON.stringify(dados || '');
   if (status === 403 || status === 409 || /already in use|already exists/i.test(mensagem)) {
@@ -146,10 +163,23 @@ async function criarInstancia(config, { instanceName, webhookUrl }) {
   throw new Error(`Evolution ${status} ao criar instância: ${mensagem.slice(0, 200)}`);
 }
 
-/** QR Code para o cliente ler. Já conectada, devolve `conectada: true`. */
-async function obterQrCode(config, instanceName) {
+/**
+ * QR Code — e código de pareamento, quando o número é informado.
+ *
+ * O QR só serve para quem tem duas telas: uma mostrando o código e o celular
+ * lendo. Quem se cadastra PELO celular não tem como ler o código exibido no
+ * próprio aparelho, e ficava travado aqui.
+ *
+ * Passando `number`, a Evolution devolve também um código de 8 caracteres que
+ * a pessoa digita no WhatsApp (Dispositivos conectados → Conectar com número
+ * de telefone). Resolve o cadastro feito inteiramente no celular.
+ */
+async function obterQrCode(config, instanceName, numero = null) {
+  const digitos = numero ? String(numero).replace(/\D/g, '') : null;
+  const query = digitos ? `?number=${encodeURIComponent(digitos)}` : '';
+
   const { ok, status, dados } = await chamarBruto(
-    `${base(config)}/instance/connect/${encodeURIComponent(instanceName)}`,
+    `${base(config)}/instance/connect/${encodeURIComponent(instanceName)}${query}`,
     config.apiKey,
     null,
     'GET',

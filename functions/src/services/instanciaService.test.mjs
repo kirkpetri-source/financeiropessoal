@@ -50,7 +50,17 @@ const householdFalso = {
 function providerFalso(sobrescritas = {}) {
   const chamadas = [];
   const p = {
-    async criarInstancia(_c, args) { chamadas.push(['criarInstancia', args]); return { criada: true, jaExistia: false }; },
+    async criarInstancia(_c, args) {
+      chamadas.push(['criarInstancia', args]);
+      // A Evolution devolve QR e código de pareamento já na criação, quando o
+      // número vai no corpo.
+      return {
+        criada: true,
+        jaExistia: false,
+        qrcode: 'data:image/png;base64,AAA',
+        pairingCode: args.numero ? '4JSR5FGE' : null,
+      };
+    },
     async obterQrCode() { chamadas.push(['obterQrCode']); return { conectada: false, qrcode: 'data:image/png;base64,AAA', pairingCode: null }; },
     async estadoDaConexao() { return { estado: 'open', conectada: true }; },
     async obterIdentidadePropria() { return '5564999555364@s.whatsapp.net'; },
@@ -210,11 +220,38 @@ describe('conectar', () => {
 
   it('se já estiver conectada, marca habilitada e não devolve QR', async () => {
     comModo('grupo');
-    const p = providerFalso({ obterQrCode: async () => ({ conectada: true, qrcode: null }) });
+    const p = providerFalso({
+      criarInstancia: async () => ({ criada: false, jaExistia: true }),
+      obterQrCode: async () => ({ conectada: true, qrcode: null }),
+    });
     const r = await servicoCom(p).conectar('fam-1', CONFIG);
 
     expect(r.conectada).toBe(true);
     expect(docs['fam-1'].enabled).toBe(true);
+  });
+
+  it('manda o número do dono na criação — é o que gera o código de pareamento', async () => {
+    comModo('grupo');
+    membros[0].phone = '5564999555364';
+    const p = providerFalso();
+
+    const r = await servicoCom(p).conectar('fam-1', CONFIG);
+
+    const [, args] = p.chamadas.find(([m]) => m === 'criarInstancia');
+    expect(args.numero).toBe('5564999555364');
+    expect(r.pairingCode).toBe('4JSR5FGE');
+    expect(r.temPareamento).toBe(true);
+  });
+
+  it('dono sem telefone: conecta só com QR, sem prometer pareamento', async () => {
+    comModo('grupo');
+    const p = providerFalso();
+
+    const r = await servicoCom(p).conectar('fam-1', CONFIG);
+
+    expect(r.qrcode).toBeTruthy();
+    expect(r.pairingCode).toBeNull();
+    expect(r.temPareamento).toBe(false);
   });
 });
 
