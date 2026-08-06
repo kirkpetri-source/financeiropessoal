@@ -99,4 +99,19 @@ async function handleMercadoPagoWebhook(req, res) {
   }
 }
 
-module.exports = { handleMercadoPagoWebhook, TIPOS, extrairTipo, extrairId };
+/**
+ * Checagem de alcance da URL (GET/HEAD).
+ *
+ * O painel do Mercado Pago confere se o endereço existe antes de aceitar a
+ * configuração, e faz isso sem POST. Com a rota só em POST, o painel recebia
+ * 404 e recusava salvar com "não foi possível salvar seus ajustes".
+ *
+ * Não processa nada e não revela nada: é o equivalente do /health, restrito a
+ * dizer que o endpoint está de pé. Notificação de verdade continua chegando
+ * por POST e continua exigindo assinatura válida.
+ */
+function handleMercadoPagoPing(req, res) {
+  res.status(200).json({ status: 'ok', endpoint: 'mercadopago', metodo: 'notificações via POST' });
+}
+
+module.exports = { handleMercadoPagoWebhook, handleMercadoPagoPing, TIPOS, extrairTipo, extrairId };

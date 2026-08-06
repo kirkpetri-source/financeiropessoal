@@ -12,7 +12,7 @@ const assinaturaRoutes = require('./routes/assinatura');
 const lgpdRoutes = require('./routes/lgpd');
 const adminRoutes = require('./routes/admin');
 const { handleEvolutionWebhook } = require('./webhooks/evolutionWebhook');
-const { handleMercadoPagoWebhook } = require('./webhooks/mercadoPagoWebhook');
+const { handleMercadoPagoWebhook, handleMercadoPagoPing } = require('./webhooks/mercadoPagoWebhook');
 const errorHandler = require('./middlewares/errorHandler');
 const { webhookAuth } = require('./middlewares/webhookAuth');
 const { limiteWebhook, limiteAuth, limitePolling, limiteGeral } = require('./middlewares/rateLimit');
@@ -62,6 +62,10 @@ app.post('/webhooks/evolution', limiteWebhook, (req, res) => {
 // aqui existe assinatura HMAC de verdade no cabeçalho — o handler confere antes
 // de encostar em qualquer coisa.
 app.post('/webhooks/mercadopago', limiteWebhook, handleMercadoPagoWebhook);
+
+// GET/HEAD: só a checagem de alcance que o painel do Mercado Pago faz antes de
+// aceitar a URL. Express responde HEAD sozinho a partir do GET.
+app.get('/webhooks/mercadopago', limiteWebhook, handleMercadoPagoPing);
 
 app.use(limiteGeral);
 

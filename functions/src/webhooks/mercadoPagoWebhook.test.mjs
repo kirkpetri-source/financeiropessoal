@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import crypto from 'node:crypto';
-import { handleMercadoPagoWebhook, extrairTipo, extrairId } from './mercadoPagoWebhook.js';
+import { handleMercadoPagoWebhook, handleMercadoPagoPing, extrairTipo, extrairId } from './mercadoPagoWebhook.js';
 
 /**
  * O webhook é a única porta pela qual alguém vira assinante. Estes testes
@@ -70,6 +70,24 @@ describe('sonda do painel do Mercado Pago', () => {
     await handleMercadoPagoWebhook(requisicao({ headers: { 'x-signature': 'ts=1,v1=abc' } }), res);
 
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('checagem de alcance (GET)', () => {
+  it('responde 200 sem exigir nada', () => {
+    const res = resposta();
+    handleMercadoPagoPing(requisicao(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.corpo).toMatchObject({ status: 'ok' });
+  });
+
+  it('não devolve nenhum dado do sistema', () => {
+    const res = resposta();
+    handleMercadoPagoPing(requisicao(), res);
+
+    const texto = JSON.stringify(res.corpo);
+    expect(texto).not.toMatch(/household|token|secret|subscription/i);
   });
 });
 
