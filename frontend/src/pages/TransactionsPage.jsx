@@ -78,7 +78,7 @@ export default function TransactionsPage() {
   const totalExpense = transactions.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0);
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto">
+    <div id="tour-transactions" className="space-y-4 max-w-7xl mx-auto">
       {/* Barra de ações */}
       <div className="flex flex-col sm:flex-row gap-3">
         <select

@@ -78,7 +78,7 @@ export default function WhatsappLogsPage() {
   useEffect(() => { fetchLogs(); }, [filters]);
 
   return (
-    <div className="space-y-3 max-w-4xl mx-auto">
+    <div id="tour-whatsapp-logs" className="space-y-3 max-w-4xl mx-auto">
       {/* Barra de controles */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-faint">

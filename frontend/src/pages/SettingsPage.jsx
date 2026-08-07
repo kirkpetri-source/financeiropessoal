@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { User, Lock, MessageSquare, Users, Loader2, Eye, EyeOff, CheckCircle2, ShieldCheck } from 'lucide-react';
 import api from '../services/api';
@@ -10,9 +11,9 @@ import ParticipantesDaFamilia from '../components/whatsapp/ParticipantesDaFamili
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import toast from 'react-hot-toast';
 
-function Section({ icon: Icon, title, children }) {
+function Section({ icon: Icon, title, children, id }) {
   return (
-    <div className="card space-y-4">
+    <div id={id} className="card space-y-4">
       <div className="flex items-center gap-2 pb-3 border-b border-border">
         <div className="w-8 h-8 bg-brand-light rounded-lg flex items-center justify-center">
           <Icon className="w-4 h-4 text-brand-dark" />
@@ -37,6 +38,13 @@ export default function SettingsPage() {
   const [showCurrentPwd, setShowCurrentPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
   const [nomeFamilia, setNomeFamilia] = useState('');
+
+  // Controlada por query param (?tab=familia) para o tour guiado poder abrir
+  // direto na aba certa ao navegar pra cá, sem simular clique em elemento do Radix.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const abaAtual = ['conta', 'familia', 'dados'].includes(searchParams.get('tab'))
+    ? searchParams.get('tab')
+    : 'conta';
 
   const profileForm = useForm({ defaultValues: { name: user?.name || '', email: user?.email || '' } });
   const passwordForm = useForm();
@@ -106,7 +114,10 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <Tabs defaultValue="conta">
+      <Tabs
+        value={abaAtual}
+        onValueChange={(v) => setSearchParams(v === 'conta' ? {} : { tab: v })}
+      >
         <TabsList>
           <TabsTrigger value="conta">Conta</TabsTrigger>
           <TabsTrigger value="familia">Família e WhatsApp</TabsTrigger>
@@ -250,7 +261,7 @@ export default function SettingsPage() {
             </div>
           </Section>
 
-          <Section icon={MessageSquare} title="WhatsApp">
+          <Section icon={MessageSquare} title="WhatsApp" id="tour-whatsapp-mode">
             <ConectarWhatsapp
               podeGerir={!!permissoes.gerirCanal}
               membros={membros}

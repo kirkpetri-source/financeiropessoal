@@ -1,5 +1,6 @@
-import { Menu, LogOut, ChevronDown } from 'lucide-react';
+import { Menu, LogOut, ChevronDown, HelpCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTour } from '../../contexts/TourContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -22,6 +23,7 @@ const PAGE_TITLES = {
 
 export default function Header({ onMenuClick }) {
   const { logout, user } = useAuth();
+  const { startTour } = useTour();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -57,6 +59,11 @@ export default function Header({ onMenuClick }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={startTour}>
+            <HelpCircle className="h-4 w-4" />
+            Tour guiado
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem destructive onSelect={handleLogout}>
             <LogOut className="h-4 w-4" />

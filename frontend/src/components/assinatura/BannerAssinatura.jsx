@@ -11,6 +11,7 @@ import { useAssinatura } from '../../contexts/AssinaturaContext';
  */
 
 const ESTILOS = {
+  info: 'bg-violet-50 border-violet-200 text-violet-900',
   alerta: 'bg-amber-50 border-amber-200 text-amber-900',
   erro: 'bg-red-50 border-red-200 text-red-900',
 };
@@ -26,10 +27,19 @@ function decidirAviso(assinatura) {
     return { tom: 'erro', Icone: AlertTriangle, texto: assinatura.mensagem, acao: 'Regularizar' };
   }
 
-  // Antes de faltar 5 dias não há urgência nenhuma, e avisar cedo demais só
-  // atrapalha quem está experimentando o produto.
-  if (assinatura.emTrial && assinatura.diasRestantes != null && assinatura.diasRestantes <= 5) {
-    return { tom: 'alerta', Icone: Clock, texto: assinatura.mensagem, acao: 'Assinar' };
+  if (assinatura.emTrial && assinatura.diasRestantes != null) {
+    // Nos últimos 5 dias, tom de urgência — antes disso, só um informativo
+    // discreto: a pessoa ainda está conhecendo o produto.
+    if (assinatura.diasRestantes <= 5) {
+      return { tom: 'alerta', Icone: Clock, texto: assinatura.mensagem, acao: 'Assinar' };
+    }
+    const dias = assinatura.diasRestantes;
+    return {
+      tom: 'info',
+      Icone: Clock,
+      texto: `Você está no período de teste grátis — ${dias} dia${dias === 1 ? '' : 's'} restante${dias === 1 ? '' : 's'}.`,
+      acao: 'Ativar assinatura',
+    };
   }
 
   return null;

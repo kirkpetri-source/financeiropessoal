@@ -1,4 +1,4 @@
-# Estado do projeto — 07/08/2026 (marca + redesign + landing no ar)
+# Estado do projeto — 07/08/2026 (marca + redesign + landing + onboarding no ar)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
@@ -44,6 +44,56 @@ decisões ou acessos que só ele tem):
 - Fotos de pessoas reais para a landing (banco licenciado ou fotos próprias)
 - Rodar `firebase deploy` quando quiser publicar o backend
 - Revisar o site em produção e decidir se mantém no ar como está
+
+## Sessão de 07/08/2026 (parte 2) — onboarding, trial banner, login inline
+
+Feito e testado (build limpo, 247 testes de backend, fluxo completo verificado
+com Playwright/agent-browser em produção local — cadastro real, tour do
+início ao fim, sem erro de console):
+
+- **Tour guiado de primeiro uso** (`react-joyride` v2 — a v3 mudou a API pra
+  hooks e quebrava o render; ficou registrado no código). Dispara sozinho no
+  primeiro login (marcado por `localStorage`, por navegador — não por
+  família, então trocar de aparelho mostra de novo), atravessa Configurações
+  (escolha do modo de uso) → Dashboard → Lançamentos → Categorias → WhatsApp
+  → botão Relatório. Cada página é um Joyride de 1 passo só; quem navega
+  entre rotas é o `TourContext`, não o Joyride. Reabertura manual pelo menu
+  do usuário ("Tour guiado"). Sem botão "Pular" visível — o Joyride só
+  mostra esse botão quando o array de passos tem mais de 1 item, e aqui
+  sempre tem 1; o "Fechar" (X, sempre visível) cobre ignorar/dispensar.
+- **Login/cadastro inline na landing**: extraído para `AuthForm`, reutilizado
+  num modal (Dialog do radix) que abre por cima da própria landing — não
+  navega mais pra `/login` ao clicar em "Entrar" ou "Criar conta". A rota
+  `/login` continua existindo (link de recuperação de senha, sessão
+  expirada). Adicionado campo de confirmação de senha no cadastro (não
+  existia).
+- **Banner de trial expandido**: antes só avisava nos últimos 5 dias; agora
+  mostra "você está no teste — N dias restantes" com botão "Ativar
+  assinatura" durante todo o trial, escalando pra tom de urgência nos
+  últimos 5 dias.
+- Landing: textos da seção de benefícios reescritos (tom de automação/
+  praticidade); "Seus dados são seus" (confuso, parecia a feature de
+  exportação) virou "Seus dados, protegidos" (segurança); hero focado em
+  "sozinho, em casal ou com toda a família" em vez de só família.
+
+**Bug real encontrado e corrigido nesta sessão**: o modal de login/cadastro
+expôs uma condição de corrida que já existia em `AuthContext` — ao criar
+conta, o Firebase autentica antes do backend terminar de criar o perfil e a
+família; nesse intervalo, `user` já é truthy (objeto mínimo, sem `id`). A
+`LandingPage` redirecionava pra `/dashboard` em qualquer `user` truthy, então
+o Dashboard montava e buscava dados antes da família existir, ficando preso
+carregando pra sempre (a `LoginPage` antiga não tinha esse guard, por isso
+nunca pegou esse bug). Corrigido checando `user?.id` em vez de `user`.
+
+**Limpeza de dados**: apagadas as duas famílias de teste que já estavam
+pendentes (`TESTUSER587309038995717462`, `TESTUSER8066625080459611528`) e
+as três famílias de teste criadas durante os testes desta sessão — todas via
+`tools/apagar-familia.js`, backup tirado antes. Telefone do "Johnny" (família
+do Deryck) conferido: o campo `phone` já está correto (alguém já editou pelo
+painel); só o ID interno do documento ainda carrega o número antigo — sem
+efeito funcional, porque tanto a atribuição de gasto quanto a sincronização
+de membros casam pelo campo `phone`, não pelo ID. Migrar o ID exigiria
+apagar/recriar dado de cliente real sem ganho nenhum — não mexido.
 
 ## Decisões já tomadas (não reabrir sem motivo)
 
@@ -246,14 +296,12 @@ Fatos apurados, para não repesquisar:
 
 ## Pendências operacionais do Kirk
 
-- Corrigir o telefone do membro "Johnny" na família do Deryck: está
-  `6499715453` (10 dígitos, sem o 9). A validação nova impede casos novos, mas
-  não corrige o que já está gravado
 - Aplicar para **Meta Verified** se quiser o canal oficial (2 a 8 semanas)
-- Vault Obsidian desatualizado: `projetos/financeiro.md` e `sistema/painel.md`
-  ainda marcam o projeto como "em-planejamento"
-- Limpar as famílias de teste: `TESTUSER587309038995717462` e
-  `TESTUSER8066625080459611528` (`node tools/apagar-familia.js <id> --confirmar`)
+
+Resolvidos nesta sessão (não repetir): telefone do Johnny conferido (campo
+`phone` já correto), vault Obsidian atualizado (`projetos/financeiro.md` e
+`sistema/painel.md` já refletem "em-execução"/NO AR), famílias de teste
+`TESTUSER587309038995717462` e `TESTUSER8066625080459611528` apagadas.
 
 ## Dívidas conhecidas
 

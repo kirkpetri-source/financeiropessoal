@@ -150,7 +150,7 @@ export default function CategoriesPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div id="tour-categories" className="space-y-4 max-w-4xl mx-auto">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1.5 flex-1 flex-wrap">
           {['', 'EXPENSE', 'INCOME'].map((type) => (

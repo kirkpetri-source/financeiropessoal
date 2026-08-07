@@ -189,7 +189,7 @@ export default function DashboardPage() {
           </div>
           <div className="dash-actions">
             {summary && (
-              <button className="dash-btn dash-btn--ghost" onClick={() => setReportOpen(true)}>
+              <button id="tour-relatorio-btn" className="dash-btn dash-btn--ghost" onClick={() => setReportOpen(true)}>
                 <FileBarChart size={14} />
                 <span className="hidden sm:inline">Relatório</span>
               </button>

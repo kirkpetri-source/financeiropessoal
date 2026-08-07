@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
   MessageCircle, Users, Eye, Wallet, BarChart3, ShieldCheck,
@@ -5,6 +6,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/brand/Logo';
+import AuthForm from '../components/auth/AuthForm';
+import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog';
 
 /**
  * Landing page de vendas. Greenfield — não existia página pública além de
@@ -21,23 +24,36 @@ import Logo from '../components/brand/Logo';
  */
 
 const BENEFICIOS = [
-  { icon: MessageCircle, title: 'Sem app novo pra baixar', desc: 'Lança pelo WhatsApp que sua família já usa. Sem senha pra decorar, sem baixar nada.' },
-  { icon: Users, title: 'Visão compartilhada de verdade', desc: 'Casal, pais e filhos veem o gasto um do outro no mesmo grupo. Ninguém descobre a fatura no fim do mês.' },
-  { icon: Eye, title: 'Categoriza sozinho', desc: '"Mercado 84,90 pix" vira lançamento organizado, com categoria certa, na hora.' },
-  { icon: Wallet, title: 'Parcela sozinho também', desc: '"Geladeira 1200 em 10x" vira 10 lançamentos de R$120, um por mês, sem você fazer conta.' },
-  { icon: BarChart3, title: 'Relatório pronto todo mês', desc: 'Gráfico por categoria, por pessoa, e um resumo que cabe numa olhada de 10 segundos.' },
-  { icon: ShieldCheck, title: 'Seus dados são seus', desc: 'Exportação em um clique, a qualquer momento. Cancelar não tranca seu histórico.' },
+  { icon: MessageCircle, title: 'Nada de instalar nada', desc: 'Você já vive no WhatsApp o dia inteiro. É só usar ele mesmo — sem senha nova, sem app pra baixar.' },
+  { icon: Users, title: 'Do seu jeito, no seu ritmo', desc: 'Lança sozinho, a dois ou em grupo com a família inteira. Você escolhe como, o sistema se adapta.' },
+  { icon: Eye, title: 'Organização automática', desc: 'Manda a mensagem do jeito que fala. O RevelaCash entende, categoriza e organiza sozinho, na hora.' },
+  { icon: Wallet, title: 'Parcelamento sem esforço', desc: '"Geladeira 1200 em 10x" vira 10 lançamentos de R$120, um por mês. Você não faz a conta, o sistema faz.' },
+  { icon: BarChart3, title: 'Clareza todo mês, sem esforço', desc: 'Gráfico por categoria, por pessoa, e um resumo que cabe numa olhada de 10 segundos.' },
+  { icon: ShieldCheck, title: 'Seus dados, protegidos', desc: 'Criptografado e acessível só por quem você autorizar. Segurança de verdade, sem letra miúda.' },
 ];
 
 const PASSOS = [
   { n: '1', title: 'Manda uma mensagem no zap', desc: '"gastei 45 no mercado pix" — do jeito que você já fala no dia a dia.' },
   { n: '2', title: 'O sistema organiza sozinho', desc: 'Identifica tipo, valor, categoria e quem pagou. Confirma na hora, no próprio WhatsApp.' },
-  { n: '3', title: 'A família vê tudo junto', desc: 'Todo mundo do grupo enxerga pra onde o dinheiro está indo — sem perguntar, sem cobrar.' },
+  { n: '3', title: 'Você vê tudo organizado', desc: 'Sozinho ou em grupo, todo mundo enxerga pra onde o dinheiro está indo — sem perguntar, sem cobrar.' },
 ];
 
 export default function LandingPage() {
   const { user } = useAuth();
-  if (user) return <Navigate to="/dashboard" replace />;
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authAba, setAuthAba] = useState('entrar');
+
+  // `user.id` só existe depois que o perfil e a família nascem no backend.
+  // Logo após o cadastro, o Firebase já autenticou mas o backend ainda não
+  // respondeu — nesse instante `user` é um objeto mínimo (sem `id`), e
+  // redirecionar por qualquer `user` truthy jogava pro Dashboard antes da
+  // família existir, deixando a tela presa carregando pra sempre.
+  if (user?.id) return <Navigate to="/dashboard" replace />;
+
+  function abrirAuth(aba) {
+    setAuthAba(aba);
+    setAuthOpen(true);
+  }
 
   return (
     <div className="min-h-screen bg-bg text-ink">
@@ -46,12 +62,16 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Logo size="sm" />
           <div className="flex items-center gap-3">
-            <Link to="/login" className="text-sm font-medium text-muted hover:text-ink hidden sm:block">
+            <button
+              type="button"
+              onClick={() => abrirAuth('entrar')}
+              className="text-sm font-medium text-muted hover:text-ink hidden sm:block"
+            >
               Entrar
-            </Link>
-            <Link to="/login" className="btn-primary text-sm py-2">
+            </button>
+            <button type="button" onClick={() => abrirAuth('criar')} className="btn-primary text-sm py-2">
               Criar conta grátis
-            </Link>
+            </button>
           </div>
         </div>
       </header>
@@ -64,21 +84,29 @@ export default function LandingPage() {
               <Eye className="w-3.5 h-3.5" /> Financeiro revelado, não escondido
             </span>
             <h1 className="mt-5 text-3xl sm:text-5xl font-extrabold leading-tight tracking-tight">
-              Pra onde está indo<br />
-              <span className="text-brand">o dinheiro</span> da sua família?
+              Envie seus gastos e receitas<br />
+              pelo <span className="text-brand">WhatsApp</span>
             </h1>
             <p className="mt-5 text-base sm:text-lg text-muted max-w-lg">
-              O RevelaCash organiza os gastos da família direto do WhatsApp — sem
-              planilha, sem app novo, sem ninguém ficar no escuro sobre pra onde
-              o dinheiro está indo.
+              O RevelaCash organiza tudo automaticamente e mostra, com
+              clareza, para onde o seu dinheiro está indo — sozinho, em
+              casal ou com toda a família.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
-              <Link to="/login" className="btn-primary justify-center flex items-center gap-2 py-3 px-6 text-base">
+              <button
+                type="button"
+                onClick={() => abrirAuth('criar')}
+                className="btn-primary justify-center flex items-center gap-2 py-3 px-6 text-base"
+              >
                 Criar conta grátis <ArrowRight className="w-4 h-4" />
-              </Link>
-              <Link to="/login" className="btn-secondary justify-center flex items-center gap-2 py-3 px-6 text-base">
+              </button>
+              <button
+                type="button"
+                onClick={() => abrirAuth('entrar')}
+                className="btn-secondary justify-center flex items-center gap-2 py-3 px-6 text-base"
+              >
                 Já sou cliente
-              </Link>
+              </button>
             </div>
             <p className="mt-4 text-xs text-faint">
               7 dias grátis, sem cartão. Depois, R$ 24,90/mês por família — não por pessoa.
@@ -95,7 +123,7 @@ export default function LandingPage() {
                   <p className="text-[11px] text-faint">Agosto de 2026</p>
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-dark bg-brand-light px-2.5 py-1 rounded-lg">
-                  <Users className="w-3 h-3" /> Kirk &amp; Raquel
+                  <Users className="w-3 h-3" /> Paulo Sérgio &amp; Marta
                 </div>
               </div>
 
@@ -145,7 +173,11 @@ export default function LandingPage() {
 
       {/* ── Benefícios ── */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-center">Por que trocar a planilha pelo RevelaCash</h2>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-center">Controle financeiro sem esforço nenhum</h2>
+        <p className="text-center text-muted mt-2 max-w-xl mx-auto">
+          Zero planilha, zero digitação manual. Você manda a mensagem, o RevelaCash organiza —
+          e sobra só a parte boa: saber pra onde o dinheiro está indo.
+        </p>
         <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {BENEFICIOS.map(({ icon: Icon, title, desc }) => (
             <div key={title} className="card">
@@ -180,12 +212,13 @@ export default function LandingPage() {
               ))}
             </ul>
 
-            <Link
-              to="/login"
+            <button
+              type="button"
+              onClick={() => abrirAuth('criar')}
               className="btn-primary w-full justify-center flex items-center gap-2 py-3 mt-7 text-base"
             >
               Começar 7 dias grátis <ArrowRight className="w-4 h-4" />
-            </Link>
+            </button>
             <p className="text-xs text-faint mt-3">Sem cartão de crédito no cadastro.</p>
           </div>
         </div>
@@ -197,13 +230,30 @@ export default function LandingPage() {
           Pare de descobrir o gasto <span className="text-brand">no fim do mês</span>
         </h2>
         <p className="mt-3 text-muted">Comece hoje. Sua família já manda mensagem — só falta o sistema organizar.</p>
-        <Link
-          to="/login"
+        <button
+          type="button"
+          onClick={() => abrirAuth('criar')}
           className="btn-primary inline-flex items-center gap-2 py-3 px-7 text-base mt-7"
         >
           Criar conta grátis <ArrowRight className="w-4 h-4" />
-        </Link>
+        </button>
       </section>
+
+      {/* ── Entrar / criar conta — modal inline, sem sair da landing ── */}
+      <Dialog open={authOpen} onOpenChange={setAuthOpen}>
+        <DialogContent className="max-w-md">
+          <div className="text-center mb-6">
+            <div className="flex justify-center mb-3">
+              <Logo size="lg" withWordmark={false} />
+            </div>
+            <DialogTitle className="text-xl font-bold">
+              <span className="text-ink">Revela</span><span className="text-brand">Cash</span>
+            </DialogTitle>
+            <p className="text-sm text-muted mt-1">O financeiro revelado no WhatsApp</p>
+          </div>
+          <AuthForm initialAba={authAba} />
+        </DialogContent>
+      </Dialog>
 
       {/* ── Rodapé ── */}
       <footer className="border-t border-border bg-white py-10">
