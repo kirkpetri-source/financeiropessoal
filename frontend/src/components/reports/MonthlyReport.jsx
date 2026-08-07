@@ -154,9 +154,9 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
               {/* A · Cabeçalho */}
               <header className="rpt-header">
                 <div className="rpt-header__brand">
-                  <div className="rpt-logo"><TrendingUp size={17} /></div>
+                  <div className="rpt-logo">R</div>
                   <div>
-                    <h1 className="rpt-title">Controle Financeiro Pessoal</h1>
+                    <h1 className="rpt-title">RevelaCash</h1>
                     <p className="rpt-subtitle">Relatório Mensal · {monthLabel}</p>
                   </div>
                 </div>
@@ -349,7 +349,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
                 </div>
               </section>
 
-              <div className="rpt-pagefooter">Página 1 de {totalPages} · {monthLabel} · Controle Financeiro Pessoal</div>
+              <div className="rpt-pagefooter">Página 1 de {totalPages} · {monthLabel} · RevelaCash</div>
             </div>{/* /page 1 */}
 
 
@@ -360,9 +360,9 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
             <div className="rpt-page">
               <header className="rpt-header">
                 <div className="rpt-header__brand">
-                  <div className="rpt-logo"><TrendingUp size={17} /></div>
+                  <div className="rpt-logo">R</div>
                   <div>
-                    <h1 className="rpt-title">Controle Financeiro Pessoal</h1>
+                    <h1 className="rpt-title">RevelaCash</h1>
                     <p className="rpt-subtitle">Relatório Mensal · {monthLabel}</p>
                   </div>
                 </div>
@@ -424,7 +424,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
                 </div>
               </section>
 
-              <div className="rpt-pagefooter">Página 2 de {totalPages} · {monthLabel} · Controle Financeiro Pessoal</div>
+              <div className="rpt-pagefooter">Página 2 de {totalPages} · {monthLabel} · RevelaCash</div>
             </div>
             )}{/* /page 2 — por pessoa */}
 
@@ -553,7 +553,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
 
               {/* G · Footer */}
               <footer className="rpt-footer">
-                Gerado em {generatedAt} &bull; Controle Financeiro Pessoal &bull; Página {totalPages} de {totalPages}
+                Gerado em {generatedAt} &bull; RevelaCash &bull; Página {totalPages} de {totalPages}
               </footer>
 
             </div>{/* /page 2 */}

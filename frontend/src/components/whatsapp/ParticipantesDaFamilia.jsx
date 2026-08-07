@@ -70,7 +70,7 @@ export default function ParticipantesDaFamilia({
   return (
     <div className="space-y-2">
       {membros.map((m) => (
-        <div key={m.id} className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-xl">
+        <div key={m.id} className="flex items-center gap-2 p-2.5 bg-surface-alt rounded-xl">
           {editando === m.id ? (
             <>
               <input
@@ -89,30 +89,30 @@ export default function ParticipantesDaFamilia({
               <button type="button" onClick={() => salvarEdicao(m.id)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg">
                 <Check className="w-4 h-4" />
               </button>
-              <button type="button" onClick={() => setEditando(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg">
+              <button type="button" onClick={() => setEditando(null)} className="p-2 text-faint hover:bg-surface-alt rounded-lg">
                 <X className="w-4 h-4" />
               </button>
             </>
           ) : (
             <>
-              <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-primary-700 text-xs font-bold">
+              <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center flex-shrink-0">
+                <span className="text-brand-700 text-xs font-bold">
                   {(m.name || '?').charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-ink truncate">
                   {m.name}
-                  {m.role === 'owner' && <span className="ml-2 text-xs font-normal text-primary-600">você</span>}
+                  {m.role === 'owner' && <span className="ml-2 text-xs font-normal text-brand-600">você</span>}
                 </p>
-                <p className={`text-xs truncate ${m.phone ? 'text-gray-400' : 'text-amber-600'}`}>
+                <p className={`text-xs truncate ${m.phone ? 'text-faint' : 'text-amber-600'}`}>
                   {m.phone ? formatarParaLeitura(m.phone) : 'sem telefone — os gastos não serão identificados'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => { setEditando(m.id); setRascunho({ nome: m.name || '', telefone: m.phone || '' }); }}
-                className="p-2 text-gray-400 hover:text-primary-600 hover:bg-white rounded-lg"
+                className="p-2 text-faint hover:text-brand-600 hover:bg-white rounded-lg"
                 title="Editar"
               >
                 <Pencil className="w-4 h-4" />
@@ -121,7 +121,7 @@ export default function ParticipantesDaFamilia({
                 <button
                   type="button"
                   onClick={() => onRemover(m.id)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-white rounded-lg"
+                  className="p-2 text-faint hover:text-red-600 hover:bg-white rounded-lg"
                   title="Remover"
                 >
                   <Trash2 className="w-4 h-4" />

@@ -1,35 +1,21 @@
 /* ============================================================
    DashboardPage.css — Warm Precision
+   ============================================================
+   Os tokens de cor/tipografia/sombra que antes viviam aqui (num
+   :root que só existia depois deste chunk carregar — bug de FOUC
+   latente se alguém abrisse /login ou /settings direto) agora
+   vivem em src/styles/tokens.css, carregado globalmente em
+   main.jsx. --dash-kirk/--dash-raquel são específicos de avatar
+   de participante (não são tokens de marca), então ficam
+   escopados a .dash-root em vez de :root global.
    ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
-
-/* ── Tokens ── */
-:root {
-  --dash-bg:        #f9f8f6;
-  --dash-card:      #ffffff;
-  --dash-border:    #ebe8e2;
-  --dash-border-2:  #d8d3cb;
-  --dash-text:      #1c1916;
-  --dash-muted:     #6e6a63;
-  --dash-faint:     #a39f98;
-  --dash-income:    #0d9488;
-  --dash-expense:   #dc2626;
-  --dash-balance:   #2563eb;
-  --dash-pct:       #7c3aed;
-  --dash-warn:      #d97706;
-  --dash-kirk:      #3b5bdb;
-  --dash-raquel:    #e64980;
-  --font-body: 'Outfit', system-ui, sans-serif;
-  --font-num:  'JetBrains Mono', 'Cascadia Code', monospace;
-  --radius-card: 14px;
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.03);
-  --shadow-hover: 0 4px 20px rgba(0,0,0,0.08);
-}
 
 /* ── Base ── */
 .dash-root {
-  font-family: var(--font-body);
-  color: var(--dash-text);
+  --dash-kirk: #3b5bdb;
+  --dash-raquel: #e64980;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
 }
 
 /* ── Animations ── */
@@ -51,11 +37,11 @@
 .dash-delay-6 { animation-delay: 0.38s; }
 
 /* ── Color utilities ── */
-.income-text  { color: var(--dash-income)  !important; }
-.expense-text { color: var(--dash-expense) !important; }
-.balance-text { color: var(--dash-balance) !important; }
-.pct-text     { color: var(--dash-pct)     !important; }
-.warn-text    { color: var(--dash-warn)    !important; }
+.income-text  { color: var(--color-income)  !important; }
+.expense-text { color: var(--color-expense) !important; }
+.balance-text { color: var(--color-balance) !important; }
+.pct-text     { color: var(--color-pct)     !important; }
+.warn-text    { color: var(--color-warn)    !important; }
 
 /* ============================================================
    TOP BAR
@@ -70,10 +56,10 @@
 }
 
 .dash-heading {
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-size: 21px;
   font-weight: 800;
-  color: var(--dash-text);
+  color: var(--color-ink);
   margin: 0;
   line-height: 1.1;
   letter-spacing: -0.4px;
@@ -81,7 +67,7 @@
 
 .dash-subheading {
   font-size: 13px;
-  color: var(--dash-muted);
+  color: var(--color-muted);
   margin: 3px 0 0;
   font-weight: 500;
 }
@@ -102,14 +88,14 @@
 .dash-select {
   appearance: none;
   -webkit-appearance: none;
-  background: var(--dash-card);
-  border: 1px solid var(--dash-border);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 9px;
   padding: 7px 30px 7px 10px;
   font-size: 13px;
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   font-weight: 500;
-  color: var(--dash-text);
+  color: var(--color-ink);
   cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236e6a63' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -121,7 +107,7 @@
 
 .dash-select:focus {
   outline: none;
-  border-color: var(--dash-balance);
+  border-color: var(--color-balance);
   box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
 }
 
@@ -136,7 +122,7 @@
   border-radius: 9px;
   font-size: 13px;
   font-weight: 600;
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   cursor: pointer;
   transition: all 0.15s;
   border: none;
@@ -145,7 +131,7 @@
 }
 
 .dash-btn--primary {
-  background: var(--dash-balance);
+  background: var(--color-balance);
   color: #fff;
   box-shadow: 0 2px 8px rgba(37,99,235,0.2);
 }
@@ -156,12 +142,12 @@
 }
 
 .dash-btn--ghost {
-  background: var(--dash-card);
-  color: var(--dash-text);
-  border: 1px solid var(--dash-border);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border);
   box-shadow: var(--shadow-card);
 }
-.dash-btn--ghost:hover { background: #f4f1ec; border-color: var(--dash-border-2); }
+.dash-btn--ghost:hover { background: #f4f1ec; border-color: var(--color-border-strong); }
 
 .dash-btn--sm { padding: 6px 12px; font-size: 12px; }
 
@@ -184,9 +170,9 @@
 }
 
 .dash-kpi-card {
-  background: var(--dash-card);
-  border: 1px solid var(--dash-border);
-  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 14px 16px 12px;
   display: flex;
   flex-direction: column;
@@ -203,7 +189,7 @@
   position: absolute;
   inset: 0 0 auto 0;
   height: 3px;
-  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 
 .dash-kpi-card--income::before  { background: linear-gradient(90deg, #0d9488 0%, #34d399 100%); }
@@ -245,12 +231,12 @@
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--dash-muted);
+  color: var(--color-muted);
   line-height: 1;
 }
 
 .dash-kpi-value {
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
   font-size: 20px;
   font-weight: 700;
   margin: 0;
@@ -265,7 +251,7 @@
 
 .dash-kpi-sub {
   font-size: 10.5px;
-  color: var(--dash-faint);
+  color: var(--color-faint);
   margin: 0;
   line-height: 1.3;
 }
@@ -290,9 +276,9 @@
    SECTION WRAPPER
    ============================================================ */
 .dash-section {
-  background: var(--dash-card);
-  border: 1px solid var(--dash-border);
-  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 16px 18px;
   box-shadow: var(--shadow-card);
 }
@@ -309,7 +295,7 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--dash-muted);
+  color: var(--color-muted);
   margin: 0;
 }
 
@@ -325,12 +311,12 @@
 
 .dash-payer-card {
   background: #fafaf8;
-  border: 1.5px solid var(--dash-border);
+  border: 1.5px solid var(--color-border);
   border-radius: 11px;
   padding: 11px 13px 10px;
   cursor: pointer;
   text-align: left;
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -375,21 +361,21 @@
 .dash-payer-name {
   font-size: 13px;
   font-weight: 700;
-  color: var(--dash-text);
+  color: var(--color-ink);
   margin: 0;
   line-height: 1.2;
 }
 
 .dash-payer-share {
   font-size: 10.5px;
-  color: var(--dash-faint);
+  color: var(--color-faint);
   margin: 1px 0 0;
 }
 
 .dash-payer-amounts { text-align: right; flex-shrink: 0; }
 
 .dash-payer-expense {
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 700;
   margin: 0;
@@ -431,7 +417,7 @@
   border-radius: 6px;
   padding: 3px 8px;
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   transition: all 0.15s;
   line-height: 1;
 }
@@ -477,9 +463,9 @@
 }
 
 .dash-chart-card {
-  background: var(--dash-card);
-  border: 1px solid var(--dash-border);
-  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 16px 18px;
   box-shadow: var(--shadow-card);
 }
@@ -489,7 +475,7 @@
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--dash-muted);
+  color: var(--color-muted);
   margin: 0 0 12px;
 }
 
@@ -499,7 +485,7 @@
   justify-content: center;
   height: 180px;
   font-size: 12px;
-  color: var(--dash-faint);
+  color: var(--color-faint);
 }
 
 /* Donut layout */
@@ -533,14 +519,14 @@
 
 .dash-legend-name {
   flex: 1;
-  color: var(--dash-muted);
+  color: var(--color-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .dash-legend-val {
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -548,7 +534,7 @@
 
 .dash-legend-pct {
   font-size: 10px;
-  color: var(--dash-faint);
+  color: var(--color-faint);
   min-width: 34px;
   text-align: right;
 }
@@ -583,7 +569,7 @@
 .dash-tx-desc {
   font-size: 13px;
   font-weight: 500;
-  color: var(--dash-text);
+  color: var(--color-ink);
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -593,7 +579,7 @@
 
 .dash-tx-meta {
   font-size: 11px;
-  color: var(--dash-faint);
+  color: var(--color-faint);
   margin: 1px 0 0;
   line-height: 1.3;
   white-space: nowrap;
@@ -609,7 +595,7 @@
 }
 
 .dash-tx-amount {
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
@@ -622,7 +608,7 @@
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
 }
 
 /* View all / links */
@@ -632,11 +618,11 @@
   gap: 4px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--dash-balance);
+  color: var(--color-balance);
   background: none;
   border: none;
   cursor: pointer;
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   padding: 0;
   transition: color 0.15s;
 }
@@ -652,4 +638,4 @@
   text-align: center;
 }
 .dash-empty-icon { font-size: 30px; line-height: 1; }
-.dash-empty-text { font-size: 13px; color: var(--dash-faint); margin: 0; }
+.dash-empty-text { font-size: 13px; color: var(--color-faint); margin: 0; }

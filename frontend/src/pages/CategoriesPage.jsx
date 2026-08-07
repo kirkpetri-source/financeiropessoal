@@ -56,7 +56,7 @@ function CategoryForm({ onSubmit, initialData, isLoading }) {
               key={color}
               type="button"
               onClick={() => setValue('color', color)}
-              className={`w-7 h-7 rounded-full transition-transform ${selectedColor === color ? 'scale-125 ring-2 ring-offset-2 ring-gray-400' : 'hover:scale-110'}`}
+              className={`w-7 h-7 rounded-full transition-transform ${selectedColor === color ? 'scale-125 ring-2 ring-offset-2 ring-border-strong' : 'hover:scale-110'}`}
               style={{ backgroundColor: color }}
             />
           ))}
@@ -122,25 +122,25 @@ export default function CategoriesPage() {
 
   function CategoryRow({ cat }) {
     return (
-      <div className="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+      <div className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
         <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color || '#94a3b8' }} />
-        <span className="text-sm text-gray-800 flex-1">{cat.name}</span>
+        <span className="text-sm text-ink flex-1">{cat.name}</span>
         <span className={`hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[cat.type]}`}>
           {TYPE_LABELS[cat.type]}
         </span>
-        {!cat.userId && <span className="hidden sm:inline text-xs text-gray-400">padrão</span>}
+        {!cat.userId && <span className="hidden sm:inline text-xs text-faint">padrão</span>}
         <div className="flex gap-1">
           <button
             onClick={() => openEdit(cat)}
             disabled={!cat.userId}
-            className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-1.5 text-faint hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Pencil className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => cat.userId && setDeletingId(cat.id)}
             disabled={!cat.userId}
-            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-1.5 text-faint hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -157,7 +157,7 @@ export default function CategoriesPage() {
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${filterType === type ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${filterType === type ? 'bg-brand-600 text-white' : 'bg-white text-muted border border-border-strong hover:bg-surface-alt'}`}
             >
               {type === '' ? 'Todas' : TYPE_LABELS[type]}
             </button>
@@ -176,18 +176,18 @@ export default function CategoriesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {(!filterType || filterType === 'EXPENSE') && (
             <div className="card">
-              <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-red-400" /> Despesas ({expenses.length})
               </h2>
-              {expenses.length === 0 ? <p className="text-sm text-gray-400">Nenhuma categoria de despesa.</p> : expenses.map(c => <CategoryRow key={c.id} cat={c} />)}
+              {expenses.length === 0 ? <p className="text-sm text-faint">Nenhuma categoria de despesa.</p> : expenses.map(c => <CategoryRow key={c.id} cat={c} />)}
             </div>
           )}
           {(!filterType || filterType === 'INCOME') && (
             <div className="card">
-              <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-green-400" /> Receitas ({incomes.length})
               </h2>
-              {incomes.length === 0 ? <p className="text-sm text-gray-400">Nenhuma categoria de receita.</p> : incomes.map(c => <CategoryRow key={c.id} cat={c} />)}
+              {incomes.length === 0 ? <p className="text-sm text-faint">Nenhuma categoria de receita.</p> : incomes.map(c => <CategoryRow key={c.id} cat={c} />)}
             </div>
           )}
         </div>

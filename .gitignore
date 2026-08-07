@@ -18,3 +18,6 @@ backups/
 
 .vercel
 .env*
+
+# Saida gerada pelo graphify (grafo de conhecimento do codebase)
+graphify-out/

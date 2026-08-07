@@ -4,6 +4,7 @@ import { AssinaturaProvider } from './contexts/AssinaturaContext';
 import PrivateRoute from './routes/PrivateRoute';
 import AppLayout from './components/layout/AppLayout';
 
+import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import TransactionsPage from './pages/TransactionsPage';
@@ -21,6 +22,7 @@ export default function App() {
       <AssinaturaProvider>
         <BrowserRouter>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
 
             {/* Termos e privacidade abrem sem login: a landing page e o próprio
@@ -31,7 +33,6 @@ export default function App() {
 
             <Route element={<PrivateRoute />}>
               <Route element={<AppLayout />}>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/transactions" element={<TransactionsPage />} />
                 <Route path="/categories" element={<CategoriesPage />} />

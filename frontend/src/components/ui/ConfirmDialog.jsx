@@ -12,8 +12,8 @@ export default function ConfirmDialog({ isOpen, onClose, onConfirm, title, messa
             <AlertTriangle className="w-5 h-5 text-red-600" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">{title}</h3>
-            <p className="text-sm text-gray-500 mt-1">{message}</p>
+            <h3 className="font-semibold text-ink">{title}</h3>
+            <p className="text-sm text-muted mt-1">{message}</p>
           </div>
         </div>
         <div className="flex gap-3 mt-6">

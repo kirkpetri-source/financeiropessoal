@@ -1,35 +1,22 @@
-import { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from './dialog';
 
+const SIZES = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-4xl' };
+
+/**
+ * Wrapper fino sobre o Dialog do Radix, mantendo a mesma API que o resto do
+ * app já usa (isOpen/onClose/title/size) — troca a implementação por baixo
+ * (focus trap, Esc, aria-modal de graça) sem precisar mexer nos 3 call sites
+ * (Dashboard, Categories, Transactions).
+ */
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }) {
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-white rounded-2xl shadow-xl w-full ${sizes[size]} max-h-[90vh] flex flex-col`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose?.(); }}>
+      <DialogContent className={`${SIZES[size] ?? SIZES.md} flex max-h-[90vh] flex-col p-0`}>
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <DialogTitle className="text-base font-semibold text-ink">{title}</DialogTitle>
         </div>
-        <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
-      </div>
-    </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
+      </DialogContent>
+    </Dialog>
   );
 }

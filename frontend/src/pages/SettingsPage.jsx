@@ -7,16 +7,17 @@ import { useHousehold } from '../hooks/useHousehold';
 import MeusDados from '../components/lgpd/MeusDados';
 import ConectarWhatsapp from '../components/whatsapp/ConectarWhatsapp';
 import ParticipantesDaFamilia from '../components/whatsapp/ParticipantesDaFamilia';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import toast from 'react-hot-toast';
 
 function Section({ icon: Icon, title, children }) {
   return (
     <div className="card space-y-4">
-      <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
-        <div className="w-8 h-8 bg-primary-50 rounded-lg flex items-center justify-center">
-          <Icon className="w-4 h-4 text-primary-600" />
+      <div className="flex items-center gap-2 pb-3 border-b border-border">
+        <div className="w-8 h-8 bg-brand-light rounded-lg flex items-center justify-center">
+          <Icon className="w-4 h-4 text-brand-dark" />
         </div>
-        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        <h2 className="text-sm font-semibold text-ink">{title}</h2>
       </div>
       {children}
     </div>
@@ -104,189 +105,202 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
-      {/* Perfil */}
-      <Section icon={User} title="Dados do Usuário">
-        <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)} className="space-y-3">
-          <div>
-            <label className="label">Nome</label>
-            <input className="input" {...profileForm.register('name', { required: true })} />
-          </div>
-          <div>
-            <label className="label">E-mail</label>
-            <input type="email" className="input" {...profileForm.register('email', { required: true })} />
-          </div>
-          <button type="submit" disabled={savingProfile} className="btn-primary flex items-center gap-2">
-            {savingProfile ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar Perfil</>}
-          </button>
-        </form>
-      </Section>
+    <div className="max-w-2xl mx-auto">
+      <Tabs defaultValue="conta">
+        <TabsList>
+          <TabsTrigger value="conta">Conta</TabsTrigger>
+          <TabsTrigger value="familia">Família e WhatsApp</TabsTrigger>
+          <TabsTrigger value="dados">Dados e privacidade</TabsTrigger>
+        </TabsList>
 
-      {/* Senha — fechada por padrão.
-          Trocar senha é ação rara; três campos permanentemente abertos empurram
-          para baixo o que a pessoa realmente veio fazer. */}
-      <Section icon={Lock} title="Senha">
-        {!trocandoSenha ? (
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-sm text-gray-500">
-              Sua senha de acesso ao painel.
-            </p>
-            <button
-              type="button"
-              onClick={() => setTrocandoSenha(true)}
-              className="btn-secondary text-sm flex-shrink-0"
-            >
-              Trocar senha
-            </button>
-          </div>
-        ) : (
-        <form onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)} className="space-y-3">
-          <div>
-            <label className="label">Senha Atual</label>
-            <div className="relative">
-              <input
-                type={showCurrentPwd ? 'text' : 'password'}
-                className="input pr-10"
-                {...passwordForm.register('currentPassword', { required: true })}
-              />
-              <button type="button" onClick={() => setShowCurrentPwd(!showCurrentPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                {showCurrentPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        {/* ── Conta: perfil + senha ── */}
+        <TabsContent value="conta" className="space-y-6">
+          <Section icon={User} title="Dados do Usuário">
+            <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)} className="space-y-3">
+              <div>
+                <label className="label">Nome</label>
+                <input className="input" {...profileForm.register('name', { required: true })} />
+              </div>
+              <div>
+                <label className="label">E-mail</label>
+                <input type="email" className="input" {...profileForm.register('email', { required: true })} />
+              </div>
+              <button type="submit" disabled={savingProfile} className="btn-primary flex items-center gap-2">
+                {savingProfile ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar Perfil</>}
               </button>
+            </form>
+          </Section>
+
+          {/* Senha — fechada por padrão.
+              Trocar senha é ação rara; três campos permanentemente abertos empurram
+              para baixo o que a pessoa realmente veio fazer. */}
+          <Section icon={Lock} title="Senha">
+            {!trocandoSenha ? (
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm text-muted">
+                  Sua senha de acesso ao painel.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTrocandoSenha(true)}
+                  className="btn-secondary text-sm flex-shrink-0"
+                >
+                  Trocar senha
+                </button>
+              </div>
+            ) : (
+            <form onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)} className="space-y-3">
+              <div>
+                <label className="label">Senha Atual</label>
+                <div className="relative">
+                  <input
+                    type={showCurrentPwd ? 'text' : 'password'}
+                    className="input pr-10"
+                    {...passwordForm.register('currentPassword', { required: true })}
+                  />
+                  <button type="button" onClick={() => setShowCurrentPwd(!showCurrentPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-faint">
+                    {showCurrentPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="label">Nova Senha</label>
+                <div className="relative">
+                  <input
+                    type={showNewPwd ? 'text' : 'password'}
+                    className="input pr-10"
+                    placeholder="Mínimo 6 caracteres"
+                    {...passwordForm.register('newPassword', { required: true, minLength: 6 })}
+                  />
+                  <button type="button" onClick={() => setShowNewPwd(!showNewPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-faint">
+                    {showNewPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="label">Confirmar Nova Senha</label>
+                <input type="password" className="input" {...passwordForm.register('confirmPassword', { required: true })} />
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" disabled={savingPassword} className="btn-primary flex items-center gap-2">
+                  {savingPassword ? <><Loader2 className="w-4 h-4 animate-spin" /> Alterando...</> : <><CheckCircle2 className="w-4 h-4" /> Alterar senha</>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTrocandoSenha(false); passwordForm.reset(); }}
+                  className="btn-secondary text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+            )}
+          </Section>
+        </TabsContent>
+
+        {/* ── Família e WhatsApp: membros, conexão, ajustes do canal ── */}
+        <TabsContent value="familia" className="space-y-6">
+          <Section icon={Users} title="Minha Família">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="label">Nome da família</label>
+                <input
+                  className="input"
+                  value={nomeFamilia}
+                  onChange={(e) => setNomeFamilia(e.target.value)}
+                  placeholder="Ex: Família Petri"
+                  disabled={!permissoes.gerirMembros}
+                />
+              </div>
+              {permissoes.gerirMembros && (
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  disabled={!nomeFamilia.trim() || nomeFamilia === household?.name}
+                  onClick={() => renomearFamilia(nomeFamilia.trim()).catch((e) =>
+                    toast.error(e.response?.data?.error || 'Erro ao renomear.'))}
+                >
+                  Salvar
+                </button>
+              )}
             </div>
-          </div>
-          <div>
-            <label className="label">Nova Senha</label>
-            <div className="relative">
-              <input
-                type={showNewPwd ? 'text' : 'password'}
-                className="input pr-10"
-                placeholder="Mínimo 6 caracteres"
-                {...passwordForm.register('newPassword', { required: true, minLength: 6 })}
+
+            <div>
+              <label className="label">Membros</label>
+              <p className="text-xs text-faint mb-2">
+                Quem participa do controle financeiro. O telefone permite identificar
+                automaticamente quem pagou, pelo número que enviou a mensagem.
+              </p>
+
+              {/* Mesmo componente do assistente do WhatsApp: uma lista só, com
+                  edição de telefone. Antes o telefone era só de leitura, e o dono
+                  — que se cadastra sem telefone — ficava sem como corrigir. */}
+              <ParticipantesDaFamilia
+                membros={membros}
+                onAdicionar={adicionarMembro}
+                onAtualizar={atualizarMembro}
+                onRemover={(id) => removerMembro(id).catch((e) =>
+                  toast.error(e.response?.data?.error || 'Erro ao remover.'))}
               />
-              <button type="button" onClick={() => setShowNewPwd(!showNewPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                {showNewPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+
+              <p className="text-xs text-faint mt-2">
+                Para lançar no nome de outra pessoa, cite o nome no fim:{' '}
+                <code className="bg-surface-alt px-1 rounded">gastei 84,90 no mercado raquel</code>
+              </p>
             </div>
-          </div>
-          <div>
-            <label className="label">Confirmar Nova Senha</label>
-            <input type="password" className="input" {...passwordForm.register('confirmPassword', { required: true })} />
-          </div>
-          <div className="flex gap-2">
-            <button type="submit" disabled={savingPassword} className="btn-primary flex items-center gap-2">
-              {savingPassword ? <><Loader2 className="w-4 h-4 animate-spin" /> Alterando...</> : <><CheckCircle2 className="w-4 h-4" /> Alterar senha</>}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setTrocandoSenha(false); passwordForm.reset(); }}
-              className="btn-secondary text-sm"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
-        )}
-      </Section>
+          </Section>
 
-      {/* Família */}
-      <Section icon={Users} title="Minha Família">
-        <div className="flex gap-2 items-end">
-          <div className="flex-1">
-            <label className="label">Nome da família</label>
-            <input
-              className="input"
-              value={nomeFamilia}
-              onChange={(e) => setNomeFamilia(e.target.value)}
-              placeholder="Ex: Família Petri"
-              disabled={!permissoes.gerirMembros}
+          <Section icon={MessageSquare} title="WhatsApp">
+            <ConectarWhatsapp
+              podeGerir={!!permissoes.gerirCanal}
+              membros={membros}
+              acoesDeMembro={{
+                adicionar: adicionarMembro,
+                atualizar: atualizarMembro,
+                remover: removerMembro,
+                recarregar: buscarHousehold,
+              }}
             />
-          </div>
-          {permissoes.gerirMembros && (
-            <button
-              type="button"
-              className="btn-secondary text-sm"
-              disabled={!nomeFamilia.trim() || nomeFamilia === household?.name}
-              onClick={() => renomearFamilia(nomeFamilia.trim()).catch((e) =>
-                toast.error(e.response?.data?.error || 'Erro ao renomear.'))}
-            >
-              Salvar
-            </button>
-          )}
-        </div>
+          </Section>
 
-        <div>
-          <label className="label">Membros</label>
-          <p className="text-xs text-gray-400 mb-2">
-            Quem participa do controle financeiro. O telefone permite identificar
-            automaticamente quem pagou, pelo número que enviou a mensagem.
-          </p>
+          {/* Ajustes do canal
+              O botão "Aceitar mensagens privadas" saiu daqui de propósito. Quem
+              decide isso é o modo de uso (individual liga, grupo desliga), e o
+              botão carregava o valor uma vez no início: depois de escolher o modo,
+              salvar a mensagem de confirmação mandava o valor velho junto e
+              desligava o canal do próprio cliente, sem nenhum aviso. */}
+          <Section icon={MessageSquare} title="Ajustes do WhatsApp">
+            <form onSubmit={whatsappForm.handleSubmit(handleWhatsappSubmit)} className="space-y-3">
+              <div>
+                <label className="label">Mensagem de confirmação</label>
+                <input
+                  className="input"
+                  placeholder="✅ Lançamento registrado: {tipo} de R$ {valor} em {categoria}"
+                  {...whatsappForm.register('confirmationMessageTemplate')}
+                />
+                <p className="text-xs text-faint mt-1">
+                  É o texto que o sistema responde no WhatsApp depois de registrar.
+                  Onde você escrever <code className="bg-surface-alt px-1 rounded">{'{tipo}'}</code>,{' '}
+                  <code className="bg-surface-alt px-1 rounded">{'{valor}'}</code> ou{' '}
+                  <code className="bg-surface-alt px-1 rounded">{'{categoria}'}</code>, entram os dados
+                  do lançamento. Deixe como está se não quiser mudar.
+                </p>
+              </div>
 
-          {/* Mesmo componente do assistente do WhatsApp: uma lista só, com
-              edição de telefone. Antes o telefone era só de leitura, e o dono
-              — que se cadastra sem telefone — ficava sem como corrigir. */}
-          <ParticipantesDaFamilia
-            membros={membros}
-            onAdicionar={adicionarMembro}
-            onAtualizar={atualizarMembro}
-            onRemover={(id) => removerMembro(id).catch((e) =>
-              toast.error(e.response?.data?.error || 'Erro ao remover.'))}
-          />
+              <button type="submit" disabled={savingWhatsapp} className="btn-primary flex items-center gap-2">
+                {savingWhatsapp ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar</>}
+              </button>
+            </form>
+          </Section>
+        </TabsContent>
 
-          <p className="text-xs text-gray-400 mt-2">
-            Para lançar no nome de outra pessoa, cite o nome no fim:{' '}
-            <code className="bg-gray-100 px-1 rounded">gastei 84,90 no mercado raquel</code>
-          </p>
-        </div>
-      </Section>
-
-      {/* WhatsApp — escolha do modo e conexão */}
-      <Section icon={MessageSquare} title="WhatsApp">
-        <ConectarWhatsapp
-          podeGerir={!!permissoes.gerirCanal}
-          membros={membros}
-          acoesDeMembro={{
-            adicionar: adicionarMembro,
-            atualizar: atualizarMembro,
-            remover: removerMembro,
-            recarregar: buscarHousehold,
-          }}
-        />
-      </Section>
-
-      {/* Ajustes do canal
-          O botão "Aceitar mensagens privadas" saiu daqui de propósito. Quem
-          decide isso é o modo de uso (individual liga, grupo desliga), e o
-          botão carregava o valor uma vez no início: depois de escolher o modo,
-          salvar a mensagem de confirmação mandava o valor velho junto e
-          desligava o canal do próprio cliente, sem nenhum aviso. */}
-      <Section icon={MessageSquare} title="Ajustes do WhatsApp">
-        <form onSubmit={whatsappForm.handleSubmit(handleWhatsappSubmit)} className="space-y-3">
-          <div>
-            <label className="label">Mensagem de confirmação</label>
-            <input
-              className="input"
-              placeholder="✅ Lançamento registrado: {tipo} de R$ {valor} em {categoria}"
-              {...whatsappForm.register('confirmationMessageTemplate')}
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              É o texto que o sistema responde no WhatsApp depois de registrar.
-              Onde você escrever <code className="bg-gray-100 px-1 rounded">{'{tipo}'}</code>,{' '}
-              <code className="bg-gray-100 px-1 rounded">{'{valor}'}</code> ou{' '}
-              <code className="bg-gray-100 px-1 rounded">{'{categoria}'}</code>, entram os dados
-              do lançamento. Deixe como está se não quiser mudar.
-            </p>
-          </div>
-
-          <button type="submit" disabled={savingWhatsapp} className="btn-primary flex items-center gap-2">
-            {savingWhatsapp ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar</>}
-          </button>
-        </form>
-      </Section>
-
-      {/* LGPD */}
-      <Section icon={ShieldCheck} title="Meus dados (LGPD)">
-        <MeusDados podeExcluir={!!permissoes.gerirAssinatura} />
-      </Section>
+        {/* ── Dados e privacidade: LGPD isolado ── */}
+        <TabsContent value="dados">
+          <Section icon={ShieldCheck} title="Meus dados (LGPD)">
+            <MeusDados podeExcluir={!!permissoes.gerirAssinatura} />
+          </Section>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

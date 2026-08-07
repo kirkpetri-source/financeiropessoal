@@ -1,0 +1,61 @@
+/* ============================================================
+   tokens.css — fonte única dos tokens visuais do RevelaCash
+   ============================================================
+   Substitui os 3 sistemas de cor/tipografia que coexistiam sem
+   coerência (Tailwind "primary" azul + Inter, "Warm Precision"
+   isolado no Dashboard, tokens ad-hoc do relatório mensal).
+
+   Importado em main.jsx ANTES de <App/> renderizar, para existir
+   desde o primeiro paint em qualquer rota (login, settings, etc) —
+   não só depois que o Dashboard carrega, como acontecia antes.
+
+   Estes valores precisam ficar idênticos aos de tailwind.config.js
+   e de tokens.js (Recharts/inline style não leem CSS vars) — não
+   há dedupe automático neste setup (Vite + Tailwind 3), então é
+   contrato manual: mude nos três lugares juntos.
+   ============================================================ */
+
+:root {
+  /* Neutros */
+  --color-bg: #f9f8f6;
+  --color-surface: #ffffff;
+  --color-surface-alt: #fafaf8;
+  --color-border: #ebe8e2;
+  --color-border-strong: #d8d3cb;
+  --color-ink: #1c1916;
+  --color-muted: #6e6a63;
+  --color-faint: #a39f98;
+
+  /* Tipografia */
+  --font-sans: 'Outfit', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', monospace;
+
+  /* Raio e sombra */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.03);
+  --shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-modal: 0 8px 32px rgba(28, 25, 22, 0.16), 0 2px 8px rgba(28, 25, 22, 0.08);
+
+  /* Semânticos financeiros — não mudar sem revisar todo o app,
+     já estão espalhados em gráficos/badges reconhecidos pelo usuário */
+  --color-income: #0d9488;
+  --color-expense: #dc2626;
+  --color-balance: #2563eb;
+  --color-pct: #7c3aed;
+  --color-warn: #d97706;
+
+  /* Marca RevelaCash — roxo profundo, escolhido pelo Kirk. Mais escuro/denso
+     que --color-pct (#7c3aed) para não colidir visualmente com o indicador
+     de percentual. */
+  --color-brand: #5b21b6;
+  --color-brand-dark: #4c1d95;
+  --color-brand-light: #ece1f7;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}

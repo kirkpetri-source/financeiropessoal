@@ -10,11 +10,11 @@ export default function TermosPage() {
   return (
     <LegalLayout
       titulo="Termos de Uso"
-      resumo="Resumo honesto: R$ 24,90 por mês, por família, com 14 dias de teste grátis antes de qualquer cobrança. Cancele por um botão no painel, sem ligar para ninguém. Se parar de pagar, você perde o direito de lançar, mas continua enxergando e exportando todo o seu histórico."
+      resumo="Resumo honesto: R$ 24,90 por mês, por família, com 7 dias de teste grátis antes de qualquer cobrança. Cancele por um botão no painel, sem ligar para ninguém. Se parar de pagar, você perde o direito de lançar, mas continua enxergando e exportando todo o seu histórico."
     >
       <Secao titulo="1. Quem presta o serviço">
         <p>
-          O Financeiro Familiar é operado por LION TECH SOLUÇÕES EM TI LTDA,
+          O RevelaCash é operado por LION TECH SOLUÇÕES EM TI LTDA,
           CNPJ 44.124.574/0001-47, Mineiros-GO. Contato: {CONTATO_ENCARREGADO} ou
           WhatsApp (64) 9 9955-5364.
         </p>
@@ -31,7 +31,7 @@ export default function TermosPage() {
       </Secao>
 
       <Secao titulo="4. Teste grátis, preço e cobrança">
-        <p>Toda família começa com <strong>14 dias de teste grátis</strong>, sem cartão e sem cobrança.</p>
+        <p>Toda família começa com <strong>7 dias de teste grátis</strong>, sem cartão e sem cobrança.</p>
         <p>Depois disso, o plano custa <strong>R$ 24,90 por mês, por família</strong> — não por pessoa. A cobrança é mensal e recorrente, processada pelo Mercado Pago no meio de pagamento que você escolher lá.</p>
         <p>Mudança de preço só vale para ciclos futuros e é avisada com pelo menos 30 dias de antecedência. Quem já é assinante mantém o preço contratado até a data informada no aviso.</p>
       </Secao>

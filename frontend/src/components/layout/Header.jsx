@@ -1,6 +1,14 @@
-import { Menu, LogOut } from 'lucide-react';
+import { Menu, LogOut, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '../ui/dropdown-menu';
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
@@ -8,6 +16,8 @@ const PAGE_TITLES = {
   '/categories': 'Categorias',
   '/settings': 'Configurações',
   '/whatsapp-logs': 'Mensagens WhatsApp',
+  '/assinatura': 'Assinatura',
+  '/admin': 'Painel administrativo',
 };
 
 export default function Header({ onMenuClick }) {
@@ -15,7 +25,8 @@ export default function Header({ onMenuClick }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const title = PAGE_TITLES[location.pathname] || 'Controle Financeiro';
+  const title = PAGE_TITLES[location.pathname] || 'RevelaCash';
+  const initial = user?.name?.charAt(0).toUpperCase() || '?';
 
   function handleLogout() {
     logout();
@@ -23,30 +34,36 @@ export default function Header({ onMenuClick }) {
   }
 
   return (
-    <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
+    <header className="h-14 bg-white border-b border-border flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+          className="lg:hidden p-2 rounded-lg text-muted hover:bg-surface-alt"
         >
           <Menu className="w-5 h-5" />
         </button>
-        <h1 className="text-base font-semibold text-gray-900">{title}</h1>
+        <h1 className="text-base font-semibold text-ink">{title}</h1>
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="hidden sm:block text-sm text-gray-500 mr-2">
-          Olá, {user?.name?.split(' ')[0]}
-        </span>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-          title="Sair"
-        >
-          <LogOut className="w-4 h-4" />
-          <span className="hidden sm:inline">Sair</span>
-        </button>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-surface-alt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-light text-xs font-bold text-brand-dark">
+            {initial}
+          </span>
+          <span className="hidden sm:block text-muted">
+            Olá, {user?.name?.split(' ')[0]}
+          </span>
+          <ChevronDown className="hidden h-3.5 w-3.5 text-faint sm:block" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem destructive onSelect={handleLogout}>
+            <LogOut className="h-4 w-4" />
+            Sair
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
   );
 }

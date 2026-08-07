@@ -82,7 +82,7 @@ export function AuthProvider({ children }) {
    * Cadastro.
    *
    * Duas etapas que precisam acontecer juntas: o Firebase cria o login, e o
-   * nosso backend cria o perfil e a FAMÍLIA com trial de 14 dias. Sem a
+   * nosso backend cria o perfil e a FAMÍLIA com trial de 7 dias. Sem a
    * segunda, o usuário entra e esbarra em SEM_HOUSEHOLD em toda tela.
    *
    * Se a segunda falhar, apagamos o login recém-criado. Deixar um login órfão

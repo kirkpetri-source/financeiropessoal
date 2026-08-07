@@ -21,8 +21,8 @@ const ROTULO_DO_STATUS = {
   active: { texto: 'Ativa', cor: 'bg-green-100 text-green-800' },
   pending: { texto: 'Aguardando pagamento', cor: 'bg-amber-100 text-amber-800' },
   past_due: { texto: 'Pagamento atrasado', cor: 'bg-red-100 text-red-800' },
-  paused: { texto: 'Pausada', cor: 'bg-gray-100 text-gray-700' },
-  canceled: { texto: 'Cancelada', cor: 'bg-gray-100 text-gray-700' },
+  paused: { texto: 'Pausada', cor: 'bg-surface-alt text-ink' },
+  canceled: { texto: 'Cancelada', cor: 'bg-surface-alt text-ink' },
 };
 
 export default function AssinaturaPage() {
@@ -89,7 +89,7 @@ export default function AssinaturaPage() {
   if (!carregou) {
     return (
       <div className="flex justify-center py-16">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <Loader2 className="w-6 h-6 animate-spin text-faint" />
       </div>
     );
   }
@@ -104,8 +104,8 @@ export default function AssinaturaPage() {
       <div className="card space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">Assinatura</h1>
-            <p className="text-sm text-gray-500 mt-0.5">{assinatura?.mensagem}</p>
+            <h1 className="text-lg font-semibold text-ink">Assinatura</h1>
+            <p className="text-sm text-muted mt-0.5">{assinatura?.mensagem}</p>
           </div>
           {rotulo && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${rotulo.cor}`}>
@@ -115,8 +115,8 @@ export default function AssinaturaPage() {
         </div>
 
         {assinatura?.expiraEm && (
-          <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2.5">
-            <ShieldCheck className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <div className="flex items-center gap-2 text-sm text-muted bg-surface-alt rounded-xl px-3 py-2.5">
+            <ShieldCheck className="w-4 h-4 text-faint flex-shrink-0" />
             <span>
               {assinatura.emTrial ? 'Teste grátis até ' : 'Válida até '}
               <strong>{formatDate(assinatura.expiraEm)}</strong>
@@ -142,13 +142,13 @@ export default function AssinaturaPage() {
       {/* Plano */}
       <div className="card space-y-4">
         <div className="flex items-baseline gap-2">
-          <span className="text-3xl font-bold text-gray-900">{formatCurrency(preco)}</span>
-          <span className="text-sm text-gray-500">/ mês, por família</span>
+          <span className="text-3xl font-bold text-ink">{formatCurrency(preco)}</span>
+          <span className="text-sm text-muted">/ mês, por família</span>
         </div>
 
         <ul className="space-y-2">
           {BENEFICIOS.map((b) => (
-            <li key={b} className="flex items-start gap-2 text-sm text-gray-700">
+            <li key={b} className="flex items-start gap-2 text-sm text-ink">
               <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
               {b}
             </li>
@@ -156,7 +156,7 @@ export default function AssinaturaPage() {
         </ul>
 
         {!assinatura?.podeGerir ? (
-          <p className="text-sm text-gray-500 bg-gray-50 rounded-xl px-3 py-2.5">
+          <p className="text-sm text-muted bg-surface-alt rounded-xl px-3 py-2.5">
             Só quem é dono da família pode contratar ou cancelar a assinatura.
           </p>
         ) : assinatura?.status === 'active' ? (
@@ -189,7 +189,7 @@ export default function AssinaturaPage() {
           </button>
         )}
 
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-faint">
           Pagamento processado pelo Mercado Pago. Cancele quando quiser — o acesso
           continua até o fim do período já pago. Ao assinar você concorda com os{' '}
           <Link to="/termos" className="underline">termos de uso</Link> e a{' '}
@@ -200,19 +200,19 @@ export default function AssinaturaPage() {
       {/* Histórico de cobrança */}
       {assinatura?.podeGerir && eventos.length > 0 && (
         <div className="card space-y-3">
-          <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
-            <Receipt className="w-4 h-4 text-gray-400" />
-            <h2 className="text-sm font-semibold text-gray-900">Histórico de cobrança</h2>
+          <div className="flex items-center gap-2 pb-3 border-b border-border">
+            <Receipt className="w-4 h-4 text-faint" />
+            <h2 className="text-sm font-semibold text-ink">Histórico de cobrança</h2>
           </div>
           <div className="space-y-2">
             {eventos.map((e) => (
               <div key={e.id} className="flex items-center justify-between gap-3 text-sm">
                 <div className="min-w-0">
-                  <p className="text-gray-900 truncate">{descreverEvento(e)}</p>
-                  <p className="text-xs text-gray-400">{formatDateTime(e.createdAt)}</p>
+                  <p className="text-ink truncate">{descreverEvento(e)}</p>
+                  <p className="text-xs text-faint">{formatDateTime(e.createdAt)}</p>
                 </div>
                 {e.valorCentavos != null && (
-                  <span className="text-gray-600 flex-shrink-0">
+                  <span className="text-muted flex-shrink-0">
                     {formatCurrency(e.valorCentavos / 100)}
                   </span>
                 )}
@@ -225,10 +225,10 @@ export default function AssinaturaPage() {
       {/* Cancelamento */}
       {assinatura?.podeGerir && temAssinaturaViva && (
         <div className="card space-y-3">
-          <h2 className="text-sm font-semibold text-gray-900">Cancelar assinatura</h2>
+          <h2 className="text-sm font-semibold text-ink">Cancelar assinatura</h2>
           {!confirmandoCancelamento ? (
             <>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted">
                 A cobrança para na hora e o acesso continua até o fim do período já pago.
                 Nenhum lançamento é apagado.
               </p>

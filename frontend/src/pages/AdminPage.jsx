@@ -12,12 +12,12 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 
 function Numero({ rotulo, valor, detalhe, destaque }) {
   return (
-    <div className={`card ${destaque ? 'ring-1 ring-primary-200' : ''}`}>
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{rotulo}</p>
-      <p className={`mt-1 font-bold ${destaque ? 'text-2xl text-primary-700' : 'text-xl text-gray-900'}`}>
+    <div className={`card ${destaque ? 'ring-1 ring-brand-200' : ''}`}>
+      <p className="text-xs font-medium text-muted uppercase tracking-wide">{rotulo}</p>
+      <p className={`mt-1 font-bold ${destaque ? 'text-2xl text-brand-700' : 'text-xl text-ink'}`}>
         {valor}
       </p>
-      {detalhe && <p className="text-xs text-gray-400 mt-0.5">{detalhe}</p>}
+      {detalhe && <p className="text-xs text-faint mt-0.5">{detalhe}</p>}
     </div>
   );
 }
@@ -27,8 +27,8 @@ const CORES_DO_STATUS = {
   trialing: 'bg-blue-100 text-blue-800',
   past_due: 'bg-red-100 text-red-800',
   pending: 'bg-amber-100 text-amber-800',
-  canceled: 'bg-gray-100 text-gray-600',
-  paused: 'bg-gray-100 text-gray-600',
+  canceled: 'bg-surface-alt text-muted',
+  paused: 'bg-surface-alt text-muted',
 };
 
 function percentual(fracao) {
@@ -63,7 +63,7 @@ export default function AdminPage() {
   if (carregando && !metricas) {
     return (
       <div className="flex justify-center py-16">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <Loader2 className="w-6 h-6 animate-spin text-faint" />
       </div>
     );
   }
@@ -71,9 +71,9 @@ export default function AdminPage() {
   if (semAcesso) {
     return (
       <div className="card max-w-md mx-auto text-center space-y-2">
-        <Lock className="w-6 h-6 text-gray-400 mx-auto" />
-        <p className="text-sm font-medium text-gray-900">Acesso restrito</p>
-        <p className="text-xs text-gray-500">
+        <Lock className="w-6 h-6 text-faint mx-auto" />
+        <p className="text-sm font-medium text-ink">Acesso restrito</p>
+        <p className="text-xs text-muted">
           Este painel é da operação do serviço. Configure ADMIN_EMAILS no backend
           para liberar o seu e-mail.
         </p>
@@ -85,8 +85,8 @@ export default function AdminPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Operação</h1>
-          <p className="text-sm text-gray-500">Janela de {metricas?.janelaDias} dias</p>
+          <h1 className="text-lg font-semibold text-ink">Operação</h1>
+          <p className="text-sm text-muted">Janela de {metricas?.janelaDias} dias</p>
         </div>
         <button type="button" onClick={carregar} className="btn-secondary text-sm flex items-center gap-2">
           <RefreshCw className={`w-4 h-4 ${carregando ? 'animate-spin' : ''}`} /> Atualizar
@@ -133,14 +133,14 @@ export default function AdminPage() {
       </div>
 
       <div className="card p-0 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-900">
+        <div className="px-4 py-3 border-b border-border">
+          <h2 className="text-sm font-semibold text-ink">
             Famílias ({familias.length}) — ordenadas por quem vence primeiro
           </h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+            <thead className="bg-surface-alt text-xs text-muted uppercase">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Família</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
@@ -153,8 +153,8 @@ export default function AdminPage() {
               {familias.map((f) => (
                 <tr key={f.id} className="table-row">
                   <td className="px-4 py-2.5">
-                    <p className="text-gray-900">{f.nome || '(sem nome)'}</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-ink">{f.nome || '(sem nome)'}</p>
+                    <p className="text-xs text-faint">
                       desde {formatDate(f.criadaEm)}
                       {f.exclusaoAgendadaPara && (
                         <span className="text-red-500"> · exclusão em {formatDate(f.exclusaoAgendadaPara)}</span>
@@ -162,15 +162,15 @@ export default function AdminPage() {
                     </p>
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${CORES_DO_STATUS[f.status] || 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${CORES_DO_STATUS[f.status] || 'bg-surface-alt text-muted'}`}>
                       {f.status || 'sem assinatura'}
                     </span>
                     {f.emCarencia && <span className="ml-1 text-xs text-red-600">carência</span>}
                     {!f.podeLancar && <span className="ml-1 text-xs text-red-600">bloqueada</span>}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-600">{f.expiraEm ? formatDate(f.expiraEm) : '-'}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-600">{f.diasRestantes ?? '-'}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-600">
+                  <td className="px-4 py-2.5 text-muted">{f.expiraEm ? formatDate(f.expiraEm) : '-'}</td>
+                  <td className="px-4 py-2.5 text-right text-muted">{f.diasRestantes ?? '-'}</td>
+                  <td className="px-4 py-2.5 text-right text-muted">
                     {f.precoCentavos != null ? formatCurrency(f.precoCentavos / 100) : '-'}
                   </td>
                 </tr>

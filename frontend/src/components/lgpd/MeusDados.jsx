@@ -86,8 +86,8 @@ export default function MeusDados({ podeExcluir }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm font-medium text-gray-900">Exportar meus dados</p>
-        <p className="text-xs text-gray-500 mt-0.5 mb-2">
+        <p className="text-sm font-medium text-ink">Exportar meus dados</p>
+        <p className="text-xs text-muted mt-0.5 mb-2">
           Baixa todos os lançamentos, membros, categorias e mensagens da sua família
           em um arquivo JSON. Continua disponível mesmo com a assinatura vencida.
         </p>
@@ -103,7 +103,7 @@ export default function MeusDados({ podeExcluir }) {
         </button>
       </div>
 
-      <div className="pt-4 border-t border-gray-100">
+      <div className="pt-4 border-t border-border">
         {pedido?.solicitada ? (
           <div className="space-y-3">
             <div className="flex gap-2 text-sm text-red-900 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
@@ -128,15 +128,15 @@ export default function MeusDados({ podeExcluir }) {
             </button>
           </div>
         ) : !podeExcluir ? (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted">
             Só quem é dono da família pode excluir a conta — é o histórico de todos
             que seria apagado. Para sair sozinho, peça ao dono para remover você
             dos membros.
           </p>
         ) : !abrindoExclusao ? (
           <>
-            <p className="text-sm font-medium text-gray-900">Excluir minha conta</p>
-            <p className="text-xs text-gray-500 mt-0.5 mb-2">
+            <p className="text-sm font-medium text-ink">Excluir minha conta</p>
+            <p className="text-xs text-muted mt-0.5 mb-2">
               Apaga a família, os lançamentos, os membros e as mensagens. Você tem
               7 dias para desistir antes de virar definitivo.
             </p>
@@ -150,7 +150,7 @@ export default function MeusDados({ podeExcluir }) {
           </>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-ink">
               Exporte seus dados antes, se ainda não exportou. Depois do prazo de
               7 dias não há como recuperar nada.
             </p>
@@ -196,7 +196,7 @@ export default function MeusDados({ podeExcluir }) {
         )}
       </div>
 
-      <p className="text-xs text-gray-400 pt-2 border-t border-gray-100">
+      <p className="text-xs text-faint pt-2 border-t border-border">
         Detalhes em <Link to="/privacidade" className="underline">política de privacidade</Link> e{' '}
         <Link to="/termos" className="underline">termos de uso</Link>.
       </p>

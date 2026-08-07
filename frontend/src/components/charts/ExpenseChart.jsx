@@ -9,9 +9,9 @@ const DEFAULT_COLORS = [
 function CustomTooltip({ active, payload }) {
   if (active && payload?.length) {
     return (
-      <div className="bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3">
-        <p className="text-sm font-medium text-gray-900">{payload[0].name}</p>
-        <p className="text-sm text-gray-600">{formatCurrency(payload[0].value)}</p>
+      <div className="bg-white border border-border-strong rounded-xl shadow-lg px-4 py-3">
+        <p className="text-sm font-medium text-ink">{payload[0].name}</p>
+        <p className="text-sm text-muted">{formatCurrency(payload[0].value)}</p>
       </div>
     );
   }
@@ -21,7 +21,7 @@ function CustomTooltip({ active, payload }) {
 export default function ExpenseChart({ data }) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-48 text-sm text-gray-400">
+      <div className="flex items-center justify-center h-48 text-sm text-faint">
         Nenhuma despesa no período.
       </div>
     );
@@ -50,7 +50,7 @@ export default function ExpenseChart({ data }) {
         <Legend
           iconType="circle"
           iconSize={8}
-          formatter={(value) => <span className="text-xs text-gray-600">{value}</span>}
+          formatter={(value) => <span className="text-xs text-muted">{value}</span>}
         />
       </PieChart>
     </ResponsiveContainer>

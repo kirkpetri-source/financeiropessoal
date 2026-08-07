@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { TrendingUp, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { mascararTelefone, erroDoTelefone, paraApi } from '../utils/telefone';
+import Logo from '../components/brand/Logo';
 import toast from 'react-hot-toast';
 
 /**
@@ -74,7 +75,7 @@ export default function LoginPage() {
         telefone: paraApi(dados.telefone),
         aceitouTermos: true,
       });
-      toast.success('Conta criada! Você tem 14 dias grátis.');
+      toast.success('Conta criada! Você tem 7 dias grátis.');
       navigate('/dashboard');
     } catch (err) {
       toast.error(traduzir(err, 'Erro ao criar conta.'));
@@ -103,28 +104,37 @@ export default function LoginPage() {
   const ehRecuperacao = aba === 'recuperar';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-blue-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen overflow-hidden bg-bg flex items-center justify-center p-4">
+      {/* Cortina de revelação — expressa o conceito de marca (revelar o
+          que estava oculto) como animação de entrada, só CSS. */}
+      <div
+        className="pointer-events-none absolute inset-0 z-10 bg-ink animate-curtain motion-reduce:hidden"
+        aria-hidden="true"
+      />
+
+      <div className="w-full max-w-md animate-revealcontent motion-reduce:animate-none motion-reduce:opacity-100">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-600 rounded-2xl shadow-lg mb-4">
-            <TrendingUp className="w-8 h-8 text-white" />
+          <div className="flex justify-center mb-4">
+            <Logo size="lg" withWordmark={false} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Controle Financeiro</h1>
-          <p className="text-gray-500 mt-1">O financeiro da família, pelo WhatsApp</p>
+          <h1 className="text-2xl font-bold text-ink">
+            <span className="text-ink">Revela</span><span className="text-brand">Cash</span>
+          </h1>
+          <p className="text-muted mt-1">O financeiro da família, revelado no WhatsApp</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+        <div className="bg-white rounded-card shadow-modal border border-border p-6 sm:p-8">
           {ehRecuperacao ? (
             <>
               <button
                 type="button"
                 onClick={() => trocarAba('entrar')}
-                className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-1 mb-4"
+                className="text-sm text-muted hover:text-ink flex items-center gap-1 mb-4"
               >
                 <ArrowLeft className="w-4 h-4" /> Voltar
               </button>
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">Recuperar senha</h2>
-              <p className="text-sm text-gray-500 mb-6">
+              <h2 className="text-xl font-semibold text-ink mb-1">Recuperar senha</h2>
+              <p className="text-sm text-muted mb-6">
                 Enviamos um link para você criar uma senha nova.
               </p>
 
@@ -134,13 +144,13 @@ export default function LoginPage() {
                   <input
                     type="email"
                     placeholder="seu@email.com"
-                    className={`input ${errors.email ? 'border-red-400 focus:ring-red-400' : ''}`}
+                    className={`input ${errors.email ? 'border-expense focus:ring-expense' : ''}`}
                     {...register('email', {
                       required: 'E-mail obrigatório.',
                       pattern: { value: /^\S+@\S+\.\S+$/, message: 'E-mail inválido.' },
                     })}
                   />
-                  {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+                  {errors.email && <p className="text-xs text-expense mt-1">{errors.email.message}</p>}
                 </div>
 
                 <button type="submit" disabled={carregando} className="btn-primary w-full flex items-center justify-center gap-2 py-2.5">
@@ -151,7 +161,7 @@ export default function LoginPage() {
           ) : (
             <>
               {/* Abas */}
-              <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-6">
+              <div className="flex gap-1 p-1 bg-surface-alt rounded-xl mb-6">
                 {[
                   { id: 'entrar', rotulo: 'Entrar' },
                   { id: 'criar', rotulo: 'Criar conta' },
@@ -161,7 +171,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => trocarAba(id)}
                     className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
-                      aba === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      aba === id ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'
                     }`}
                   >
                     {rotulo}
@@ -170,9 +180,9 @@ export default function LoginPage() {
               </div>
 
               {ehCadastro && (
-                <div className="mb-5 px-3 py-2.5 bg-green-50 border border-green-100 rounded-xl">
-                  <p className="text-sm text-green-900 font-medium">14 dias grátis</p>
-                  <p className="text-xs text-green-800 mt-0.5">
+                <div className="mb-5 px-3 py-2.5 bg-brand-light border border-brand-200 rounded-xl">
+                  <p className="text-sm text-brand-dark font-medium">7 dias grátis</p>
+                  <p className="text-xs text-brand-dark/80 mt-0.5">
                     Sem cartão. Depois são R$ 24,90 por mês, por família — não por pessoa.
                   </p>
                 </div>
@@ -184,13 +194,13 @@ export default function LoginPage() {
                     <label className="label">Seu nome</label>
                     <input
                       placeholder="Como devemos te chamar"
-                      className={`input ${errors.nome ? 'border-red-400 focus:ring-red-400' : ''}`}
+                      className={`input ${errors.nome ? 'border-expense focus:ring-expense' : ''}`}
                       {...register('nome', {
                         required: 'Nome obrigatório.',
                         minLength: { value: 2, message: 'Nome muito curto.' },
                       })}
                     />
-                    {errors.nome && <p className="text-xs text-red-500 mt-1">{errors.nome.message}</p>}
+                    {errors.nome && <p className="text-xs text-expense mt-1">{errors.nome.message}</p>}
                   </div>
                 )}
 
@@ -199,13 +209,13 @@ export default function LoginPage() {
                   <input
                     type="email"
                     placeholder="seu@email.com"
-                    className={`input ${errors.email ? 'border-red-400 focus:ring-red-400' : ''}`}
+                    className={`input ${errors.email ? 'border-expense focus:ring-expense' : ''}`}
                     {...register('email', {
                       required: 'E-mail obrigatório.',
                       pattern: { value: /^\S+@\S+\.\S+$/, message: 'E-mail inválido.' },
                     })}
                   />
-                  {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+                  {errors.email && <p className="text-xs text-expense mt-1">{errors.email.message}</p>}
                 </div>
 
                 {ehCadastro && (
@@ -214,7 +224,7 @@ export default function LoginPage() {
                     <input
                       placeholder="(64) 99955-5364"
                       inputMode="numeric"
-                      className={`input ${errors.telefone ? 'border-red-400 focus:ring-red-400' : ''}`}
+                      className={`input ${errors.telefone ? 'border-expense focus:ring-expense' : ''}`}
                       {...register('telefone', {
                         required: 'WhatsApp obrigatório.',
                         // A máscara já impede a maior parte do erro; a validação
@@ -224,9 +234,9 @@ export default function LoginPage() {
                       })}
                     />
                     {errors.telefone
-                      ? <p className="text-xs text-red-500 mt-1">{errors.telefone.message}</p>
+                      ? <p className="text-xs text-expense mt-1">{errors.telefone.message}</p>
                       : (
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-faint mt-1">
                           É por ele que o sistema sabe que o gasto é seu.
                         </p>
                       )}
@@ -239,7 +249,7 @@ export default function LoginPage() {
                     <input
                       type={mostrarSenha ? 'text' : 'password'}
                       placeholder={ehCadastro ? 'Mínimo 6 caracteres' : 'Sua senha'}
-                      className={`input pr-10 ${errors.password ? 'border-red-400 focus:ring-red-400' : ''}`}
+                      className={`input pr-10 ${errors.password ? 'border-expense focus:ring-expense' : ''}`}
                       {...register('password', {
                         required: 'Senha obrigatória.',
                         ...(ehCadastro && { minLength: { value: 6, message: 'Mínimo 6 caracteres.' } }),
@@ -248,12 +258,12 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setMostrarSenha(!mostrarSenha)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-muted"
                     >
                       {mostrarSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>}
+                  {errors.password && <p className="text-xs text-expense mt-1">{errors.password.message}</p>}
                 </div>
 
                 {ehCadastro && (
@@ -262,13 +272,13 @@ export default function LoginPage() {
                       type="checkbox"
                       checked={aceitouTermos}
                       onChange={(e) => setAceitouTermos(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      className="mt-0.5 w-4 h-4 rounded border-border-strong text-brand focus:ring-brand"
                     />
-                    <span className="text-xs text-gray-600 leading-relaxed">
+                    <span className="text-xs text-muted leading-relaxed">
                       Li e aceito os{' '}
-                      <Link to="/termos" target="_blank" className="underline text-primary-700">termos de uso</Link>
+                      <Link to="/termos" target="_blank" className="underline text-brand-dark">termos de uso</Link>
                       {' '}e a{' '}
-                      <Link to="/privacidade" target="_blank" className="underline text-primary-700">política de privacidade</Link>.
+                      <Link to="/privacidade" target="_blank" className="underline text-brand-dark">política de privacidade</Link>.
                     </span>
                   </label>
                 )}
@@ -294,7 +304,7 @@ export default function LoginPage() {
                     trocarAba('recuperar');
                     if (email) setTimeout(() => reset({ email }), 0);
                   }}
-                  className="w-full text-center text-sm text-gray-500 hover:text-gray-900 mt-4"
+                  className="w-full text-center text-sm text-muted hover:text-ink mt-4"
                 >
                   Esqueci minha senha
                 </button>
@@ -303,12 +313,12 @@ export default function LoginPage() {
           )}
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Controle Financeiro Pessoal © {new Date().getFullYear()}
+        <p className="text-center text-xs text-faint mt-6">
+          RevelaCash © {new Date().getFullYear()}
           <br />
-          <Link to="/termos" className="underline hover:text-gray-600">Termos de uso</Link>
+          <Link to="/termos" className="underline hover:text-muted">Termos de uso</Link>
           {' · '}
-          <Link to="/privacidade" className="underline hover:text-gray-600">Política de privacidade</Link>
+          <Link to="/privacidade" className="underline hover:text-muted">Política de privacidade</Link>
         </p>
       </div>
     </div>

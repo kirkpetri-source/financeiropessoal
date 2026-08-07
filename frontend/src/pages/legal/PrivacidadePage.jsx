@@ -16,7 +16,7 @@ export default function PrivacidadePage() {
       <Secao titulo="1. Quem é o controlador dos dados">
         <p>
           LION TECH SOLUÇÕES EM TI LTDA, CNPJ 44.124.574/0001-47, com sede em
-          Mineiros-GO, é a controladora dos dados tratados no Financeiro Familiar.
+          Mineiros-GO, é a controladora dos dados tratados no RevelaCash.
           Contato do encarregado (DPO): <strong>{CONTATO_ENCARREGADO}</strong>.
         </p>
       </Secao>

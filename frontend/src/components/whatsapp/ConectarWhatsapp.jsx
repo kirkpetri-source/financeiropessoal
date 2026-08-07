@@ -30,12 +30,12 @@ function Cartao({ ativo, Icone, titulo, descricao, onClick }) {
       type="button"
       onClick={onClick}
       className={`text-left p-4 rounded-2xl border-2 transition-colors w-full ${
-        ativo ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'
+        ativo ? 'border-brand-500 bg-brand-50' : 'border-border-strong hover:border-border-strong'
       }`}
     >
-      <Icone className={`w-5 h-5 mb-2 ${ativo ? 'text-primary-600' : 'text-gray-400'}`} />
-      <p className="text-sm font-semibold text-gray-900">{titulo}</p>
-      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{descricao}</p>
+      <Icone className={`w-5 h-5 mb-2 ${ativo ? 'text-brand-600' : 'text-faint'}`} />
+      <p className="text-sm font-semibold text-ink">{titulo}</p>
+      <p className="text-xs text-muted mt-0.5 leading-relaxed">{descricao}</p>
     </button>
   );
 }
@@ -43,8 +43,8 @@ function Cartao({ ativo, Icone, titulo, descricao, onClick }) {
 function Passo({ numero, titulo, Icone, estado, children }) {
   const cores = {
     feito: 'bg-green-100 text-green-700 border-green-200',
-    ativo: 'bg-primary-50 text-primary-700 border-primary-200',
-    espera: 'bg-gray-50 text-gray-400 border-gray-200',
+    ativo: 'bg-brand-50 text-brand-700 border-brand-200',
+    espera: 'bg-surface-alt text-faint border-border-strong',
   };
 
   return (
@@ -54,8 +54,8 @@ function Passo({ numero, titulo, Icone, estado, children }) {
           {estado === 'feito' ? <CheckCircle2 className="w-4 h-4" /> : <Icone className="w-4 h-4" />}
         </div>
         <div>
-          <p className="text-xs text-gray-400">Passo {numero}</p>
-          <p className="text-sm font-semibold text-gray-900">{titulo}</p>
+          <p className="text-xs text-faint">Passo {numero}</p>
+          <p className="text-sm font-semibold text-ink">{titulo}</p>
         </div>
       </div>
       {estado === 'ativo' && children && <div className="mt-4 pl-12">{children}</div>}
@@ -191,12 +191,12 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
   }
 
   if (carregando) {
-    return <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>;
+    return <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-faint" /></div>;
   }
 
   if (!podeGerir) {
     return (
-      <p className="text-sm text-gray-500 bg-gray-50 rounded-xl px-3 py-2.5">
+      <p className="text-sm text-muted bg-surface-alt rounded-xl px-3 py-2.5">
         Só quem é dono da família configura o WhatsApp.
       </p>
     );
@@ -214,7 +214,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
   if (!modo) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted">
           Como você vai usar? Isso muda o resto da configuração.
         </p>
         <div className="grid sm:grid-cols-2 gap-3">
@@ -262,8 +262,8 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
         </div>
       )}
 
-      <div className="flex items-center justify-between text-xs text-gray-400 px-1">
-        <span>Modo: <strong className="text-gray-600">{emGrupo ? 'em família' : 'individual'}</strong></span>
+      <div className="flex items-center justify-between text-xs text-faint px-1">
+        <span>Modo: <strong className="text-muted">{emGrupo ? 'em família' : 'individual'}</strong></span>
         {!conectada && (
           <button type="button" onClick={() => escolherModo(emGrupo ? 'individual' : 'grupo')} className="underline">
             trocar
@@ -273,7 +273,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
 
       {emGrupo && (
         <Passo numero={1} titulo="Quem vai participar" Icone={Users} estado={estadoDoPasso(1)}>
-          <p className="text-sm text-gray-600 mb-3">
+          <p className="text-sm text-muted mb-3">
             Cadastre quem vai lançar gastos, com o WhatsApp de cada um. O grupo é
             criado com essas pessoas assim que você conectar.
           </p>
@@ -301,7 +301,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
         {/* O método é escolhido ANTES de gerar. O Baileys não aceita pareamento
             numa sessão que já emitiu QR, então trocar aqui recria a instância. */}
         {!qrcode && !pairingCode && (
-          <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-3">
+          <div className="flex gap-1 p-1 bg-surface-alt rounded-xl mb-3">
             {[
               { id: 'codigo', rotulo: 'Estou neste celular' },
               { id: 'qr', rotulo: 'Tenho outro aparelho' },
@@ -311,7 +311,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
                 type="button"
                 onClick={() => trocarMetodo(id)}
                 className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                  metodo === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                  metodo === id ? 'bg-white text-ink shadow-sm' : 'text-muted'
                 }`}
               >
                 {rotulo}
@@ -322,7 +322,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
 
         {!qrcode && !pairingCode ? (
           <>
-            <p className="text-sm text-gray-600 mb-3">
+            <p className="text-sm text-muted mb-3">
               {metodo === 'codigo'
                 ? 'Você vai digitar um código de 8 letras dentro do WhatsApp deste mesmo celular. Não precisa de outro aparelho.'
                 : 'Você vai ler um QR Code com a câmera do WhatsApp, de outro aparelho. É o mesmo processo do WhatsApp Web.'}
@@ -344,9 +344,9 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
           <div className="space-y-3">
             {pairingCode ? (
               <>
-                <p className="text-sm text-gray-600">Digite este código no WhatsApp:</p>
+                <p className="text-sm text-muted">Digite este código no WhatsApp:</p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <div className="font-mono text-2xl tracking-[0.25em] font-bold text-gray-900 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 select-all">
+                  <div className="font-mono text-2xl tracking-[0.25em] font-bold text-ink bg-surface-alt border border-border-strong rounded-xl px-4 py-3 select-all">
                     {pairingCode}
                   </div>
                   <button
@@ -357,23 +357,23 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
                     <Copy className="w-4 h-4" /> Copiar
                   </button>
                 </div>
-                <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                <ol className="text-sm text-muted space-y-1 list-decimal list-inside">
                   <li>Abra o WhatsApp neste celular</li>
                   <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
                   <li>Toque em <strong>Conectar dispositivo</strong></li>
                   <li>Toque em <strong>Conectar com número de telefone</strong></li>
                   <li>Digite o código acima</li>
                 </ol>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-faint">
                   O código vale por poucos minutos. Se expirar, gere outro.
                 </p>
               </>
             ) : (
               <>
-                <div className="bg-white border border-gray-200 rounded-xl p-3 inline-block">
+                <div className="bg-white border border-border-strong rounded-xl p-3 inline-block">
                   <img src={qrcode} alt="QR Code para conectar o WhatsApp" className="w-56 h-56 max-w-full" />
                 </div>
-                <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                <ol className="text-sm text-muted space-y-1 list-decimal list-inside">
                   <li>Abra o WhatsApp {noCelular && <strong>em outro aparelho</strong>}</li>
                   <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
                   <li>Toque em <strong>Conectar dispositivo</strong> e aponte a câmera para o código</li>
@@ -382,15 +382,15 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
             )}
 
             <div className="flex items-center gap-2 flex-wrap">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-              <span className="text-xs text-gray-400">Esperando a confirmação...</span>
-              <button type="button" onClick={() => conectar()} className="text-xs text-primary-600 underline">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-faint" />
+              <span className="text-xs text-faint">Esperando a confirmação...</span>
+              <button type="button" onClick={() => conectar()} className="text-xs text-brand-600 underline">
                 Gerar outro
               </button>
               <button
                 type="button"
                 onClick={() => trocarMetodo(metodo === 'codigo' ? 'qr' : 'codigo')}
-                className="text-xs text-gray-500 underline"
+                className="text-xs text-muted underline"
               >
                 {metodo === 'codigo' ? 'Usar QR Code' : 'Usar código'}
               </button>
@@ -401,7 +401,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
 
       {emGrupo && (
         <Passo numero={3} titulo="Chamar mais gente (opcional)" Icone={Link2} estado={estadoDoPasso(3)}>
-          <p className="text-sm text-gray-600 mb-3">
+          <p className="text-sm text-muted mb-3">
             Mande este link para quem mais vai lançar. Até {status?.maxMembros || 8} pessoas
             por família.
           </p>
@@ -418,7 +418,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
               </button>
             </div>
           ) : (
-            <p className="text-xs text-gray-400 mb-3">O link aparece assim que o grupo for criado.</p>
+            <p className="text-xs text-faint mb-3">O link aparece assim que o grupo for criado.</p>
           )}
 
           <button
@@ -438,7 +438,7 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
         <button
           type="button"
           onClick={desconectar}
-          className="text-xs text-gray-400 hover:text-red-600 flex items-center gap-1.5 pt-2"
+          className="text-xs text-faint hover:text-red-600 flex items-center gap-1.5 pt-2"
         >
           <LogOut className="w-3.5 h-3.5" /> Desconectar o WhatsApp
         </button>

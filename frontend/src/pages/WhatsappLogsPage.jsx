@@ -10,8 +10,8 @@ const STATUS_CONFIG = {
   PROCESSED:  { label: 'Processado', icon: CheckCircle2, cls: 'text-green-600',  dot: 'bg-green-500' },
   PENDING:    { label: 'Pendente',   icon: Clock,        cls: 'text-yellow-600', dot: 'bg-yellow-400' },
   ERROR:      { label: 'Erro',       icon: AlertCircle,  cls: 'text-red-500',    dot: 'bg-red-500' },
-  IGNORED:    { label: 'Ignorado',   icon: XCircle,      cls: 'text-gray-400',   dot: 'bg-gray-300' },
-  CANCELLED:  { label: 'Cancelado',  icon: XCircle,      cls: 'text-gray-300',   dot: 'bg-gray-200' },
+  IGNORED:    { label: 'Ignorado',   icon: XCircle,      cls: 'text-faint',   dot: 'bg-border-strong' },
+  CANCELLED:  { label: 'Cancelado',  icon: XCircle,      cls: 'text-faint',   dot: 'bg-border-strong' },
 };
 
 const TYPE_LABELS = { TEXT: 'Texto', IMAGE: 'Imagem', AUDIO: 'Áudio', DOCUMENT: 'Doc', STICKER: 'Sticker' };
@@ -81,7 +81,7 @@ export default function WhatsappLogsPage() {
     <div className="space-y-3 max-w-4xl mx-auto">
       {/* Barra de controles */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-faint">
           {total} mensagem(ns) · verificação automática a cada 2 min
         </p>
         <div className="flex items-center gap-2">
@@ -117,12 +117,12 @@ export default function WhatsappLogsPage() {
             description="Comece dizendo se gastou ou recebeu. Ex.: gastei 84,90 no mercado"
           />
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-border">
             {logs.map((log) => {
               const st = STATUS_CONFIG[log.processingStatus] || STATUS_CONFIG.PENDING;
               const StatusIcon = st.icon;
               return (
-                <div key={log.id} className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50">
+                <div key={log.id} className="flex items-start gap-3 px-4 py-2.5 hover:bg-surface-alt">
                   {/* Ícone de status */}
                   <div className="flex-shrink-0 mt-0.5">
                     <StatusIcon className={`w-4 h-4 ${st.cls}`} />
@@ -131,20 +131,20 @@ export default function WhatsappLogsPage() {
                   {/* Conteúdo */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">
-                      <span className="text-xs font-medium text-gray-800">
+                      <span className="text-xs font-medium text-ink">
                         {log.sender || 'Desconhecido'}
                       </span>
-                      <span className="text-xs text-gray-400">{formatDateTime(log.createdAt)}</span>
+                      <span className="text-xs text-faint">{formatDateTime(log.createdAt)}</span>
                       <span className={`text-xs font-medium ${st.cls}`}>{st.label}</span>
                       {log.messageType && log.messageType !== 'TEXT' && (
-                        <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-surface-alt text-muted px-1.5 py-0.5 rounded">
                           {TYPE_LABELS[log.messageType] || log.messageType}
                         </span>
                       )}
                     </div>
 
                     {log.content && (
-                      <p className="text-xs text-gray-600 font-mono mt-0.5 truncate max-w-lg">
+                      <p className="text-xs text-muted font-mono mt-0.5 truncate max-w-lg">
                         {log.content}
                       </p>
                     )}
@@ -164,7 +164,7 @@ export default function WhatsappLogsPage() {
                   <button
                     onClick={() => handleDelete(log.id)}
                     disabled={deletingId === log.id}
-                    className="flex-shrink-0 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-0.5"
+                    className="flex-shrink-0 p-1.5 text-faint hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors mt-0.5"
                     title="Excluir mensagem e lançamento"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

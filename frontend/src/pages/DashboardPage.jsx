@@ -13,9 +13,12 @@ import { useTransactions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { useHousehold } from '../hooks/useHousehold';
+import { useMonthlyTrend } from '../hooks/useMonthlyTrend';
+import { useCountUp } from '../hooks/useCountUp';
 import Modal from '../components/ui/Modal';
 import TransactionForm from '../components/forms/TransactionForm';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import Sparkline from '../components/charts/Sparkline';
 import {
   formatCurrency, formatDate, currentMonth,
   monthsList, formatMonth, capitalizeFirst,
@@ -61,10 +64,12 @@ export default function DashboardPage() {
   const { categories,     fetchCategories }     = useCategories();
   const { paymentMethods, fetchPaymentMethods } = usePaymentMethods();
   const { nomesDosMembros, buscarHousehold }    = useHousehold();
+  const { trend, fetchTrend }                   = useMonthlyTrend();
 
   const months = monthsList(12);
 
   useEffect(() => { fetchSummary(selectedMonth, filterPayer || null); }, [selectedMonth, filterPayer, fetchSummary]);
+  useEffect(() => { fetchTrend(selectedMonth, filterPayer || null); }, [selectedMonth, filterPayer, fetchTrend]);
   useEffect(() => {
     fetchCategories();
     fetchPaymentMethods();
@@ -141,6 +146,12 @@ export default function DashboardPage() {
   const balanceBarW = Math.min(100, Math.abs(expensePct));
   const pctBarColor = expensePct > 80 ? '#dc2626' : expensePct > 60 ? '#d97706' : '#7c3aed';
 
+  /* ── Contagem animada dos KPIs ── */
+  const animIncome  = useCountUp(totalIncome);
+  const animExpense = useCountUp(totalExpense);
+  const animBalance = useCountUp(balance);
+  const animPct     = useCountUp(expensePct);
+
   return (
     <div className="dash-root max-w-7xl mx-auto">
 
@@ -214,11 +225,12 @@ export default function DashboardPage() {
                   {filterPayer ? `Receitas · ${filterPayer}` : 'Receitas'}
                 </span>
               </div>
-              <p className="dash-kpi-value income-text">{formatCurrency(totalIncome)}</p>
+              <p className="dash-kpi-value income-text">{formatCurrency(animIncome)}</p>
               <p className="dash-kpi-sub">Total recebido no mês</p>
               <div className="dash-progress-track">
                 <div className="dash-progress-fill" style={{ width: `${incomeBarW}%`, background: '#0d9488' }} />
               </div>
+              <Sparkline data={trend} dataKey="income" color="#0d9488" />
             </div>
 
             {/* Despesas */}
@@ -229,13 +241,14 @@ export default function DashboardPage() {
                   {filterPayer ? `Despesas · ${filterPayer}` : 'Despesas'}
                 </span>
               </div>
-              <p className="dash-kpi-value expense-text">{formatCurrency(totalExpense)}</p>
+              <p className="dash-kpi-value expense-text">{formatCurrency(animExpense)}</p>
               <p className="dash-kpi-sub">
                 {summary.expenseByCategory?.length || 0} categoria{summary.expenseByCategory?.length !== 1 ? 's' : ''}
               </p>
               <div className="dash-progress-track">
                 <div className="dash-progress-fill" style={{ width: `${expenseBarW}%`, background: '#dc2626' }} />
               </div>
+              <Sparkline data={trend} dataKey="expense" color="#dc2626" />
             </div>
 
             {/* Saldo */}
@@ -249,13 +262,14 @@ export default function DashboardPage() {
                 </span>
               </div>
               <p className={`dash-kpi-value ${balance >= 0 ? 'balance-text' : 'expense-text'}`}>
-                {formatCurrency(balance)}
+                {formatCurrency(animBalance)}
               </p>
               <p className="dash-kpi-sub">{balance >= 0 ? '▲ Superávit' : '▼ Déficit'}</p>
               <div className="dash-progress-track">
                 <div className="dash-progress-fill"
                   style={{ width: `${balanceBarW}%`, background: balance >= 0 ? '#2563eb' : '#dc2626' }} />
               </div>
+              <Sparkline data={trend} dataKey="balance" color={balance >= 0 ? '#2563eb' : '#dc2626'} />
             </div>
 
             {/* Comprometido */}
@@ -265,12 +279,13 @@ export default function DashboardPage() {
                 <span className="dash-kpi-label">Comprometido</span>
               </div>
               <p className={`dash-kpi-value ${expensePct > 80 ? 'expense-text' : expensePct > 60 ? 'warn-text' : 'pct-text'}`}>
-                {expensePct.toFixed(1)}%
+                {animPct.toFixed(1)}%
               </p>
               <p className="dash-kpi-sub">↑ {summary.topCategory?.name || 'sem categoria'}</p>
               <div className="dash-progress-track">
                 <div className="dash-progress-fill" style={{ width: `${expensePct}%`, background: pctBarColor }} />
               </div>
+              <Sparkline data={trend} dataKey="pct" color={pctBarColor} />
             </div>
 
           </div>

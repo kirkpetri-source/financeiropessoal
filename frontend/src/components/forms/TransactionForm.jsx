@@ -70,7 +70,7 @@ export default function TransactionForm({ onSubmit, initialData, categories, pay
                   ? cls === 'expense'
                     ? 'border-red-400 bg-red-50 text-red-700'
                     : 'border-green-400 bg-green-50 text-green-700'
-                  : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                  : 'border-border-strong hover:border-border-strong text-muted'
                 }`}
             >
               <input type="radio" value={value} {...register('type')} className="sr-only" />

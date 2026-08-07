@@ -93,7 +93,7 @@ export default function TransactionsPage() {
 
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`btn-secondary flex items-center gap-2 text-sm ${showFilters ? 'bg-primary-50 border-primary-300 text-primary-700' : ''}`}
+          className={`btn-secondary flex items-center gap-2 text-sm ${showFilters ? 'bg-brand-50 border-brand-300 text-brand-700' : ''}`}
         >
           <Filter className="w-4 h-4" /> Filtros
         </button>
@@ -154,20 +154,20 @@ export default function TransactionsPage() {
         <div className="card p-3 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
           <ArrowUpCircle className="hidden sm:block w-5 h-5 text-green-500 flex-shrink-0" />
           <div>
-            <p className="text-xs text-gray-500">Receitas</p>
+            <p className="text-xs text-muted">Receitas</p>
             <p className="text-xs sm:text-sm font-bold text-green-600 break-all">{formatCurrency(totalIncome)}</p>
           </div>
         </div>
         <div className="card p-3 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
           <ArrowDownCircle className="hidden sm:block w-5 h-5 text-red-500 flex-shrink-0" />
           <div>
-            <p className="text-xs text-gray-500">Despesas</p>
+            <p className="text-xs text-muted">Despesas</p>
             <p className="text-xs sm:text-sm font-bold text-red-500 break-all">{formatCurrency(totalExpense)}</p>
           </div>
         </div>
         <div className="card p-3">
-          <p className="text-xs text-gray-500">Saldo</p>
-          <p className={`text-xs sm:text-sm font-bold break-all ${totalIncome - totalExpense >= 0 ? 'text-primary-600' : 'text-red-600'}`}>
+          <p className="text-xs text-muted">Saldo</p>
+          <p className={`text-xs sm:text-sm font-bold break-all ${totalIncome - totalExpense >= 0 ? 'text-brand-600' : 'text-red-600'}`}>
             {formatCurrency(totalIncome - totalExpense)}
           </p>
         </div>
@@ -190,30 +190,30 @@ export default function TransactionsPage() {
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
+                  <tr className="border-b border-border bg-surface-alt">
                     {['Data', 'Descrição', 'Categoria', 'Pagamento', ...(payers.length > 0 ? ['Pago por'] : []), 'Status', 'Valor', ''].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-border">
                   {transactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatDate(t.date)}</td>
+                    <tr key={t.id} className="hover:bg-surface-alt transition-colors">
+                      <td className="px-4 py-3 text-sm text-muted whitespace-nowrap">{formatDate(t.date)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ backgroundColor: t.category?.color || '#94a3b8' }} />
-                          <span className="text-sm font-medium text-gray-900 max-w-xs truncate">{t.description}</span>
+                          <span className="text-sm font-medium text-ink max-w-xs truncate">{t.description}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{t.category?.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{t.paymentMethod?.name}</td>
+                      <td className="px-4 py-3 text-sm text-muted">{t.category?.name}</td>
+                      <td className="px-4 py-3 text-sm text-muted">{t.paymentMethod?.name}</td>
                       {payers.length > 0 && (
                         <td className="px-4 py-3">
                           {t.paidBy ? (
-                            <span className="text-xs bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full font-medium">{t.paidBy}</span>
+                            <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">{t.paidBy}</span>
                           ) : (
-                            <span className="text-xs text-gray-300">—</span>
+                            <span className="text-xs text-faint">—</span>
                           )}
                         </td>
                       )}
@@ -229,10 +229,10 @@ export default function TransactionsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => openEdit(t)} className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
+                          <button onClick={() => openEdit(t)} className="p-1.5 text-faint hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => setDeletingId(t.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                          <button onClick={() => setDeletingId(t.id)} className="p-1.5 text-faint hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -244,17 +244,17 @@ export default function TransactionsPage() {
             </div>
 
             {/* Mobile cards */}
-            <div className="md:hidden divide-y divide-gray-100">
+            <div className="md:hidden divide-y divide-border">
               {transactions.map((t) => (
                 <div key={t.id} className="p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <div className="w-2 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: t.category?.color || '#94a3b8' }} />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{t.description}</p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-sm font-medium text-ink truncate">{t.description}</p>
+                        <p className="text-xs text-faint">
                           {t.category?.name} · {formatDate(t.date)} · {t.paymentMethod?.name}
-                          {t.paidBy && <span className="ml-1 text-primary-500 font-medium">· {t.paidBy}</span>}
+                          {t.paidBy && <span className="ml-1 text-brand-500 font-medium">· {t.paidBy}</span>}
                         </p>
                       </div>
                     </div>
@@ -263,8 +263,8 @@ export default function TransactionsPage() {
                         {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
                       </span>
                       <div className="flex gap-1">
-                        <button onClick={() => openEdit(t)} className="p-1 text-gray-400 hover:text-primary-600"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => setDeletingId(t.id)} className="p-1 text-gray-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => openEdit(t)} className="p-1 text-faint hover:text-brand-600"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setDeletingId(t.id)} className="p-1 text-faint hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   </div>
