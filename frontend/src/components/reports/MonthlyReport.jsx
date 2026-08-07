@@ -154,7 +154,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
               {/* A · Cabeçalho */}
               <header className="rpt-header">
                 <div className="rpt-header__brand">
-                  <div className="rpt-logo">R</div>
+                  <img className="rpt-logo" src="/brand/icon-color-256.webp" alt="" />
                   <div>
                     <h1 className="rpt-title">RevelaCash</h1>
                     <p className="rpt-subtitle">Relatório Mensal · {monthLabel}</p>
@@ -360,7 +360,7 @@ export default function MonthlyReport({ isOpen, onClose, summary, month }) {
             <div className="rpt-page">
               <header className="rpt-header">
                 <div className="rpt-header__brand">
-                  <div className="rpt-logo">R</div>
+                  <img className="rpt-logo" src="/brand/icon-color-256.webp" alt="" />
                   <div>
                     <h1 className="rpt-title">RevelaCash</h1>
                     <p className="rpt-subtitle">Relatório Mensal · {monthLabel}</p>

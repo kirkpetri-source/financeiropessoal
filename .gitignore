@@ -21,3 +21,7 @@ backups/
 
 # Saida gerada pelo graphify (grafo de conhecimento do codebase)
 graphify-out/
+
+# PNGs originais dos mockups de logo (5-6 MB cada, 3D render) — fonte dos
+# assets processados em frontend/public/brand/, que esses sim vão pro git
+frontend/public/brand/source/

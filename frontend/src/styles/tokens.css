@@ -46,12 +46,18 @@
   --color-pct: #7c3aed;
   --color-warn: #d97706;
 
-  /* Marca RevelaCash — roxo profundo, escolhido pelo Kirk. Mais escuro/denso
-     que --color-pct (#7c3aed) para não colidir visualmente com o indicador
-     de percentual. */
-  --color-brand: #5b21b6;
-  --color-brand-dark: #4c1d95;
-  --color-brand-light: #ece1f7;
+  /* Marca RevelaCash — identidade definitiva (mockup do logo, 08/08/2026).
+     Mais escuro/denso que --color-pct (#7c3aed) para não colidir
+     visualmente com o indicador de percentual. */
+  --color-brand: #512b8d;
+  --color-brand-dark: #3f216e;
+  --color-brand-light: #e5dcf4;
+
+  /* Segunda cor da marca (verde do "Cash"/metade direita do ícone) — uso
+     decorativo, não confundir com --color-income (verde semântico). */
+  --color-accent: #2dbe79;
+  --color-accent-dark: #1b734a;
+  --color-accent-light: #daf6e9;
 }
 
 body {

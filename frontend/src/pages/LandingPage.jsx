@@ -183,7 +183,7 @@ export default function LandingPage() {
       </header>
 
       {/* ── Hero ── */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-14 pb-16 sm:pt-20 sm:pb-24">
+      <section className="relative z-0 overflow-hidden max-w-6xl mx-auto px-4 sm:px-6 pt-14 pb-16 sm:pt-20 sm:pb-24">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div className="animate-revealcontent">
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand-dark bg-brand-light px-3 py-1 rounded-full">
@@ -250,12 +250,23 @@ export default function LandingPage() {
                   <MockKpi icon={TrendingUp} label="Receitas" value="R$ 8.400" color="#0d9488" />
                   <MockKpi icon={TrendingDown} label="Despesas" value="R$ 5.180" color="#dc2626" />
                   <MockKpi icon={DollarSign} label="Saldo" value="R$ 3.220" color="#2563eb" />
-                  <MockKpi icon={Tag} label="Categorias" value="6" color="#5b21b6" />
+                  <MockKpi icon={Tag} label="Categorias" value="6" color="#512b8d" />
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Marca d'água decorativa — reforça a marca sem competir com o
+            conteúdo. Atrás da coluna de texto (fundo claro), não atrás do
+            card branco (ficaria encoberta). aria-hidden porque é só
+            ilustração. */}
+        <img
+          src="/brand/icon-color-1024.webp"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none select-none absolute -z-10 top-1/2 left-0 w-[600px] max-w-[70vw] opacity-[0.10] -translate-y-1/2 -translate-x-1/4"
+        />
       </section>
 
       {/* ── Como funciona ── */}
@@ -268,10 +279,10 @@ export default function LandingPage() {
             Registrar uma despesa ou receita pode ser tão simples quanto enviar uma mensagem.
           </p>
           <div className="mt-12 grid sm:grid-cols-3 gap-8">
-            {PASSOS.map((p) => (
+            {PASSOS.map((p, i) => (
               <div key={p.n}>
                 <div className="flex items-center gap-3">
-                  <span className="w-9 h-9 rounded-xl bg-brand text-white font-mono font-bold text-sm flex items-center justify-center flex-shrink-0">
+                  <span className={`w-9 h-9 rounded-xl ${i === 1 ? 'bg-accent' : 'bg-brand'} text-white font-mono font-bold text-sm flex items-center justify-center flex-shrink-0`}>
                     {p.n}
                   </span>
                   <h3 className="font-bold text-lg">{p.title}</h3>
@@ -374,10 +385,10 @@ export default function LandingPage() {
             Organize suas finanças sozinho ou junto com quem divide as contas com você.
           </h2>
           <div className="mt-12 grid sm:grid-cols-3 gap-6">
-            {MODOS_DE_USO.map(({ icon: Icon, titulo, desc }) => (
+            {MODOS_DE_USO.map(({ icon: Icon, titulo, desc }, i) => (
               <div key={titulo} className="card text-center sm:text-left">
-                <div className="w-10 h-10 rounded-xl bg-brand-light flex items-center justify-center mx-auto sm:mx-0">
-                  <Icon className="w-5 h-5 text-brand-dark" />
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mx-auto sm:mx-0 ${i === 1 ? 'bg-accent-light' : 'bg-brand-light'}`}>
+                  <Icon className={`w-5 h-5 ${i === 1 ? 'text-accent-dark' : 'text-brand-dark'}`} />
                 </div>
                 <h3 className="mt-3 font-bold">{titulo}</h3>
                 <p className="mt-1.5 text-sm text-muted">{desc}</p>
@@ -401,7 +412,7 @@ export default function LandingPage() {
               <MockKpi icon={TrendingUp} label="Receitas" value="R$ 8.400" color="#0d9488" />
               <MockKpi icon={TrendingDown} label="Despesas" value="R$ 5.180" color="#dc2626" />
               <MockKpi icon={DollarSign} label="Saldo" value="R$ 3.220" color="#2563eb" />
-              <MockKpi icon={Tag} label="Categorias" value="6" color="#5b21b6" />
+              <MockKpi icon={Tag} label="Categorias" value="6" color="#512b8d" />
             </div>
             <div className="rounded-xl border border-border bg-surface-alt p-3">
               <p className="text-[10px] font-bold uppercase tracking-wide text-faint mb-2">Transações recentes</p>
@@ -484,8 +495,14 @@ export default function LandingPage() {
       </section>
 
       {/* ── Preço ── */}
-      <section id="preco" className="bg-ink text-white py-16 sm:py-20 scroll-mt-16">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 text-center">
+      <section id="preco" className="relative z-0 overflow-hidden bg-ink text-white py-16 sm:py-20 scroll-mt-16">
+        <img
+          src="/brand/icon-white-1024.webp"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none select-none absolute -z-0 -bottom-16 -left-16 w-[420px] max-w-[55vw] opacity-[0.05]"
+        />
+        <div className="relative max-w-2xl mx-auto px-4 sm:px-6 text-center">
           <h2 className="text-2xl sm:text-3xl font-extrabold">Um único plano para organizar as finanças da sua casa.</h2>
 
           <div className="mt-8 bg-white text-ink rounded-2xl p-6 sm:p-8 shadow-modal">
@@ -558,7 +575,7 @@ export default function LandingPage() {
               <Logo size="lg" withWordmark={false} />
             </div>
             <DialogTitle className="text-xl font-bold">
-              <span className="text-ink">Revela</span><span className="text-brand">Cash</span>
+              <span className="text-brand">Revela</span><span className="text-accent">Cash</span>
             </DialogTitle>
             <p className="text-sm text-muted mt-1">Organização financeira pelo WhatsApp</p>
           </div>

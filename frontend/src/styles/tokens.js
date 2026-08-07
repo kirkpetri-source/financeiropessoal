@@ -22,9 +22,13 @@ export const COLOR_BALANCE = '#2563eb';
 export const COLOR_PCT = '#7c3aed';
 export const COLOR_WARN = '#d97706';
 
-export const COLOR_BRAND = '#5b21b6';
-export const COLOR_BRAND_DARK = '#4c1d95';
-export const COLOR_BRAND_LIGHT = '#ece1f7';
+export const COLOR_BRAND = '#512b8d';
+export const COLOR_BRAND_DARK = '#3f216e';
+export const COLOR_BRAND_LIGHT = '#e5dcf4';
+
+export const COLOR_ACCENT = '#2dbe79';
+export const COLOR_ACCENT_DARK = '#1b734a';
+export const COLOR_ACCENT_LIGHT = '#daf6e9';
 
 export const FONT_SANS = "'Outfit', system-ui, sans-serif";
 export const FONT_MONO = "'JetBrains Mono', 'Cascadia Code', monospace";

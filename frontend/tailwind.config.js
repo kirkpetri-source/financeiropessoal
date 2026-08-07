@@ -5,25 +5,44 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Marca RevelaCash — roxo profundo, escolhido pelo Kirk. Substitui
-        // o `primary` azul genérico do Tailwind. Mais escuro/denso que
+        // Marca RevelaCash — identidade definitiva (mockup do logo, 08/08/2026):
+        // roxo + verde extraídos do wordmark oficial. Mais escuro/denso que
         // `pct` (#7c3aed) para não colidir visualmente com o indicador de
         // percentual. Valores devem ficar idênticos aos de
         // src/styles/tokens.css e src/styles/tokens.js.
         brand: {
-          50: '#f6f2fb',
-          100: '#ece1f7',
-          200: '#d7c0ef',
-          300: '#bc98e3',
-          400: '#9c6ad2',
-          500: '#7c3fc0',
-          600: '#5b21b6',
-          700: '#4c1d95',
-          800: '#3b1670',
-          900: '#2a0f52',
-          DEFAULT: '#5b21b6',
-          dark: '#4c1d95',
-          light: '#ece1f7',
+          50: '#f4effa',
+          100: '#e5dcf4',
+          200: '#cbb9ea',
+          300: '#a98adb',
+          400: '#875bcd',
+          500: '#6736b4',
+          600: '#512b8d',
+          700: '#3f216e',
+          800: '#2f1952',
+          900: '#22123b',
+          DEFAULT: '#512b8d',
+          dark: '#3f216e',
+          light: '#e5dcf4',
+        },
+        // Segunda cor da marca — o verde do "Cash" no wordmark e da metade
+        // direita do ícone. Uso decorativo/marca (nav, wordmark, marca
+        // d'água, destaques de layout) — não usar como sinônimo de
+        // `income`, que é o verde semântico dos gráficos financeiros.
+        accent: {
+          50: '#effbf5',
+          100: '#daf6e9',
+          200: '#b5edd2',
+          300: '#83e2b5',
+          400: '#52d697',
+          500: '#2dbe79',
+          600: '#23945f',
+          700: '#1b734a',
+          800: '#155737',
+          900: '#0f3e27',
+          DEFAULT: '#2dbe79',
+          dark: '#1b734a',
+          light: '#daf6e9',
         },
         bg: '#f9f8f6',
         ink: '#1c1916',

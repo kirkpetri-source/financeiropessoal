@@ -206,7 +206,7 @@ export function TourProvider({ children }) {
             next: 'Próximo',
           }}
           styles={{
-            options: { primaryColor: '#5b21b6', zIndex: 10000, arrowColor: '#fff' },
+            options: { primaryColor: '#512b8d', zIndex: 10000, arrowColor: '#fff' },
             tooltip: { borderRadius: 14 },
             buttonNext: { borderRadius: 8 },
             buttonBack: { color: '#6e6a63' },

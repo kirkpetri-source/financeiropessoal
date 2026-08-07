@@ -8,13 +8,32 @@ Ler isto primeiro ao retomar. Detalhe e contexto de cada item nas seções
 abaixo; isto é só o índice do que ainda não está feito.
 
 **Só o Kirk pode fazer (conta dele, cartão dele, ou decisão de negócio):**
-- [ ] Rodar `firebase deploy --only functions --project financeiropessoal-29b32`
-      — parser novo e trial de 7 dias já commitados, só faltam ir ao ar
-- [ ] Trocar `MERCADOPAGO_ACCESS_TOKEN` para credencial de **produção**,
-      cadastrar o webhook na aba de produção do MP e testar uma assinatura
-      real (conferir a transição `pending → active`)
-- [ ] Registrar `revelacash.com.br` e `revelacash.com` (confirmados livres)
-- [ ] Mockup final do logo (hoje é só wordmark, texto)
+- [x] Rodar `firebase deploy --only functions --project financeiropessoal-29b32`
+      — feito em 08/08/2026. Precisou de `$env:FUNCTIONS_DISCOVERY_TIMEOUT=30000`
+      porque o Windows (antivírus escaneando os módulos) passou dos 10s padrão
+      de descoberta do Firebase — não era erro de código. Confirmado com
+      `tools/diagnostico-assinatura.js`: 3 famílias, ninguém bloqueado
+- [x] Trocar `MERCADOPAGO_ACCESS_TOKEN` para credencial de **produção** —
+      feito em 08/08/2026. Ativado no painel do MP (setor "Outros", site
+      `https://www.revelacash.com.br`), gravado via `firebase
+      functions:secrets:set`, validado com `tools/testar-credencial-mp.js`
+      (HTTP 200, ambiente PRODUÇÃO, acesso a `/preapproval` confirmado)
+- [x] Cadastrar o webhook na aba de produção do MP — feito, URL
+      `https://southamerica-east1-financeiropessoal-29b32.cloudfunctions.net/api/webhooks/mercadopago`,
+      segredo gravado em `MERCADOPAGO_WEBHOOK_SECRET`. Redeploy feito para os
+      dois secrets novos entrarem em vigor
+- [ ] Testar uma assinatura real com cartão de verdade e conferir a transição
+      `pending → active` — não dá para automatizar: o checkout redireciona
+      pro `init_point` hospedado pelo próprio Mercado Pago (não há Public Key
+      no frontend, não há como injetar cartão por script)
+- [x] Registrar `revelacash.com.br` — feito 07/08/2026. DNS apontado pra
+      Vercel (`A @ 76.76.21.21` e `A www 76.76.21.21`, sem CNAME/nameserver),
+      domínio vinculado ao projeto `financeiropessoal` via `vercel domains
+      add`, HTTPS emitido automaticamente. `revelacash.com` ainda não
+      registrado
+- [x] Mockup final do logo — recebido e implementado 08/08/2026 (ver sessão
+      abaixo). Era só wordmark; agora tem ícone (balão de chat + lupa com
+      gráfico, metade roxa/metade verde) em várias variantes
 - [ ] Fotos reais para a landing (banco licenciado ou próprias — hoje são
       recriações com os tokens do sistema, não screenshot nem foto real)
 - [ ] Aplicar para **Meta Verified**, se quiser o canal WhatsApp oficial
@@ -141,6 +160,61 @@ funcionalidade citada existe de verdade no sistema — nada foi inventado.
 FAQ implementado com `<details>/<summary>` nativos (sem dependência nova).
 Testado no navegador seção por seção, incluindo abertura do FAQ e âncoras
 do rodapé (Como funciona/Preço/Dúvidas). Build limpo.
+
+## Sessão de 08/08/2026 (parte 3) — identidade visual definitiva
+
+Kirk entregou o mockup final da marca (5 PNGs 3D render, ~5,5 MB cada, fundo
+cinza-claro). Processados com Python/Pillow (`ImageDraw.floodfill` a partir
+de várias sementes nas bordas, threshold alto pra engolir a sombra suave do
+render — um threshold baixo deixava a sombra como um halo cinza opaco) e
+convertidos pra WebP (ex.: 600 KB → 28 KB, mesma imagem). Fonte crua fica em
+`frontend/public/brand/source/` (gitignored, 28 MB); os assets usados pelo
+site são os `.webp`/`.png` processados na raiz de `frontend/public/brand/`.
+
+Cor da marca extraída por amostragem de pixel do wordmark (texto plano, sem
+sombreamento 3D — mais fiel que amostrar o ícone com iluminação):
+roxo `#442477` → família `brand` recalculada (`DEFAULT #512b8d`,
+`dark #3f216e`); verde `#2dbe79` → família nova `accent` (`DEFAULT #2dbe79`,
+`dark #1b734a`). Atualizado nos três arquivos-fonte que precisam ficar
+idênticos: `tailwind.config.js`, `tokens.css`, `tokens.js`. Como
+`.btn-primary` e quase todo componente já usavam `bg-brand`/`text-brand-dark`
+etc. (tokens, não hex cru), a cor nova se propagou pro app inteiro sem
+precisar editar tela por tela — só 4 lugares tinham hex antigo hardcoded
+fora do sistema de tokens (`TourContext.jsx`, `MonthlyReport.css`,
+2× `LandingPage.jsx`), corrigidos à parte.
+
+`Logo.jsx` trocou a letra "R" provisória pelo ícone de verdade
+(`icon-color-256.webp`) e o wordmark "Cash" passou a usar `text-accent`
+(verde) em vez de `text-brand` — igual ao mockup. Favicon trocado de SVG
+provisório pros PNGs do ícone (`icon-square-dark-32/180.png`).
+
+Marca d'água adicionada no hero (ícone colorido, opacidade 0.10) e na seção
+escura de preço (ícone branco gerado a partir do canal alfa, opacidade
+0.05). **Armadilha nova**: `position: relative` sozinho não cria contexto de
+empilhamento — só com `z-index` explícito também. Sem isso, `-z-10` do
+elemento filho escapa pra trás da página inteira (atrás do `bg-bg` do body),
+ficando invisível mesmo com opacidade alta. Correção: `relative z-0` (não só
+`relative`) nas duas seções com marca d'água. Descoberto comparando hash MD5
+de screenshots — duas capturas em opacidades diferentes deram o mesmo
+arquivo, provando que nada estava sendo pintado.
+
+Toque de duas cores (roxo/verde alternado, refletindo o próprio ícone) nos
+badges "01/02/03" de Como Funciona e nos 3 cartões Individual/Casal/Família.
+
+Pré-visualização de link (WhatsApp etc.) implementada do zero — não existia
+`og:image` nenhuma, por isso o preview aparecia sem miniatura. Card com o
+ícone centralizado num fundo claro (`frontend/public/brand/og-image.jpg`,
+1200×1200, quadrado — cards compactos cortam banners largos no meio e
+perdiam o ícone) e descrição reescrita: a antiga ("lance gastos no WhatsApp
+da família") soava como se o sistema funcionasse dentro de um grupo que a
+família já tem. Nova: "Lance gastos e receitas no WhatsApp, sozinho ou em
+grupo de até 8 pessoas, e veja para onde vai seu dinheiro." (109 caracteres,
+cabe sem cortar na maioria dos clientes).
+
+Testado com build de produção limpo e Playwright/agent-browser local (hero,
+seção de preço, modal de cadastro, seção "como funciona", seção
+individual/casal/família) — nada em produção ainda, fica pro Kirk revisar e
+autorizar o push (frontend = deploy automático).
 
 ## Decisões já tomadas (não reabrir sem motivo)
 
@@ -288,9 +362,9 @@ Todos carregam `.env` e segredos sozinhos (`tools/carregarAmbiente.js`).
 
 ## Para vender de verdade, falta
 
-1. Trocar `MERCADOPAGO_ACCESS_TOKEN` pela credencial de **produção**
-2. Cadastrar o webhook também na aba **Modo de produção** do MP e gravar o
-   segredo de lá
+1. ~~Trocar `MERCADOPAGO_ACCESS_TOKEN` pela credencial de **produção**~~ feito 08/08/2026
+2. ~~Cadastrar o webhook também na aba **Modo de produção** do MP e gravar o
+   segredo de lá~~ feito 08/08/2026
 3. Fazer uma assinatura real e conferir a transição `pending → active`
 
 ## Falta

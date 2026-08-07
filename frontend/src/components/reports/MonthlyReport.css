@@ -195,15 +195,7 @@
 .rpt-logo {
   width: 36px;
   height: 36px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, #5b21b6 0%, #4c1d95 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-family: 'Outfit', system-ui, sans-serif;
-  font-weight: 800;
-  font-size: 16px;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
