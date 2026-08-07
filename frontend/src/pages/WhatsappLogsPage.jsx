@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Trash2 } from 'lucide-react';
+import { MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Send, Trash2 } from 'lucide-react';
 import api from '../services/api';
 import EmptyState from '../components/ui/EmptyState';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -12,7 +12,15 @@ const STATUS_CONFIG = {
   ERROR:      { label: 'Erro',       icon: AlertCircle,  cls: 'text-red-500',    dot: 'bg-red-500' },
   IGNORED:    { label: 'Ignorado',   icon: XCircle,      cls: 'text-faint',   dot: 'bg-border-strong' },
   CANCELLED:  { label: 'Cancelado',  icon: XCircle,      cls: 'text-faint',   dot: 'bg-border-strong' },
+  // Confirmação que o próprio sistema mandou de volta pro WhatsApp — não é
+  // uma mensagem da família. Existe como registro para a barreira anti-loop
+  // (jaProcessada), não como algo a revisar. Escondida da lista por padrão,
+  // igual a CANCELLED — sem rótulo próprio antes, caía no fallback PENDING e
+  // parecia um segundo lançamento travado ao lado do real.
+  BOT:        { label: 'Confirmação enviada', icon: Send, cls: 'text-faint', dot: 'bg-border-strong' },
 };
+
+const STATUS_OCULTOS_POR_PADRAO = ['CANCELLED', 'BOT'];
 
 const TYPE_LABELS = { TEXT: 'Texto', IMAGE: 'Imagem', AUDIO: 'Áudio', DOCUMENT: 'Doc', STICKER: 'Sticker' };
 
@@ -29,10 +37,11 @@ export default function WhatsappLogsPage() {
     try {
       const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== ''));
       const { data } = await api.get('/whatsapp/logs', { params });
-      // Esconde cancelados por padrão (a menos que filtro explícito)
-      const visible = filters.status === 'CANCELLED'
+      // Esconde cancelados e confirmações do próprio bot por padrão (a menos
+      // que o filtro explícito peça por eles).
+      const visible = filters.status
         ? data.logs
-        : data.logs.filter(l => l.processingStatus !== 'CANCELLED');
+        : data.logs.filter(l => !STATUS_OCULTOS_POR_PADRAO.includes(l.processingStatus));
       setLogs(visible);
       setTotal(visible.length);
     } catch {
