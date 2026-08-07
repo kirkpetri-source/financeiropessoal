@@ -72,7 +72,7 @@ describe('parseFinancialMessage — formato básico', () => {
   });
 
   it('aceita todos os sinônimos de despesa', () => {
-    for (const palavra of ['gasto', 'despesa', 'paguei', 'gastei', 'comprei']) {
+    for (const palavra of ['gasto', 'despesa', 'paguei', 'gastei', 'comprei', 'pagamento', 'saída', 'saida']) {
       const r = parseFinancialMessage(`${palavra} mercado 50 pix`);
       expect(r, palavra).not.toBeNull();
       expect(r.type, palavra).toBe('EXPENSE');
@@ -80,11 +80,22 @@ describe('parseFinancialMessage — formato básico', () => {
   });
 
   it('aceita todos os sinônimos de receita', () => {
-    for (const palavra of ['receita', 'entrada', 'recebi', 'ganhei']) {
+    for (const palavra of ['receita', 'entrada', 'recebi', 'ganhei', 'recebimento', 'ganho']) {
       const r = parseFinancialMessage(`${palavra} venda 800 dinheiro`);
       expect(r, palavra).not.toBeNull();
       expect(r.type, palavra).toBe('INCOME');
     }
+  });
+
+  // ESTADO.md (sessão de 06/08/2026): falha real observada em teste — a
+  // primeira palavra precisa ser um verbo/substantivo de tipo, e "pagamento"
+  // não estava na lista mesmo com "paguei"/"pago" já cobertos.
+  it('interpreta "Pagamento cartão 1830" como despesa de R$ 1830 em Cartão de Crédito', () => {
+    const r = parseFinancialMessage('Pagamento cartão 1830');
+    expect(r).not.toBeNull();
+    expect(r.type).toBe('EXPENSE');
+    expect(r.amount).toBe(1830);
+    expect(r.categoryName).toBe('Cartão de Crédito');
   });
 
   it('normaliza a forma de pagamento com e sem acento', () => {

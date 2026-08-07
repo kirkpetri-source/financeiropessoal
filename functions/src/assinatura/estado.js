@@ -14,7 +14,7 @@
 
 const PRECO_MENSAL_CENTAVOS = 2490;
 
-const DIAS_DE_TRIAL = 14;
+const DIAS_DE_TRIAL = 7;
 
 // Depois do vencimento o Mercado Pago ainda tenta cobrar de novo por alguns
 // dias. Cortar o acesso no primeiro dia de atraso derrubaria cliente que vai

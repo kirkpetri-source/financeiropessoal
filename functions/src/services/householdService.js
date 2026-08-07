@@ -1,5 +1,6 @@
 const { admin, db } = require('../config/firebaseAdmin');
 const { gerarCodigoVinculo } = require('../utils/codigoVinculo');
+const { DIAS_DE_TRIAL } = require('../assinatura/estado');
 
 /**
  * Famílias (households) — a unidade de cobrança e de isolamento do sistema.
@@ -22,8 +23,6 @@ const PERMISSOES = {
   [PAPEIS.MEMBRO]: { lancar: true, editarTudo: false, gerirMembros: false, gerirAssinatura: false, gerirCanal: false },
   [PAPEIS.LEITOR]: { lancar: false, editarTudo: false, gerirMembros: false, gerirAssinatura: false, gerirCanal: false },
 };
-
-const DIAS_DE_TRIAL = 14;
 
 function refMembros(householdId) {
   return db.collection('households').doc(householdId).collection('members');

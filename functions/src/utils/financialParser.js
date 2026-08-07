@@ -12,9 +12,13 @@ const PAYMENT_METHODS = ['pix', 'dinheiro', 'débito', 'debito', 'crédito', 'cr
 // Palavras que devem ser removidas da descrição (unidades monetárias, preposições comuns)
 const IGNORED_WORDS = ['reais', 'real', 'r$', 'de', 'do', 'da', 'no', 'na'];
 
+// "pagamento", "recebimento" e "ganho" são as formas em substantivo dos
+// verbos que já estavam cobertos (paguei/pago, recebi/recebido, ganhei) —
+// faltavam. Foi assim que "Pagamento cartão 1830" caía sem interpretar
+// (ESTADO.md, sessão de 06/08/2026: falha real observada em teste).
 const TYPE_KEYWORDS = {
-  EXPENSE: ['gasto', 'despesa', 'paguei', 'pago', 'gastei', 'comprei', 'compra', 'pagar', 'gastando'],
-  INCOME: ['receita', 'entrada', 'recebi', 'recebido', 'receber', 'ganhei', 'ganhou', 'deposito', 'depósito'],
+  EXPENSE: ['gasto', 'despesa', 'paguei', 'pago', 'pagamento', 'gastei', 'comprei', 'compra', 'pagar', 'gastando', 'saída', 'saida'],
+  INCOME: ['receita', 'entrada', 'recebi', 'recebido', 'recebimento', 'receber', 'ganhei', 'ganhou', 'ganho', 'deposito', 'depósito'],
 };
 
 const PAYMENT_METHOD_NORMALIZE = {
