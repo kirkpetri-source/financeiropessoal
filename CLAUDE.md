@@ -51,6 +51,16 @@ O Kirk autorizou o push em 06/08/2026. **Commite e faça push ao fim de cada
 bloco de trabalho concluído e testado** — não deixe dezenas de commits parados
 na máquina como aconteceu na primeira sessão.
 
+**`git push` para `main` publica o frontend em produção na hora** — o Vercel
+tem integração automática com este repo (descoberto em 07/08/2026: um push
+disparou deploy de produção sem nenhum comando de deploy explícito). Isso
+significa que "commitar e testar antes de fazer deploy" não é uma sequência
+segura por si só — testar local e depois dar push já É o deploy. Antes de
+push com mudança grande de UI, testar via `npm run build` + navegador
+(skill `run` ou `agent-browser`) como se já fosse produção, porque vai ser.
+O backend (`functions/`) não segue essa regra — só vai ao ar com
+`firebase deploy`, que continua manual.
+
 Antes de qualquer push, conferir que nada sensível está rastreado:
 
 ```bash
@@ -120,6 +130,8 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
 - **`POST /preapproval` responde 500 com `payer_email` em `@testuser.com`.**
 - **Celular sem o 9 vira destino inexistente e o gasto fica sem dono.** Validar
   com `src/utils/telefoneBR.js` — DDD da lista, 9 obrigatório, 11 dígitos.
+- **`git push` para `main` já é deploy de produção do frontend** (integração
+  automática Vercel↔GitHub). Ver detalhe em "Git — push liberado".
 
 ## Modelo de dados
 
