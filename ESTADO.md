@@ -1,6 +1,40 @@
-# Estado do projeto — 07/08/2026 (marca + redesign + landing + onboarding no ar)
+# Estado do projeto — 08/08/2026 (marca + redesign + landing + onboarding no ar)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
+
+## O que falta — lista consolidada (08/08/2026)
+
+Ler isto primeiro ao retomar. Detalhe e contexto de cada item nas seções
+abaixo; isto é só o índice do que ainda não está feito.
+
+**Só o Kirk pode fazer (conta dele, cartão dele, ou decisão de negócio):**
+- [ ] Rodar `firebase deploy --only functions --project financeiropessoal-29b32`
+      — parser novo e trial de 7 dias já commitados, só faltam ir ao ar
+- [ ] Trocar `MERCADOPAGO_ACCESS_TOKEN` para credencial de **produção**,
+      cadastrar o webhook na aba de produção do MP e testar uma assinatura
+      real (conferir a transição `pending → active`)
+- [ ] Registrar `revelacash.com.br` e `revelacash.com` (confirmados livres)
+- [ ] Mockup final do logo (hoje é só wordmark, texto)
+- [ ] Fotos reais para a landing (banco licenciado ou próprias — hoje são
+      recriações com os tokens do sistema, não screenshot nem foto real)
+- [ ] Aplicar para **Meta Verified**, se quiser o canal WhatsApp oficial
+      (leva de 2 a 8 semanas)
+- [ ] Revisar a landing nova em produção e aprovar, ou pedir ajuste
+
+**Decisão em aberto — qual a próxima frente de trabalho:**
+1. Ampliar o parser (casos que ainda caem na IA por engano)
+2. Convite de membro com login próprio (hoje um 2º login vira outra família)
+3. Fechar o resto da Fase 4 — orçamento por categoria, contas recorrentes,
+   fatura de cartão, áudio transcrito e foto de cupom (OCR)
+4. Tutorial de primeiro uso (Kirk pediu pra deixar por último; o tour
+   guiado interativo já existe — isto seria material escrito/vídeo à parte)
+
+**Dívidas técnicas conhecidas, sem prioridade definida** (detalhe no fim do
+arquivo, seção "Dívidas conhecidas"): README desatualizado, pasta `backend/`
+morta, rate limit só em memória, `cloudApiProvider.js` nunca testado contra
+API real, bundle do frontend ~1,27 MB sem code splitting, zero testes
+automatizados no frontend, `/admin/metricas` não escala para muitas famílias,
+uma instância Evolution por família (limite de VPS não medido).
 
 ## Sessão de 07/08/2026 — marca, redesign visual e landing page
 
