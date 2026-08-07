@@ -95,6 +95,19 @@ efeito funcional, porque tanto a atribuição de gasto quanto a sincronização
 de membros casam pelo campo `phone`, não pelo ID. Migrar o ID exigiria
 apagar/recriar dado de cliente real sem ganho nenhum — não mexido.
 
+## Sessão de 08/08/2026 — reescrita de conteúdo da landing page
+
+Todo o texto da landing (`frontend/src/pages/LandingPage.jsx`) foi reescrito
+a pedido do Kirk: a copy anterior era genérica/publicitária ("Nada de
+instalar nada", "Você já vive no WhatsApp") e não explicava o produto. Nova
+estrutura, 11 seções + FAQ, todas seguindo a mesma lógica (mensagem no
+WhatsApp → RevelaCash registra → dado organizado no painel), sem prometer
+resultado financeiro nem parecer banco/conta digital/carteira. Toda
+funcionalidade citada existe de verdade no sistema — nada foi inventado.
+FAQ implementado com `<details>/<summary>` nativos (sem dependência nova).
+Testado no navegador seção por seção, incluindo abertura do FAQ e âncoras
+do rodapé (Como funciona/Preço/Dúvidas). Build limpo.
+
 ## Decisões já tomadas (não reabrir sem motivo)
 
 | Tema | Decisão | Por quê |
