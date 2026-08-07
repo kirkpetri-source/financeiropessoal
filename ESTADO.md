@@ -1,6 +1,49 @@
-# Estado do projeto — 06/08/2026 (Fase 5 concluída em código)
+# Estado do projeto — 07/08/2026 (marca + redesign + landing no ar)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
+
+## Sessão de 07/08/2026 — marca, redesign visual e landing page
+
+Nome fechado: **RevelaCash** (domínios `revelacash.com.br` e `revelacash.com`
+confirmados livres via RDAP em 06/08 — registro é ação do Kirk, ainda não
+feito). Paleta roxo profundo (`#5b21b6`), tipografia Outfit + JetBrains Mono
+promovida de global. Detalhe do plano completo, decisões de arquitetura e
+riscos mapeados: `C:\Users\Predator\.claude\plans\fluttering-dreaming-lynx.md`.
+
+Feito e testado (build limpo, 247 testes de backend, verificado com Playwright/
+agent-browser em produção, sem erro de console):
+- Redesign completo do frontend (login, dashboard com sparkline+contagem
+  animada, sidebar/header, settings em 3 abas, todas as páginas restantes)
+- Componentes acessíveis (Tabs/Dialog/DropdownMenu) via `radix-ui` direto —
+  **não** via CLI do shadcn, que só gera código Tailwind v4 (incompatível
+  com o v3 deste projeto)
+- Landing page nova em `/` — estrutura, copy, preço, mini-recriação do
+  dashboard com os mesmos tokens (não é screenshot real ainda)
+- Parser: `pagamento`, `recebimento`, `ganho`, `saída` adicionados como tipo
+  — corrige `Pagamento cartão 1830`, que falhava. `Lanche 38,00 crédito`
+  continua caindo na IA de propósito (categoria não é palavra de tipo)
+- Trial: 14 → 7 dias (constante estava duplicada em `estado.js` e
+  `householdService.js`; unificada). Famílias já existentes não são afetadas
+  (`trialEndsAt` é gravado na criação, não recalculado)
+
+**Importante — estado do deploy:**
+- **Frontend**: já está em produção. O `git push` disparou deploy automático
+  via integração Vercel↔GitHub (não era a intenção original — o plano era
+  deixar só commitado para o Kirk revisar antes. Uma vez commitado e no
+  `main`, o Vercel publica sozinho). Verificado ao vivo com conta de teste
+  descartável (criada e apagada com `tools/apagar-familia.js` — zero resíduo).
+- **Backend**: código commitado e com teste local verde, mas **não
+  deployado** — `firebase deploy --only functions --project
+  financeiropessoal-29b32` ainda não foi rodado. O parser novo e o trial de
+  7 dias só valem depois desse deploy.
+
+Pendências que ficaram para o Kirk decidir/fazer (não são falta de tempo, são
+decisões ou acessos que só ele tem):
+- Registrar o domínio revelacash.com.br/.com
+- Mockup final do logo (hoje é wordmark provisório, texto só)
+- Fotos de pessoas reais para a landing (banco licenciado ou fotos próprias)
+- Rodar `firebase deploy` quando quiser publicar o backend
+- Revisar o site em produção e decidir se mantém no ar como está
 
 ## Decisões já tomadas (não reabrir sem motivo)
 
@@ -155,11 +198,10 @@ Todos carregam `.env` e segredos sozinhos (`tools/carregarAmbiente.js`).
 
 ## Falta
 
-**Parser — falhas reais observadas no teste**
-- `Pagamento cartão 1830` e `Lanche 38,00 crédito` não são interpretados.
-  A primeira palavra precisa ser um verbo/substantivo de tipo
-  (`detectType(words[0])`); "pagamento" e "lanche" não estão na lista.
-  Vale ampliar as palavras e melhorar o fallback da IA
+**Parser** — `Pagamento cartão 1830` corrigido em 07/08 (falta só o
+`firebase deploy` para valer em produção). `Lanche 38,00 crédito` continua
+caindo na IA por decisão consciente — "lanche" é categoria, não tipo, e virar
+palavra-chave de tipo abriria precedente pra qualquer substantivo de compra.
 
 **Convite de membro com login próprio**
 - Quem entra pelo grupo lança pelo WhatsApp, mas não abre o painel. O
@@ -178,7 +220,10 @@ Todos carregam `.env` e segredos sozinhos (`tools/carregarAmbiente.js`).
 **Tutorial de primeiro uso** — o Kirk pediu para deixar por último
 
 **Fase 6 — landing page**
-- Requisito do Kirk: **fotos de pessoas reais**, tema controle financeiro
+- Estrutura, copy, preço e mini-recriação do dashboard prontos (07/08), em
+  produção em `/`. Falta: prints reais do sistema (a mini-recriação usa os
+  mesmos tokens mas não é screenshot) e fotos de pessoas reais — decisão e
+  fonte do Kirk, banco licenciado ou fotos próprias
 - Detalhe técnico: página publicada bloqueia recurso externo — imagens
   precisam ir embutidas (data URI)
 
