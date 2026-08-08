@@ -14,7 +14,7 @@ e não podem ser perdidos.** Eles são a família #1 e o primeiro teste de tudo.
 | Backend | Express dentro de Cloud Functions v2, região `southamerica-east1` |
 | Banco | Firestore (projeto `financeiropessoal-29b32`) |
 | Auth | Firebase Auth (ID token no header, verificado pelo Admin SDK) |
-| IA | Gemini 2.0 Flash via REST, secret `GEMINI_API_KEY` |
+| IA | Gemini via REST, secret `GEMINI_API_KEY` — modelo atual `gemini-3.6-flash` (ver armadilha sobre descontinuação de modelo) |
 | Canal | Evolution API (VPS Hostinger) hoje; Cloud API oficial preparada |
 | Cobrança | Mercado Pago (preapproval mensal), secrets `MERCADOPAGO_ACCESS_TOKEN` e `MERCADOPAGO_WEBHOOK_SECRET` |
 
@@ -26,10 +26,10 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 246 testes (vitest)
+npm test                 # 280 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
-npm run seed             # só categorias e formas de pagamento padrão
+npm run seed              # só categorias e formas de pagamento padrão
 
 # Ferramentas — todas carregam .env e segredos sozinhas
 node tools/diagnostico-assinatura.js          # quem seria bloqueado hoje
@@ -38,9 +38,13 @@ node tools/testar-assinatura-ponta-a-ponta.js <id>   # cria e sincroniza
 node tools/testar-canal-ponta-a-ponta.js <id> --manter
 node tools/marcar-conta-interna.js <id> --confirmar  # cortesia vitalícia
 node tools/apagar-familia.js <id> --confirmar        # limpa conta de teste
+node tools/criar-login-operador.js --confirmar       # cria/reseta a senha do painel gestor (/plataforma)
 
+# Deploy da function inteira (todas de uma vez) ou só a API (mais rápido,
+# cobre a maioria das mudanças — as agendadas raramente mudam):
 firebase deploy --only functions --project financeiropessoal-29b32
-cd .. && vercel deploy --prod --yes    # frontend
+firebase deploy --only functions:api --project financeiropessoal-29b32
+cd .. && vercel deploy --prod --yes    # frontend (raramente necessário — git push já deploya, ver abaixo)
 ```
 
 Vercel CLI já está instalado e autenticado nesta máquina (conta
@@ -87,17 +91,25 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
 3. **Nenhuma query sem tenant.** Coleção de família só se acessa por
    `escopoDe(householdId)` (`src/data/escopo.js`). Usar `db` cru nos services é
    contornar a proteção. 16 testes cobrem os cenários de vazamento. A exceção
-   declarada é `routes/admin.js`, que olha todas as famílias — por isso vive
-   atrás de `apenasAdmin` e em rota separada, visível na revisão.
+   declarada é `routes/admin.js` (montada em `/plataforma`), que olha todas as
+   famílias — por isso vive atrás de `apenasAdmin` e em rota separada, visível
+   na revisão. Mesma exceção para `adminAuditLog` (log cross-tenant das ações
+   do painel).
 4. **Só faz push com a suíte verde.** `npm test` em `functions/` antes.
 5. **Sem emoji nas respostas ao Kirk.** Português direto, sem bajulação.
 6. **Bloqueio de assinatura nunca esconde dado.** Quem não paga perde o direito
    de LANÇAR; continua lendo, consultando e exportando todo o histórico.
    `exigirAssinatura` só entra em rota de escrita. Segurar dado financeiro de
    família como refém é ruim de produto e frágil na LGPD.
-7. **Quem promove uma assinatura para `active` é o provedor.** O painel e o
-   cliente nunca escrevem esse status: só `sincronizarDoProvedor`, depois de
-   consultar a API do Mercado Pago. Status desconhecido não muda nada.
+7. **Quem promove uma assinatura para `active` é o provedor — com uma
+   exceção deliberada e auditada.** O painel do CLIENTE e o cliente nunca
+   escrevem esse status: só `sincronizarDoProvedor`, depois de consultar a
+   API do Mercado Pago. Status desconhecido não muda nada. A exceção é o
+   painel do OPERADOR (`assinaturaService.registrarPagamentoManual`, Pix fora
+   do sistema, negociação): função separada, nunca fala com o Mercado Pago,
+   marca `provider: 'manual'`, só acessível atrás de `apenasAdmin`, e toda
+   chamada grava em `adminAuditLog` quem fez e por quê. Isto não é uma
+   brecha — é a válvula de escape do operador, com rastro.
 8. **Resolver por CLI/API, nunca mandar o Kirk clicar em painel.** Está escrito
    em `eu/preferencias.md` do vault dele e foi ignorado uma vez, custando uma
    tarde. Antes de pedir qualquer coisa: "eu consigo fazer isso por script?"
@@ -110,6 +122,24 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
    existem porque um "Salvar" apagou o canal de um cliente em produção.
 10. **Nada de `.default()` em schema de update.** O zod preenche o campo mesmo
     quando o corpo não o menciona, e o valor inventado sobrescreve o real.
+11. **O painel gestor (`/plataforma`) tem login próprio, sem relação com
+    conta de família.** Usuário/senha (não e-mail), criados com
+    `tools/criar-login-operador.js` — traduzido para um e-mail interno
+    (`@operador.revelacash.internal`, nunca uma caixa real) só porque o
+    Firebase Auth exige formato de e-mail. `PlataformaPage.jsx` fica FORA do
+    `PrivateRoute`/`AuthContext` da família de propósito — não pode voltar a
+    "misturar" com o menu de nenhuma família (foi assim que nasceu: o Kirk
+    via o painel dentro do próprio Sidebar da conta dele). Limitação aceita:
+    Firebase Auth mantém uma sessão só por navegador, então logar no portal
+    troca a sessão ativa em qualquer aba do mesmo navegador.
+12. **Consulta com `where` + `orderBy` em campos diferentes exige índice
+    composto no Firestore** (`firestore.indexes.json`), e o dublê de banco
+    dos testes automatizados NÃO reproduz essa exigência — passa limpo local
+    e quebra em produção com `FAILED_PRECONDITION`. Foi assim que o
+    drill-down do painel gestor nasceu quebrado. Para coleção pequena por
+    filtro (dezenas de documentos, não milhares), prefira `where` sozinho +
+    ordenar em memória a criar mais um índice — `adminAuditService.js` é o
+    exemplo.
 
 ## Armadilhas já pagas (não repetir)
 
@@ -144,6 +174,30 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   `$env:FUNCTIONS_DISCOVERY_TIMEOUT=30000` antes do `firebase deploy`
   (PowerShell) ou `FUNCTIONS_DISCOVERY_TIMEOUT=30000 firebase deploy ...`
   (bash).
+- **Modelo do Gemini muda de nome e é desligado sem aviso na aplicação.**
+  `gemini-2.0-flash` (usado desde o início do projeto) foi desligado pelo
+  Google em 01/06/2026 — quebrou o parser de texto por IA em silêncio por
+  mais de dois meses (o parser por regras cobre a maioria dos casos, então
+  não aparecia) até o áudio/foto novo expor o erro. Antes de assumir o nome
+  do modelo pela memória, confira o catálogo atual
+  (`https://ai.google.dev/gemini-api/docs/models`) — modelo em uso hoje:
+  `gemini-3.6-flash`.
+- **Erro 429 do Gemini pode ser cota (transitória) ou modelo morto
+  (permanente) — o corpo da resposta some no log truncado.** `[MidiaParser]
+  Gemini retornou 429: "You exceeded..."` parecia só cota; o problema de
+  verdade era o modelo descontinuado. Ler a mensagem completa antes de
+  concluir "é só esperar a cota resetar".
+- **O tour guiado de primeiro uso força navegação pro `/dashboard` uns
+  900ms depois de QUALQUER login, se o navegador nunca viu o flag no
+  localStorage** — inclusive login que deveria ir para outro lugar (o
+  painel gestor, por exemplo). Em aba anônima isso é sempre "nunca viu".
+  `TourContext.jsx` só pode auto-iniciar partindo do `/dashboard`.
+- **Depois de um redirect para `/login` (sessão expirada, rota privada sem
+  estar logado), o formulário de login precisa voltar pra rota que a
+  pessoa pediu, não sempre pro `/dashboard`.** `PrivateRoute` guarda a rota
+  em `state={{ from: location }}`; `AuthForm` lê `location.state.from` no
+  login (não no cadastro — conta nova não tem "de onde voltar" que faça
+  sentido).
 
 ## Modelo de dados
 
@@ -158,6 +212,11 @@ users/{uid}.householdId             atalho da família ativa (NÃO é autorizaç
                                     quem manda é o doc em members/)
 transactions, whatsappLogs          têm householdId, sempre escopadas
 categories, paymentMethods          mistas: isDefault=true são globais
+  .isCreditCard/.closingDay/.dueDay paymentMethods: só quando é cartão de crédito
+budgets                             householdId + categoryId, limite mensal fixo
+recurringBills                      householdId, dueDay, lastGeneratedMonth
+creditCardInvoices                  householdId + paymentMethodId + referenceCycle,
+                                    status aberta (calculada) | fechada | paga
 whatsappConfigs/{householdId}       config do canal, uma por família
   .modo                             individual | grupo (escolhido antes do QR)
   .metodoConexao                    qr | codigo (muda como a instância nasce)
@@ -165,26 +224,30 @@ whatsappConfigs/{householdId}       config do canal, uma por família
   .ownerJid                         número que leu o QR; trava a auto-conversa
   .groupId / .groupInviteUrl        grupo criado automaticamente
 deletionAudit                       prova de exclusão, sem dado pessoal dentro
+adminAuditLog                       cross-tenant: ação do painel gestor, quem fez,
+                                    em qual família, quando (sem orderBy — índice)
 ```
 
 Membro que só usa o WhatsApp tem id `wa-<telefone>` e **não precisa de login**:
 o telefone é a chave de atribuição. Login só serve para abrir o painel.
 
-## Estado (06/08/2026)
+O painel GESTOR (`/plataforma`) é outra coisa: login próprio
+(`kirkdouglas_19`, ver regra 11), sem household, sem relação com nenhuma
+família — não confundir com o login de membro acima.
 
-Fases 0 a 5.1 no ar e verificadas em produção. O produto já faz o ciclo
-completo: **cadastro → conexão do WhatsApp → grupo criado sozinho → duas
-pessoas lançando, cada gasto no nome de quem gastou**. Esse teste passou.
+## Estado (08/08/2026)
 
-Cobrança está no ar com credencial de **teste**. Para vender de verdade faltam
-três passos, listados em `ESTADO.md`.
+Fases 0 a 5.1 e a Fase 4 inteira (orçamento, contas recorrentes, fatura de
+cartão, áudio/foto por IA) no ar e verificadas em produção. Cobrança já em
+credencial de **produção**. Painel gestor separado em `/plataforma`, login
+próprio, todos os botões testados um a um contra família descartável.
 
 Próximo passo em aberto, o Kirk decide:
-1. Ampliar o parser (`Pagamento cartão 1830` e `Lanche 38,00 crédito` falham)
+1. Ampliar o parser (`Lanche 38,00 crédito` cai na IA por decisão consciente)
 2. Convite de membro com login próprio (hoje um segundo login vira outra família)
-3. Fechar a Fase 4 (orçamento, contas recorrentes, fatura de cartão)
-4. Virar o Mercado Pago para produção
-5. Tutorial de primeiro uso e landing page
+3. Tutorial de primeiro uso (ele pediu pra deixar por último)
+4. Testar áudio/foto com mensagem real de WhatsApp (nunca exercitado contra
+   o servidor Evolution de verdade)
 
-O detalhe de tudo — o que foi verificado, o que não foi, e as armadilhas que já
-custaram horas — está em **`ESTADO.md`**.
+O detalhe de tudo — sessão por sessão, o que foi verificado, o que não foi, e
+as armadilhas que já custaram horas — está em **`ESTADO.md`**.

@@ -1,6 +1,105 @@
-# Estado do projeto — 08/08/2026 (Fase 4 completa + painel gestor no ar)
+# Estado do projeto — 08/08/2026 (Fase 4 completa + painel gestor separado, testado botão a botão)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
+
+## Sessão de 08/08/2026 (parte 5) — bugs reais achados testando de verdade, painel gestor virou portal separado
+
+Depois da entrega da parte 4 (abaixo), o Kirk testou de verdade e achou dois
+problemas que a sessão anterior não tinha exercitado: áudio/foto do WhatsApp
+falhando, e o painel gestor "misturado" com o menu da própria família dele.
+Os dois eram bugs reais, não mal-entendido — corrigidos nesta sessão, com
+teste de ponta a ponta desta vez.
+
+**Áudio e foto de cupom falhando — não era cota, o modelo tinha sido
+desligado.** Log de produção: `[MidiaParser] Gemini retornou 429`. Parecia
+cota (o Kirk até comprou R$100 de crédito no Gemini por causa disso), mas o
+`gemini-2.0-flash` usado desde o início do projeto **foi desligado pelo
+Google em 01/06/2026** — confirmado via `WebFetch` na documentação oficial.
+Isso quebrou dois pontos ao mesmo tempo:
+- `midiaParserService.js` (áudio/foto, feature nova desta sessão)
+- `aiParserService.js` (fallback de IA do parser de texto, existente desde
+  muito antes) — estava quebrado **silenciosamente havia mais de dois
+  meses**, sem ninguém perceber porque o parser por regras cobre a maioria
+  das mensagens.
+
+Trocado pro `gemini-3.6-flash` (modelo Flash estável atual, confirmado com
+uma chamada real usando a chave de produção antes do deploy — HTTP 200).
+De quebra, `midiaParserService.chamarGemini` ganhou uma tentativa extra
+automática em 429/503 (passageiro) e uma mensagem diferente de "não
+entendi o áudio" para esse caso.
+
+Preço do `gemini-3.6-flash` é ~15x mais caro por token que o antigo (US$1,50
+input / US$7,50 output por 1M tokens, tarifa única pra texto/imagem/áudio),
+mas ainda assim irrisório no volume de 5 famílias — estimativa de 8 a 12
+meses pros R$100 já comprados. Sem conta fechada; recomendado o Kirk olhar
+o painel de uso do Google depois de uma semana de uso real.
+
+**Painel gestor virou de verdade um portal separado, não mistura mais com
+conta de família.** O Kirk viu o painel `/portal-rc-9f21` abrindo dentro do
+mesmo Sidebar da conta pessoal dele (mesmo e-mail = mesma sessão = mesmo
+layout) e pediu login próprio, usuário/senha, URL nova.
+
+Duas causas descobertas ANTES de chegar na causa raiz de verdade (ambas
+corrigidas, nenhuma foi a explicação final):
+1. Login sempre mandava pro `/dashboard`, nunca de volta pra rota que a
+   pessoa tinha pedido — corrigido com `state={{from: location}}` no
+   `PrivateRoute` + `AuthForm` lendo esse state.
+2. **A causa real**: `TourContext.jsx` (tour guiado de primeiro uso) força
+   navegação pro `/dashboard` uns 900ms depois de QUALQUER login, se o
+   navegador nunca viu o flag de "já visto" no localStorage — o que é
+   sempre o caso em aba anônima ou navegador novo. Sobrescrevia o fix do
+   item 1. Corrigido: só auto-inicia partindo do `/dashboard`.
+
+Depois desses dois fixes, a arquitetura pedida foi construída do zero:
+- `tools/criar-login-operador.js` — cria uma conta de Firebase Auth
+  separada (usuário `kirkdouglas_19`, senha gerada e mostrada só uma vez no
+  terminal, nunca salva em arquivo), traduzida pra um e-mail interno
+  (`@operador.revelacash.internal`, não é caixa real) só porque o Firebase
+  Auth exige formato de e-mail. Sem household, sem relação com nenhuma
+  família.
+- `PlataformaPage.jsx` — rota `/plataforma`, FORA do `PrivateRoute`/
+  `AppLayout` da família. Formulário próprio (usuário/senha, fundo escuro,
+  visual distinto). Depois de autenticar, confirma acesso admin de verdade
+  chamando `/plataforma/metricas` antes de mostrar qualquer coisa. Painel em
+  si (`AdminPage.jsx`, reaproveitado) renderiza dentro de um header minimalista
+  próprio ("Portal do Operador — RevelaCash" + Sair), sem o Sidebar da família.
+- Rota renomeada de `/portal-rc-9f21` para `/plataforma` (frontend e
+  backend). `ADMIN_EMAILS` ganhou o e-mail interno da conta nova,
+  `kirkpetri@gmail.com` continua valendo também (redundância inofensiva).
+- **Limitação aceita, documentada no código**: Firebase Auth mantém uma
+  sessão só por navegador. Logar no portal troca a sessão ativa — quem
+  estava logado como família em outra aba do mesmo navegador passa a
+  "ver" a sessão do operador até logar de novo como família. Pra ter as
+  duas contas abertas ao mesmo tempo, precisa de outro navegador ou janela
+  anônima.
+
+**Testando pela primeira vez com acesso real de admin, achei mais dois bugs
+que a sessão anterior não pegou** (fazia sentido: antes eu não tinha como
+logar como admin pra testar):
+- Drill-down de família (clicar numa linha da tabela) quebrava **sempre**,
+  com `FAILED_PRECONDITION: The query requires an index`.
+  `adminAuditService.listarPorFamilia` fazia `where('householdId','==',x)
+  .orderBy('createdAt','desc')` — Firestore exige índice composto pra
+  `where`+`orderBy` em campos diferentes, e a coleção nunca tinha sido
+  consultada antes, então o índice nunca foi criado. O dublê de Firestore
+  dos testes automatizados não reproduz essa exigência — por isso passou
+  limpo em 280 testes e quebrou 100% das vezes em produção. Corrigido
+  ordenando em memória (coleção pequena por família, não precisa de
+  índice).
+- A data na seção "Auditoria do painel" aparecia como "-". Timestamp do
+  Firestore não sobrevive ao `res.json()` como objeto usável (vira
+  `{_seconds,...}`), o frontend não conseguia formatar. Corrigido
+  convertendo pra ISO antes de responder.
+
+**Testado de verdade desta vez**, os 8 botões do painel, um por um, contra
+uma família de teste criada e apagada na hora (via `agent-browser`, login
+real com o usuário/senha do operador): drill-down, registrar pagamento
+manual (+30 dias), sincronizar com o provedor, marcar/desmarcar cortesia,
+bloquear/desbloquear acesso, cancelar assinatura. Todos funcionando,
+histórico de cobrança e auditoria aparecendo certos, zero erro no console.
+
+Backend deployado (`firebase deploy --only functions:api`, várias vezes ao
+longo da sessão) e frontend publicado (push → Vercel) a cada correção.
 
 ## Sessão de 08/08/2026 (parte 4) — Fase 4 completa e painel gestor
 
@@ -139,10 +238,15 @@ abaixo; isto é só o índice do que ainda não está feito.
 - [ ] Aplicar para **Meta Verified**, se quiser o canal WhatsApp oficial
       (leva de 2 a 8 semanas)
 - [ ] Revisar a landing nova em produção e aprovar, ou pedir ajuste
-- [ ] Conferir os botões do painel gestor em `/portal-rc-9f21` logado com
-      `kirkpetri@gmail.com` (pagamento manual, marcar interna, bloquear) —
-      não testável por script porque exige o e-mail dele em `ADMIN_EMAILS`;
-      lógica coberta por teste automatizado, mas o clique na tela é dele
+- [x] Painel gestor virou portal separado (`/plataforma`, login próprio
+      usuário/senha) e teve todos os 8 botões testados um a um — feito
+      08/08/2026 (parte 5). Credenciais: usuário `kirkdouglas_19`, senha
+      só existe na cabeça do Kirk (gerada e mostrada uma vez no terminal,
+      nunca gravada em arquivo). Pra resetar: `node
+      tools/criar-login-operador.js --confirmar` (gera senha nova,
+      mostra uma vez, precisa de `firebase deploy --only functions:api`
+      só se o e-mail interno mudar — a senha por si só não precisa
+      redeploy)
 
 **Decisão em aberto — qual a próxima frente de trabalho:**
 1. Ampliar o parser (casos que ainda caem na IA por engano)
@@ -151,15 +255,20 @@ abaixo; isto é só o índice do que ainda não está feito.
    guiado interativo já existe — isto seria material escrito/vídeo à parte)
 4. Testar áudio e foto de cupom com uma mensagem de WhatsApp de verdade —
    `baixarMidia` foi escrito conforme a documentação da Evolution mas nunca
-   exercitado contra o servidor real (ver dívidas)
+   exercitado contra o servidor real (ver dívidas). O modelo Gemini e o
+   fluxo de transcrição/OCR já foram corrigidos e confirmados funcionando
+   (parte 5) — só falta a mensagem real do WhatsApp pra fechar o ciclo
 
 **Dívidas técnicas conhecidas, sem prioridade definida** (detalhe no fim do
 arquivo, seção "Dívidas conhecidas"): README desatualizado, pasta `backend/`
 morta, rate limit só em memória, `cloudApiProvider.js` nunca testado contra
-API real, `evolutionProvider.baixarMidia` (áudio/foto) idem, bundle do
-frontend ~1,3 MB sem code splitting, zero testes automatizados no frontend,
-`/portal-rc-9f21` não pagina (ok para dezenas de famílias, dói em milhares),
-uma instância Evolution por família (limite de VPS não medido).
+API real, `evolutionProvider.baixarMidia` (áudio/foto) idem — download da
+mídia em si já confirmado funcionando em produção (log sem erro nessa etapa),
+só a interpretação pelo Gemini que ainda não rodou com mensagem real — bundle
+do frontend ~1,3 MB sem code splitting, zero testes automatizados no
+frontend, `/plataforma` não pagina a lista de famílias (ok para dezenas,
+dói em milhares), uma instância Evolution por família (limite de VPS não
+medido).
 
 ## Sessão de 07/08/2026 — marca, redesign visual e landing page
 
@@ -395,14 +504,16 @@ Commit `c0fc8fe`.
 - Contas fixas recorrentes lançadas sozinhas por job diário (`/contas-recorrentes`)
 - Fatura de cartão de crédito com fechamento/vencimento e histórico (`/faturas`)
 - Áudio transcrito e foto de cupom via Gemini, reaproveitando o parser de texto
-- Ver sessão de 08/08/2026 (parte 4) para o detalhe de cada peça e o que
-  ainda não foi verificado (mídia contra o servidor real, botões do painel
-  admin)
+- Ver sessão de 08/08/2026 (parte 4) para o detalhe de cada peça, e parte 5
+  para as correções (modelo do Gemini, botões do painel) e o que ainda não
+  foi verificado (mídia contra o servidor real de WhatsApp)
 
-**Painel gestor** (no ar desde 08/08/2026)
-- `/portal-rc-9f21` — URL não-óbvia, drill-down por família, pagamento
-  manual, marcar/desmarcar cortesia, sincronizar, cancelar, bloquear/
-  desbloquear acesso, tudo auditado em `adminAuditLog`
+**Painel gestor / portal do operador** (no ar desde 08/08/2026, refeito na parte 5)
+- `/plataforma` — login próprio (usuário `kirkdouglas_19`, ver
+  `tools/criar-login-operador.js`), sem relação com nenhuma conta de
+  família. Drill-down por família, pagamento manual, marcar/desmarcar
+  cortesia, sincronizar, cancelar, bloquear/desbloquear acesso — tudo
+  auditado em `adminAuditLog` e testado botão por botão
 
 **Fase 5 — cobrança, LGPD e operação** (no ar desde 06/08/2026)
 
