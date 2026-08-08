@@ -132,6 +132,19 @@ function parseBrazilianAmount(raw) {
   return parseFloat(w);
 }
 
+// Conta quantas palavras da mensagem são, sozinhas, um valor válido. Mais de
+// uma é sinal de lançamento composto ("gastei 30 no mercado e 80 de
+// gasolina") — o parser por regra só sabe extrair UM valor por vez e, na
+// prática, pegava sempre o último e descartava o primeiro em silêncio,
+// juntando o valor errado com a categoria errada. Achado real em produção
+// (08/08/2026): a frase acima virou um único lançamento de R$80 em Mercado.
+function contarValoresValidos(words) {
+  return words.filter((w) => {
+    const n = parseBrazilianAmount(w);
+    return !isNaN(n) && n > 0;
+  }).length;
+}
+
 function detectAmount(words) {
   for (let i = words.length - 1; i >= 0; i--) {
     const num = parseBrazilianAmount(words[i]);
@@ -177,6 +190,12 @@ function parseFinancialMessage(message, payers = []) {
 
   // Remove a primeira palavra (tipo)
   let remainingWords = words.slice(1);
+
+  // Mais de um valor numérico plausível = provável lançamento composto.
+  // O parser por regra não sabe separar "30 no mercado e 80 de gasolina" em
+  // dois lançamentos — melhor devolver null e deixar a IA cuidar, que já sabe
+  // extrair vários lançamentos de uma frase só (ver aiParserService.js).
+  if (contarValoresValidos(remainingWords) > 1) return null;
 
   // Detecta pagador no final se houver nomes configurados
   // Exemplo: "gasto mercado 84,90 pix raquel" → paidBy = "Raquel"

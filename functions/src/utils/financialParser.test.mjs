@@ -73,6 +73,22 @@ describe('parseFinancialMessage — formato básico', () => {
     expect(r.description).toBe('trident');
   });
 
+  // Achado em produção (08/08/2026): "gastei 30 reais no mercado e 80 reais
+  // de gasolina" virou UM lançamento de R$80 em Mercado — o parser por regra
+  // só extrai um valor por vez, pegava o último ("80") e descartava o "30"
+  // em silêncio. Agora devolve null nesse caso; quem assume é a IA
+  // (aiParserService), que já sabe separar vários lançamentos numa frase só.
+  it('devolve null quando a mensagem tem mais de um valor (lançamento composto)', () => {
+    expect(parseFinancialMessage('gastei 30 reais no mercado e 80 reais de gasolina')).toBeNull();
+    expect(parseFinancialMessage('recebi 2500 de salário e mais 100 de bônus')).toBeNull();
+  });
+
+  it('continua funcionando normalmente com um único valor na mensagem', () => {
+    const r = parseFinancialMessage('gastei 84,90 no mercado');
+    expect(r.amount).toBe(84.9);
+    expect(r.categoryName).toBe('Mercado');
+  });
+
   it('interpreta receita', () => {
     const r = parseFinancialMessage('receita manutenção notebook 250 pix');
     expect(r).toMatchObject({
