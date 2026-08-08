@@ -12,7 +12,9 @@
  * GEMINI_API_KEY, sem SDK extra.
  */
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// Mesmo modelo do aiParserService.js — ver o comentário lá sobre a
+// descontinuação do gemini-2.0-flash em 01/06/2026.
+const GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // Acima disso não manda pro Gemini — guarda de custo simples. Nota de voz do

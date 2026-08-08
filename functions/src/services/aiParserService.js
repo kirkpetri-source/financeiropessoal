@@ -6,7 +6,11 @@
  * A chave vem do secret GEMINI_API_KEY (process.env.GEMINI_API_KEY).
  */
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// gemini-2.0-flash foi desligado pelo Google em 01/06/2026 — descoberto em
+// 08/08/2026 quando o parser de mídia (áudio/cupom) começou a falhar com
+// 429; o texto provavelmente já estava quebrado silenciosamente desde então
+// (cai no parser por regras primeiro, então nem sempre aparecia).
+const GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const VALID_CATEGORIES = [
