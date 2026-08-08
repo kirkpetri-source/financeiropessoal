@@ -25,6 +25,34 @@ function tamanhoDoBase64(base64) {
 }
 
 const MENSAGEM_GENERICA = 'Não consegui entender o arquivo. Tente digitar o lançamento.';
+// Cota/limite de taxa do Gemini (429) é diferente de "não entendeu o conteúdo" — merece
+// mensagem própria, porque quem lê no WhatsApp não tem como saber que é passageiro.
+const MENSAGEM_COTA = 'Estou processando muitos pedidos agora. Tente de novo em alguns minutos, ou digite o lançamento.';
+
+function aguardar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function chamarGeminiUmaVez(apiKey, base64, mimeType, prompt) {
+  const resp = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }] }],
+      generationConfig: { temperature: 0 },
+    }),
+  });
+
+  if (!resp.ok) {
+    const corpo = await resp.text();
+    console.error(`[MidiaParser] Gemini retornou ${resp.status}: ${corpo.slice(0, 300)}`);
+    return { ok: false, status: resp.status };
+  }
+
+  const data = await resp.json();
+  const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+  return { ok: true, texto: texto || null };
+}
 
 async function chamarGemini(base64, mimeType, prompt) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -38,26 +66,22 @@ async function chamarGemini(base64, mimeType, prompt) {
   }
 
   try {
-    const resp = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }] }],
-        generationConfig: { temperature: 0 },
-      }),
-    });
+    let resultado = await chamarGeminiUmaVez(apiKey, base64, mimeType, prompt);
 
-    if (!resp.ok) {
-      const corpo = await resp.text();
-      console.error(`[MidiaParser] Gemini retornou ${resp.status}: ${corpo.slice(0, 300)}`);
-      return { texto: null, erro: MENSAGEM_GENERICA };
+    // 429 (cota) e 503 (sobrecarga do modelo) costumam ser passageiros —
+    // uma segunda tentativa depois de uma pausa curta resolve a maioria sem
+    // o cliente precisar reenviar nada.
+    if (!resultado.ok && (resultado.status === 429 || resultado.status === 503)) {
+      await aguardar(2000);
+      resultado = await chamarGeminiUmaVez(apiKey, base64, mimeType, prompt);
     }
 
-    const data = await resp.json();
-    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!texto) return { texto: null, erro: MENSAGEM_GENERICA };
+    if (!resultado.ok) {
+      return { texto: null, erro: resultado.status === 429 ? MENSAGEM_COTA : MENSAGEM_GENERICA };
+    }
+    if (!resultado.texto) return { texto: null, erro: MENSAGEM_GENERICA };
 
-    return { texto, erro: null };
+    return { texto: resultado.texto, erro: null };
   } catch (err) {
     console.error('[MidiaParser] Erro ao chamar Gemini:', err.message);
     return { texto: null, erro: MENSAGEM_GENERICA };
