@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -33,6 +33,14 @@ function traduzir(err, padrao) {
 export default function AuthForm({ initialAba = 'entrar' }) {
   const { login, signUp, resetPassword } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Só existe quando o PrivateRoute mandou pra cá por falta de login (ex.:
+  // alguém digitou a URL do painel admin sem estar logado ainda). No modal da
+  // landing page isto vem undefined, e cai no /dashboard normal — certo tanto
+  // pra quem acabou de criar conta quanto pra quem só clicou "Entrar".
+  const destino = location.state?.from
+    ? `${location.state.from.pathname}${location.state.from.search || ''}`
+    : '/dashboard';
   const [aba, setAba] = useState(initialAba); // entrar | criar | recuperar
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [mostrarConfirmacao, setMostrarConfirmacao] = useState(false);
@@ -51,7 +59,7 @@ export default function AuthForm({ initialAba = 'entrar' }) {
     setCarregando(true);
     try {
       await login(dados.email, dados.password);
-      navigate('/dashboard');
+      navigate(destino);
     } catch (err) {
       toast.error(traduzir(err, 'Erro ao fazer login.'));
     } finally {

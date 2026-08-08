@@ -1,8 +1,9 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function PrivateRoute() {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -15,5 +16,9 @@ export default function PrivateRoute() {
     );
   }
 
-  return user ? <Outlet /> : <Navigate to="/login" replace />;
+  // Guarda para onde a pessoa tentou ir — sem isso, quem não estava logado e
+  // caiu direto numa rota privada (o painel admin, por exemplo, que não tem
+  // link em lugar nenhum) fazia login e voltava sempre pro /dashboard, nunca
+  // pra página que pediu de verdade.
+  return user ? <Outlet /> : <Navigate to="/login" state={{ from: location }} replace />;
 }
