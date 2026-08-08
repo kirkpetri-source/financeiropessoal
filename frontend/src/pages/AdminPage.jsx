@@ -201,7 +201,7 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
                   {detalhe.auditoria.map((a) => (
                     <div key={a.id} className="text-xs text-muted flex justify-between gap-2">
                       <span>{a.acao} — {a.adminEmail}</span>
-                      <span className="text-faint whitespace-nowrap">{formatDate(a.createdAt?.toDate ? a.createdAt.toDate() : a.createdAt)}</span>
+                      <span className="text-faint whitespace-nowrap">{formatDate(a.createdAt)}</span>
                     </div>
                   ))}
                 </div>

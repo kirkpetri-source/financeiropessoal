@@ -21,13 +21,29 @@ async function registrar({ adminUid, adminEmail, acao, householdId, detalhes = n
   });
 }
 
+/**
+ * Sem orderBy na query de propósito: `where` + `orderBy` em campos
+ * diferentes exige índice composto no Firestore, e essa coleção é
+ * pequena por família (poucas ações administrativas por vez) — ordenar em
+ * memória evita gerenciar um índice só por causa desta tela. Foi assim
+ * que a primeira versão quebrou em produção: FAILED_PRECONDITION por
+ * falta do índice, sem nenhum teste local acusando (o dublê de Firestore
+ * dos testes não reproduz essa exigência).
+ */
 async function listarPorFamilia(householdId, limite = 50) {
   const snap = await db.collection('adminAuditLog')
     .where('householdId', '==', householdId)
-    .orderBy('createdAt', 'desc')
-    .limit(limite)
     .get();
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
+    .slice(0, limite)
+    // Timestamp do Firestore não sobrevive ao JSON.stringify do res.json
+    // como objeto usável — vira {_seconds,...} e o formatDate do frontend
+    // não entende. Converte pra ISO aqui, igual todo outro campo de data
+    // que sai desta rota.
+    .map((a) => ({ ...a, createdAt: a.createdAt?.toDate?.()?.toISOString() || null }));
 }
 
 module.exports = { registrar, listarPorFamilia };
