@@ -6,6 +6,8 @@ const { defineSecret } = require('firebase-functions/params');
 const app = require('./src/app');
 const { pollAllHouseholds } = require('./src/services/whatsappPollingService');
 const { familiasParaApagar, apagarHousehold } = require('./src/services/lgpdService');
+const { gerarLancamentosDoDia } = require('./src/services/recurringBillService');
+const { fecharFaturasDoDia } = require('./src/services/invoiceService');
 
 // Chave da IA (Gemini) usada no fallback do parser de mensagens financeiras.
 // Configure com: firebase functions:secrets:set GEMINI_API_KEY
@@ -76,5 +78,26 @@ exports.executarExclusoes = onSchedule(
       const contagem = await apagarHousehold(householdId);
       console.warn(`[LGPD] Família ${householdId} eliminada:`, JSON.stringify(contagem));
     }
+  }
+);
+
+// Contas fixas recorrentes: gera o lançamento do mês de quem vence hoje, em
+// todas as famílias. Roda de madrugada para o lançamento já aparecer pronto
+// quando a família abrir o painel.
+exports.gerarContasRecorrentes = onSchedule(
+  { schedule: 'every day 04:00', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const resultado = await gerarLancamentosDoDia(new Date());
+    console.log('[ContasRecorrentes] Concluído:', JSON.stringify(resultado));
+  }
+);
+
+// Fatura de cartão de crédito: fecha o ciclo de quem chegou no dia do
+// fechamento, em todas as famílias.
+exports.fecharFaturas = onSchedule(
+  { schedule: 'every day 04:30', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const resultado = await fecharFaturasDoDia(new Date());
+    console.log('[Faturas] Concluído:', JSON.stringify(resultado));
   }
 );

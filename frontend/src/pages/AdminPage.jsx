@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Lock, RefreshCw } from 'lucide-react';
+import { Loader2, Lock, RefreshCw, X, ShieldOff, ShieldCheck, Gift, RotateCcw, Ban, HandCoins } from 'lucide-react';
 import api from '../services/api';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import toast from 'react-hot-toast';
 
 /**
- * Painel de operação do SaaS — MRR, churn e a fila de famílias que precisam de
- * atenção. É a única tela do sistema que olha várias famílias ao mesmo tempo,
- * e por isso vive atrás de um 403 do backend, não de um `if` aqui: esconder o
+ * Painel de operação do SaaS — MRR, churn, a fila de famílias que precisam de
+ * atenção, e (a partir daqui) as ações administrativas sobre cada uma:
+ * pagamento manual, cortesia, cancelar, bloquear. É a única tela do sistema
+ * que olha e mexe em várias famílias ao mesmo tempo, por isso vive atrás de
+ * um 403 do backend (não de um `if` aqui) numa URL não-óbvia — esconder o
  * botão não é controle de acesso.
  */
 
@@ -35,18 +38,204 @@ function percentual(fracao) {
   return `${((fracao || 0) * 100).toFixed(1)}%`;
 }
 
+function AcaoBtn({ icon: Icon, children, onClick, loading, tone = 'default' }) {
+  const cores = {
+    default: 'border-border-strong text-ink hover:bg-surface-alt',
+    danger: 'border-red-200 text-red-700 hover:bg-red-50',
+    good: 'border-green-200 text-green-700 hover:bg-green-50',
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors disabled:opacity-50 ${cores[tone]}`}
+    >
+      <Icon className="w-3.5 h-3.5" /> {children}
+    </button>
+  );
+}
+
+/** Motivo curto obrigatório para ações sensíveis (bloquear, cancelar). */
+function PedirMotivo({ titulo, onConfirmar, onCancelar, loading }) {
+  const [motivo, setMotivo] = useState('');
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onCancelar} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-3">
+        <h3 className="font-semibold text-ink text-sm">{titulo}</h3>
+        <textarea
+          className="input"
+          rows={3}
+          placeholder="Motivo (aparece na auditoria)"
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+        />
+        <div className="flex gap-2">
+          <button className="btn-secondary flex-1 text-sm" onClick={onCancelar} disabled={loading}>Cancelar</button>
+          <button className="btn-danger flex-1 text-sm" onClick={() => onConfirmar(motivo)} disabled={loading}>
+            {loading ? 'Aplicando...' : 'Confirmar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetalheFamilia({ familiaId, onClose, onMudou }) {
+  const [detalhe, setDetalhe] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [acaoEmCurso, setAcaoEmCurso] = useState(null);
+  const [pedindoMotivoPara, setPedindoMotivoPara] = useState(null);
+
+  async function carregar() {
+    setCarregando(true);
+    try {
+      const { data } = await api.get(`/portal-rc-9f21/familias/${familiaId}`);
+      setDetalhe(data);
+    } catch {
+      toast.error('Erro ao carregar detalhe da família.');
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => { carregar(); }, [familiaId]);
+
+  async function executar(acao, body = {}) {
+    setAcaoEmCurso(acao);
+    try {
+      await api.post(`/portal-rc-9f21/familias/${familiaId}/${acao}`, body);
+      toast.success('Feito.');
+      await carregar();
+      onMudou?.();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao executar ação.');
+    } finally {
+      setAcaoEmCurso(null);
+      setPedindoMotivoPara(null);
+    }
+  }
+
+  const s = detalhe?.subscription;
+  const bloqueada = !!s?.adminOverride?.blocked;
+  const interna = s?.plan === 'interno';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-ink">{detalhe?.nome || 'Família'}</h2>
+          <button onClick={onClose} className="text-faint hover:text-ink"><X className="w-5 h-5" /></button>
+        </div>
+
+        {carregando || !detalhe ? (
+          <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-faint" /></div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><p className="text-faint text-xs">Status</p><p className="text-ink">{s?.status || '—'} {bloqueada && <span className="text-red-600">(bloqueada)</span>}</p></div>
+              <div><p className="text-faint text-xs">Plano</p><p className="text-ink">{s?.plan || '—'}{interna ? ' (interna)' : ''}</p></div>
+              <div><p className="text-faint text-xs">Provedor</p><p className="text-ink">{s?.provider || '—'}</p></div>
+              <div><p className="text-faint text-xs">Vence em</p><p className="text-ink">{detalhe.situacao?.expiraEm ? formatDate(detalhe.situacao.expiraEm) : '—'}</p></div>
+              <div><p className="text-faint text-xs">Criada em</p><p className="text-ink">{formatDate(detalhe.criadaEm)}</p></div>
+              <div><p className="text-faint text-xs">Membros</p><p className="text-ink">{detalhe.membros?.length ?? 0}</p></div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2">Ações</p>
+              <div className="flex flex-wrap gap-2">
+                <AcaoBtn icon={HandCoins} tone="good" loading={acaoEmCurso === 'pagamento-manual'}
+                  onClick={() => executar('pagamento-manual', { diasDeAcesso: 30, motivo: 'Registrado pelo painel admin' })}>
+                  Registrar pagamento (+30 dias)
+                </AcaoBtn>
+                <AcaoBtn icon={RefreshCw} loading={acaoEmCurso === 'sincronizar'} onClick={() => executar('sincronizar')}>
+                  Sincronizar com o provedor
+                </AcaoBtn>
+                {interna ? (
+                  <AcaoBtn icon={Gift} loading={acaoEmCurso === 'desmarcar-interna'} onClick={() => executar('desmarcar-interna')}>
+                    Remover cortesia
+                  </AcaoBtn>
+                ) : (
+                  <AcaoBtn icon={Gift} loading={acaoEmCurso === 'marcar-interna'} onClick={() => executar('marcar-interna')}>
+                    Marcar como cortesia
+                  </AcaoBtn>
+                )}
+                {bloqueada ? (
+                  <AcaoBtn icon={ShieldCheck} tone="good" loading={acaoEmCurso === 'desbloquear'} onClick={() => executar('desbloquear')}>
+                    Desbloquear acesso
+                  </AcaoBtn>
+                ) : (
+                  <AcaoBtn icon={ShieldOff} tone="danger" onClick={() => setPedindoMotivoPara('bloquear')}>
+                    Bloquear acesso
+                  </AcaoBtn>
+                )}
+                <AcaoBtn icon={Ban} tone="danger" onClick={() => setPedindoMotivoPara('cancelar')}>
+                  Cancelar assinatura
+                </AcaoBtn>
+              </div>
+              <p className="text-xs text-faint mt-2">
+                Bloquear/cancelar só impede novo lançamento — a família continua lendo e exportando o histórico.
+              </p>
+            </div>
+
+            {detalhe.billingEvents?.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2">Histórico de cobrança</p>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {detalhe.billingEvents.map((e) => (
+                    <div key={e.id} className="text-xs text-muted flex justify-between">
+                      <span>{e.tipo}</span>
+                      <span className="text-faint">{e.id}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {detalhe.auditoria?.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2">Auditoria do painel</p>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {detalhe.auditoria.map((a) => (
+                    <div key={a.id} className="text-xs text-muted flex justify-between gap-2">
+                      <span>{a.acao} — {a.adminEmail}</span>
+                      <span className="text-faint whitespace-nowrap">{formatDate(a.createdAt?.toDate ? a.createdAt.toDate() : a.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {pedindoMotivoPara && (
+        <PedirMotivo
+          titulo={pedindoMotivoPara === 'bloquear' ? 'Bloquear acesso' : 'Cancelar assinatura'}
+          loading={acaoEmCurso === pedindoMotivoPara}
+          onCancelar={() => setPedindoMotivoPara(null)}
+          onConfirmar={(motivo) => executar(pedindoMotivoPara, { motivo })}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [metricas, setMetricas] = useState(null);
   const [familias, setFamilias] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [semAcesso, setSemAcesso] = useState(false);
+  const [familiaAberta, setFamiliaAberta] = useState(null);
 
   async function carregar() {
     setCarregando(true);
     try {
       const [m, f] = await Promise.all([
-        api.get('/admin/metricas'),
-        api.get('/admin/familias'),
+        api.get('/portal-rc-9f21/metricas'),
+        api.get('/portal-rc-9f21/familias'),
       ]);
       setMetricas(m.data);
       setFamilias(f.data.familias || []);
@@ -89,7 +278,7 @@ export default function AdminPage() {
           <p className="text-sm text-muted">Janela de {metricas?.janelaDias} dias</p>
         </div>
         <button type="button" onClick={carregar} className="btn-secondary text-sm flex items-center gap-2">
-          <RefreshCw className={`w-4 h-4 ${carregando ? 'animate-spin' : ''}`} /> Atualizar
+          <RotateCcw className={`w-4 h-4 ${carregando ? 'animate-spin' : ''}`} /> Atualizar
         </button>
       </div>
 
@@ -135,7 +324,7 @@ export default function AdminPage() {
       <div className="card p-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold text-ink">
-            Famílias ({familias.length}) — ordenadas por quem vence primeiro
+            Famílias ({familias.length}) — clique para gerir
           </h2>
         </div>
         <div className="overflow-x-auto">
@@ -151,7 +340,7 @@ export default function AdminPage() {
             </thead>
             <tbody>
               {familias.map((f) => (
-                <tr key={f.id} className="table-row">
+                <tr key={f.id} className="table-row cursor-pointer" onClick={() => setFamiliaAberta(f.id)}>
                   <td className="px-4 py-2.5">
                     <p className="text-ink">{f.nome || '(sem nome)'}</p>
                     <p className="text-xs text-faint">
@@ -167,6 +356,7 @@ export default function AdminPage() {
                     </span>
                     {f.emCarencia && <span className="ml-1 text-xs text-red-600">carência</span>}
                     {!f.podeLancar && <span className="ml-1 text-xs text-red-600">bloqueada</span>}
+                    {f.bloqueadaPeloOperador && <span className="ml-1 text-xs text-red-600">operador</span>}
                   </td>
                   <td className="px-4 py-2.5 text-muted">{f.expiraEm ? formatDate(f.expiraEm) : '-'}</td>
                   <td className="px-4 py-2.5 text-right text-muted">{f.diasRestantes ?? '-'}</td>
@@ -179,6 +369,10 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
+
+      {familiaAberta && (
+        <DetalheFamilia familiaId={familiaAberta} onClose={() => setFamiliaAberta(null)} onMudou={carregar} />
+      )}
     </div>
   );
 }

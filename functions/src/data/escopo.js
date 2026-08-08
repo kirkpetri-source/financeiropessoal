@@ -23,6 +23,7 @@ const COLECOES_ESCOPADAS = new Set([
   'whatsappLogs',
   'budgets',
   'recurringBills',
+  'creditCardInvoices',
 ]);
 
 // Coleções que misturam registros globais (isDefault) com registros da família.

@@ -40,6 +40,7 @@ const MOTIVOS = {
   CANCELADA: 'CANCELADA',
   PAUSADA: 'PAUSADA',
   AGUARDANDO_PAGAMENTO: 'AGUARDANDO_PAGAMENTO',
+  BLOQUEADA_PELO_OPERADOR: 'BLOQUEADA_PELO_OPERADOR',
 };
 
 const DIA_EM_MS = 24 * 60 * 60 * 1000;
@@ -93,6 +94,16 @@ function situacaoDaAssinatura(assinatura, agora = new Date()) {
   };
 
   if (!assinatura || !assinatura.status) return base;
+
+  // Bloqueio manual do operador (fraude, abuso, pedido do próprio cliente por
+  // fora do fluxo normal) tem prioridade sobre trial, ativo ou carência — é
+  // uma válvula de escape do painel admin, auditada em adminAuditLog, não o
+  // caminho normal de cobrança. Continua sendo só bloqueio de ESCRITA: quem
+  // está bloqueado assim ainda lê e exporta o próprio histórico, igual
+  // qualquer outro motivo de bloqueio (regra 6 do projeto).
+  if (assinatura.adminOverride?.blocked) {
+    return { ...base, motivo: MOTIVOS.BLOQUEADA_PELO_OPERADOR, motivoBloqueio: assinatura.adminOverride.reason || null };
+  }
 
   const fimDoTrial = paraData(assinatura.trialEndsAt);
   const fimDoPeriodo = paraData(assinatura.currentPeriodEnd);
@@ -221,6 +232,10 @@ function mensagemDaSituacao(situacao) {
       return 'Assinatura pausada. Retome no painel para voltar a lançar.';
     case MOTIVOS.AGUARDANDO_PAGAMENTO:
       return 'Estamos aguardando a confirmação do seu pagamento.';
+    case MOTIVOS.BLOQUEADA_PELO_OPERADOR:
+      return situacao.motivoBloqueio
+        ? `Acesso bloqueado: ${situacao.motivoBloqueio}`
+        : 'Acesso bloqueado pelo suporte. Entre em contato para regularizar.';
     default:
       return 'Assine para começar a usar.';
   }

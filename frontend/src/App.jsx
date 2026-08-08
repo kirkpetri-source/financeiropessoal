@@ -9,6 +9,9 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import TransactionsPage from './pages/TransactionsPage';
 import CategoriesPage from './pages/CategoriesPage';
+import BudgetsPage from './pages/BudgetsPage';
+import RecurringBillsPage from './pages/RecurringBillsPage';
+import InvoicesPage from './pages/InvoicesPage';
 import SettingsPage from './pages/SettingsPage';
 import WhatsappLogsPage from './pages/WhatsappLogsPage';
 import AssinaturaPage from './pages/AssinaturaPage';
@@ -36,10 +39,16 @@ export default function App() {
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/transactions" element={<TransactionsPage />} />
                 <Route path="/categories" element={<CategoriesPage />} />
+                <Route path="/orcamento" element={<BudgetsPage />} />
+                <Route path="/contas-recorrentes" element={<RecurringBillsPage />} />
+                <Route path="/faturas" element={<InvoicesPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/whatsapp-logs" element={<WhatsappLogsPage />} />
                 <Route path="/assinatura" element={<AssinaturaPage />} />
-                <Route path="/admin" element={<AdminPage />} />
+                {/* URL propositalmente não-óbvia — ver comentário em routes/admin.js
+                    no backend. A proteção real é o apenasAdmin do backend, não o
+                    caminho em si; isto só evita descoberta casual por "/admin". */}
+                <Route path="/portal-rc-9f21" element={<AdminPage />} />
               </Route>
             </Route>
 

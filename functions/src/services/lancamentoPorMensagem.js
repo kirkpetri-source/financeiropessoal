@@ -143,7 +143,9 @@ async function bloqueioPorAssinatura(householdId) {
  * Interpreta o texto e cria os lançamentos.
  * @returns {Promise<{transacoes: string[], erro: string|null}>}
  */
-async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaMensagem, origem }) {
+const ORIGEM_LABEL = { AUDIO: 'áudio transcrito', IMAGE: 'foto de cupom' };
+
+async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaMensagem, origem, origin = 'WHATSAPP' }) {
   const bloqueio = await bloqueioPorAssinatura(householdId);
   if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
 
@@ -198,8 +200,8 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
       type: item.type,
       categoryId,
       paymentMethodId,
-      notes: `Via WhatsApp (${origem}).`,
-      origin: 'WHATSAPP',
+      notes: origin === 'WHATSAPP' ? `Via WhatsApp (${origem}).` : `Via WhatsApp (${origem}), ${ORIGEM_LABEL[origin] || origin}.`,
+      origin,
       status: 'CONFIRMED',
       paidBy,
     };
@@ -253,6 +255,34 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
   return { transacoes: ids, criadas, erro: null };
 }
 
+/**
+ * Áudio e foto de cupom passam pela IA multimodal (midiaParserService) para
+ * virar uma frase em linguagem natural, e daí em diante seguem o MESMO
+ * caminho do texto digitado — mesma resolução de categoria, forma de
+ * pagamento e pagador, e mesmo bloqueio por assinatura vencida.
+ */
+async function lancarPorAudio({ householdId, base64, mimeType, senderJid, pushName, dataDaMensagem, origem }) {
+  const bloqueio = await bloqueioPorAssinatura(householdId);
+  if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
+
+  const { transcreverAudio } = require('./midiaParserService');
+  const { texto, erro } = await transcreverAudio(base64, mimeType);
+  if (erro) return { transacoes: [], criadas: [], erro };
+
+  return lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaMensagem, origem, origin: 'AUDIO' });
+}
+
+async function lancarPorCupom({ householdId, base64, mimeType, senderJid, pushName, dataDaMensagem, origem }) {
+  const bloqueio = await bloqueioPorAssinatura(householdId);
+  if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
+
+  const { interpretarCupom } = require('./midiaParserService');
+  const { texto, erro } = await interpretarCupom(base64, mimeType);
+  if (erro) return { transacoes: [], criadas: [], erro };
+
+  return lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaMensagem, origem, origin: 'IMAGE' });
+}
+
 /** Já processamos essa mensagem? Evita lançamento duplicado (webhook + polling). */
 async function jaProcessada(messageId) {
   if (!messageId) return true;
@@ -265,6 +295,8 @@ module.exports = {
   acharHouseholdPorOrigem,
   bloqueioPorAssinatura,
   lancarPorTexto,
+  lancarPorAudio,
+  lancarPorCupom,
   jaProcessada,
   resolverPagador,
   looksLikeFinancialMessage,

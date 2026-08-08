@@ -15,6 +15,8 @@ import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { useHousehold } from '../hooks/useHousehold';
 import { useMonthlyTrend } from '../hooks/useMonthlyTrend';
 import { useCountUp } from '../hooks/useCountUp';
+import { useBudgets } from '../hooks/useBudgets';
+import { useRecurringBills } from '../hooks/useRecurringBills';
 import Modal from '../components/ui/Modal';
 import TransactionForm from '../components/forms/TransactionForm';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -65,6 +67,8 @@ export default function DashboardPage() {
   const { paymentMethods, fetchPaymentMethods } = usePaymentMethods();
   const { nomesDosMembros, buscarHousehold }    = useHousehold();
   const { trend, fetchTrend }                   = useMonthlyTrend();
+  const { resumo: resumoOrcamento, fetchResumo: fetchResumoOrcamento } = useBudgets();
+  const { proximas: contasProximas, fetchProximas: fetchContasProximas } = useRecurringBills();
 
   const months = monthsList(12);
 
@@ -74,7 +78,11 @@ export default function DashboardPage() {
     fetchCategories();
     fetchPaymentMethods();
     buscarHousehold();
+    fetchResumoOrcamento(currentMonth());
+    fetchContasProximas();
   }, [fetchCategories, fetchPaymentMethods, buscarHousehold]);
+
+  const orcamentosEstourados = resumoOrcamento.filter((r) => r.estourado);
 
   async function handleCreateTransaction(data) {
     setSaving(true);
@@ -211,6 +219,26 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="dash-content">
+
+          {/* ══════════════════════════════════
+              ORÇAMENTO E CONTAS FIXAS — avisos
+          ══════════════════════════════════ */}
+          {(orcamentosEstourados.length > 0 || contasProximas.length > 0) && (
+            <div className="dash-insights dash-animate">
+              {orcamentosEstourados.map((r) => (
+                <button key={r.id} className="dash-insight-pill dash-insight-pill--warning" onClick={() => navigate('/orcamento')}>
+                  <span>⚠️</span>
+                  <span>{r.categoryName} passou do orçamento ({formatCurrency(r.spentCents / 100)} de {formatCurrency(r.limitCents / 100)})</span>
+                </button>
+              ))}
+              {contasProximas.slice(0, 3).map((c) => (
+                <button key={c.id} className="dash-insight-pill dash-insight-pill--info" onClick={() => navigate('/contas-recorrentes')}>
+                  <span>📅</span>
+                  <span>{c.description} vence {formatDate(c.proximaData)} · {formatCurrency(c.amountCents / 100)}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* ══════════════════════════════════
               KPI CARDS

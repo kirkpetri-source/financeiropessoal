@@ -211,6 +211,42 @@ describe('assinaturaAtiva', () => {
   });
 });
 
+describe('bloqueio manual do operador (adminOverride)', () => {
+  it('bloqueia mesmo quem está com a assinatura ativa e em dia', () => {
+    const s = situacaoDaAssinatura({
+      status: STATUS.ATIVA,
+      currentPeriodEnd: timestamp(emDias(20)),
+      adminOverride: { blocked: true, reason: 'chargeback' },
+    }, AGORA);
+
+    expect(s.podeLancar).toBe(false);
+    expect(s.motivo).toBe(MOTIVOS.BLOQUEADA_PELO_OPERADOR);
+    expect(s.motivoBloqueio).toBe('chargeback');
+  });
+
+  it('bloqueia mesmo em trial vigente', () => {
+    const s = situacaoDaAssinatura({
+      status: STATUS.TRIAL,
+      trialEndsAt: timestamp(emDias(10)),
+      adminOverride: { blocked: true },
+    }, AGORA);
+
+    expect(s.podeLancar).toBe(false);
+    expect(s.motivo).toBe(MOTIVOS.BLOQUEADA_PELO_OPERADOR);
+  });
+
+  it('adminOverride.blocked false não muda nada', () => {
+    const s = situacaoDaAssinatura({
+      status: STATUS.ATIVA,
+      currentPeriodEnd: timestamp(emDias(20)),
+      adminOverride: { blocked: false },
+    }, AGORA);
+
+    expect(s.podeLancar).toBe(true);
+    expect(s.motivo).toBe(MOTIVOS.EM_DIA);
+  });
+});
+
 describe('mensagemDaSituacao', () => {
   it('avisa com urgência quando o trial está no fim', () => {
     const s = situacaoDaAssinatura({ status: STATUS.TRIAL, trialEndsAt: emDias(2) }, AGORA);

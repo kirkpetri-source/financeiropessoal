@@ -6,6 +6,9 @@ import {
   Settings,
   MessageSquare,
   CreditCard,
+  PiggyBank,
+  CalendarClock,
+  Wallet,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,6 +19,9 @@ const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Lançamentos' },
   { to: '/categories', icon: Tag, label: 'Categorias' },
+  { to: '/orcamento', icon: PiggyBank, label: 'Orçamento' },
+  { to: '/contas-recorrentes', icon: CalendarClock, label: 'Contas Fixas' },
+  { to: '/faturas', icon: Wallet, label: 'Faturas' },
   { to: '/whatsapp-logs', icon: MessageSquare, label: 'WhatsApp' },
   { to: '/assinatura', icon: CreditCard, label: 'Assinatura' },
   { to: '/settings', icon: Settings, label: 'Configurações' },

@@ -1,6 +1,100 @@
-# Estado do projeto — 08/08/2026 (marca + redesign + landing + onboarding no ar)
+# Estado do projeto — 08/08/2026 (Fase 4 completa + painel gestor no ar)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
+
+## Sessão de 08/08/2026 (parte 4) — Fase 4 completa e painel gestor
+
+Pedido do Kirk: terminar a Fase 4 inteira (orçamento por categoria, contas
+fixas recorrentes, fatura de cartão, áudio transcrito, foto de cupom) e criar
+um painel administrativo de verdade para gerir os clientes do SaaS. Tudo
+entregue de uma vez, com `npm test` verde a cada peça (280 testes no total,
+92→280 nesta sessão), backend já deployado e frontend já publicado.
+
+**Orçamento por categoria** — `budgets` (já reservada em `escopo.js`),
+`budgetService.js`: limite mensal fixo por categoria (não por mês — vale até
+mudar), `resumoDoMes` junta com as despesas confirmadas do mês e marca
+estouro. Alerta só no painel (Dashboard + `/orcamento`), sem WhatsApp —
+decisão do Kirk para não abrir custo variável de template pago antes de
+precificar isso. Testado no navegador: orçamento de R$10 em Mercado, gasto
+de R$50 → "Estourou", barra vermelha, 500%.
+
+**Contas fixas recorrentes** — `recurringBills`, `recurringBillService.js`.
+Job diário (`gerarContasRecorrentes`, 04:00 BRT) varre todas as famílias
+(mesma exceção cross-tenant do job de LGPD) e lança sozinho quem vence hoje,
+`origin: 'RECURRING'`. `dueDay` trava no último dia válido do mês (31 em
+fevereiro vira 28). Painel `/contas-recorrentes` mostra "Próximas a vencer"
+— o lembrete pedido, só visual. Testado: conta "Aluguel" dia 10 apareceu
+certo na lista de próximas.
+
+**Fatura de cartão de crédito** — `paymentMethods` ganhou `isCreditCard`,
+`closingDay`, `dueDay` (endpoint de criação e edição agora validados por
+zod, antes só aceitava `name` cru). `creditCardInvoices` nova, adicionada em
+`COLECOES_ESCOPADAS`. `invoiceService.cicloDaData` decide de qual fatura uma
+compra é (depois do fechamento vira ciclo seguinte); a fatura "aberta" é
+sempre calculada na hora, nunca gravada — só quando o job de fechamento
+(`fecharFaturas`, 04:30 BRT) roda é que vira documento com total congelado.
+`marcarComoPaga` é ação manual do usuário, sem tocar em cobrança. Testado:
+cartão fechando dia 5/vencendo dia 12, hoje é 8 → fatura mostrou corretamente
+"fecha em 05/09, vence em 12/09" (já no ciclo seguinte).
+
+**Áudio transcrito e foto de cupom** — `evolutionProvider.baixarMidia`
+(endpoint `getBase64FromMediaMessage`, **não testado contra o servidor
+real** — sem uma mensagem de mídia de verdade chegando pelo webhook não dá
+pra confirmar o formato exato da resposta; tratar como não verificado, igual
+`cloudApiProvider.js`). `midiaParserService.js` chama o Gemini multimodal e
+devolve TEXTO em linguagem natural (não a transação já estruturada), que
+depois passa pelo MESMO `lancarPorTexto` que o WhatsApp digitado já usa —
+evita duplicar a resolução de categoria/forma de pagamento/pagador.
+`evolutionWebhook.js` agora processa `AUDIO`/`IMAGE` de verdade (antes
+respondia "ainda não implementado"); `DOCUMENT` continua pendente. Guarda de
+tamanho de 8MB antes de mandar pro Gemini.
+
+**Painel gestor** — pedido do Kirk: dashboard de clientes, jeito de marcar
+pagamento como recebido manualmente, desativar acesso, "tudo que um painel
+admin deve ter", numa URL não óbvia (hoje `/admin` é fácil de adivinhar).
+- URL trocada para `/portal-rc-9f21` (frontend e backend) — a proteção real
+  continua sendo `apenasAdmin` (custom claim ou `ADMIN_EMAILS`, fail-closed);
+  a URL estranha só evita descoberta casual. Testado: conta de teste
+  (não-admin) na URL nova → "Acesso restrito", sem vazar nada.
+- `assinaturaService.registrarPagamentoManual` — ativa a assinatura sem
+  falar com o Mercado Pago, marca `provider: 'manual'`. **Quebra a regra de
+  "só o provedor promove pra active" de propósito e com autorização
+  explícita do Kirk**: é ação de operador (Pix fora do sistema, negociação),
+  nunca do cliente, atrás de `apenasAdmin`, função separada do webhook,
+  sempre auditada.
+- `assinaturaService.bloquear/desbloquear` — bloqueio manual do operador.
+  `estado.js` (`situacaoDaAssinatura`) dá prioridade a esse campo sobre
+  trial/ativo/carência. Continua só bloqueio de ESCRITA (regra 6): quem está
+  bloqueado assim ainda lê e exporta o histórico.
+- `marcarComoInterna`/`desmarcarInterna` — mesmo efeito de
+  `tools/marcar-conta-interna.js`, agora um botão em vez de só CLI.
+- `adminAuditService.js` — toda ação de escrita do painel grava quem fez, o
+  quê, em qual família e quando, em `adminAuditLog` (cross-tenant por
+  natureza, mesma exceção de `routes/admin.js`).
+- Frontend: `/portal-rc-9f21` agora tem drill-down por família (clicar na
+  linha) com os botões acima, histórico de cobrança e auditoria.
+
+**Lacuna encontrada e corrigida durante o teste**: as três coleções novas
+não entravam em `lgpdService.exportarDados`/`apagarHousehold` — um cliente
+pedindo exclusão (ou o operador limpando conta de teste com
+`apagar-familia.js`, que reaproveita o mesmo código) ficaria com orçamento,
+contas fixas e faturas órfãos no Firestore. Corrigido antes do deploy;
+dois documentos órfãos da família de teste desta sessão foram apagados à
+mão (a família em si já tinha sido apagada corretamente).
+
+**Deploy**: `firebase deploy --only functions` rodado nesta sessão (mesmo
+truque do `FUNCTIONS_DISCOVERY_TIMEOUT=30000`), confirmado com
+`tools/diagnostico-assinatura.js` (5 famílias, ninguém bloqueado) antes do
+`git push` do frontend.
+
+Testado no navegador com conta de teste descartável (`agent-browser`,
+backend local contra o Firestore real, igual sessões anteriores) — cadastro,
+orçamento, contas fixas, faturas, e o 403 do painel admin. **Não testado no
+navegador**: os botões de ação do painel admin em si (pagamento manual,
+bloquear, etc.) — exigem login com um e-mail em `ADMIN_EMAILS`, que é o
+e-mail do Kirk; a lógica por trás está coberta por 25 testes automatizados
+em `assinaturaService.test.mjs`, mas o clique na tela real fica para o Kirk
+conferir.
 
 ## O que falta — lista consolidada (08/08/2026)
 
@@ -45,20 +139,26 @@ abaixo; isto é só o índice do que ainda não está feito.
 - [ ] Aplicar para **Meta Verified**, se quiser o canal WhatsApp oficial
       (leva de 2 a 8 semanas)
 - [ ] Revisar a landing nova em produção e aprovar, ou pedir ajuste
+- [ ] Conferir os botões do painel gestor em `/portal-rc-9f21` logado com
+      `kirkpetri@gmail.com` (pagamento manual, marcar interna, bloquear) —
+      não testável por script porque exige o e-mail dele em `ADMIN_EMAILS`;
+      lógica coberta por teste automatizado, mas o clique na tela é dele
 
 **Decisão em aberto — qual a próxima frente de trabalho:**
 1. Ampliar o parser (casos que ainda caem na IA por engano)
 2. Convite de membro com login próprio (hoje um 2º login vira outra família)
-3. Fechar o resto da Fase 4 — orçamento por categoria, contas recorrentes,
-   fatura de cartão, áudio transcrito e foto de cupom (OCR)
-4. Tutorial de primeiro uso (Kirk pediu pra deixar por último; o tour
+3. Tutorial de primeiro uso (Kirk pediu pra deixar por último; o tour
    guiado interativo já existe — isto seria material escrito/vídeo à parte)
+4. Testar áudio e foto de cupom com uma mensagem de WhatsApp de verdade —
+   `baixarMidia` foi escrito conforme a documentação da Evolution mas nunca
+   exercitado contra o servidor real (ver dívidas)
 
 **Dívidas técnicas conhecidas, sem prioridade definida** (detalhe no fim do
 arquivo, seção "Dívidas conhecidas"): README desatualizado, pasta `backend/`
 morta, rate limit só em memória, `cloudApiProvider.js` nunca testado contra
-API real, bundle do frontend ~1,27 MB sem code splitting, zero testes
-automatizados no frontend, `/admin/metricas` não escala para muitas famílias,
+API real, `evolutionProvider.baixarMidia` (áudio/foto) idem, bundle do
+frontend ~1,3 MB sem code splitting, zero testes automatizados no frontend,
+`/portal-rc-9f21` não pagina (ok para dezenas de famílias, dói em milhares),
 uma instância Evolution por família (limite de VPS não medido).
 
 ## Sessão de 07/08/2026 — marca, redesign visual e landing page
@@ -290,6 +390,20 @@ Commit `c0fc8fe`.
 - `geladeira 1200 em 10x` vira 10 lançamentos de R$ 120, um por mês
 - Centavos e datas tratados (21 testes)
 
+**Fase 4 — orçamento, recorrência, fatura e mídia** (no ar desde 08/08/2026)
+- Orçamento mensal por categoria com alerta de estouro no painel (`/orcamento`)
+- Contas fixas recorrentes lançadas sozinhas por job diário (`/contas-recorrentes`)
+- Fatura de cartão de crédito com fechamento/vencimento e histórico (`/faturas`)
+- Áudio transcrito e foto de cupom via Gemini, reaproveitando o parser de texto
+- Ver sessão de 08/08/2026 (parte 4) para o detalhe de cada peça e o que
+  ainda não foi verificado (mídia contra o servidor real, botões do painel
+  admin)
+
+**Painel gestor** (no ar desde 08/08/2026)
+- `/portal-rc-9f21` — URL não-óbvia, drill-down por família, pagamento
+  manual, marcar/desmarcar cortesia, sincronizar, cancelar, bloquear/
+  desbloquear acesso, tudo auditado em `adminAuditLog`
+
 **Fase 5 — cobrança, LGPD e operação** (no ar desde 06/08/2026)
 
 Assinatura
@@ -405,24 +519,16 @@ Todos carregam `.env` e segredos sozinhos (`tools/carregarAmbiente.js`).
 
 ## Falta
 
-**Parser** — `Pagamento cartão 1830` corrigido em 07/08 (falta só o
-`firebase deploy` para valer em produção). `Lanche 38,00 crédito` continua
-caindo na IA por decisão consciente — "lanche" é categoria, não tipo, e virar
-palavra-chave de tipo abriria precedente pra qualquer substantivo de compra.
+**Parser** — `Pagamento cartão 1830` corrigido em 07/08, deployado. `Lanche
+38,00 crédito` continua caindo na IA por decisão consciente — "lanche" é
+categoria, não tipo, e virar palavra-chave de tipo abriria precedente pra
+qualquer substantivo de compra.
 
 **Convite de membro com login próprio**
 - Quem entra pelo grupo lança pelo WhatsApp, mas não abre o painel. O
   `authService.createOrUpdateProfile` cria uma família NOVA para quem se
   cadastra, então hoje um segundo login vira outra família (e outra cobrança).
   Falta o fluxo de convite ligando conta ao membro já existente
-
-**Fase 4 (restante)**
-- Orçamento por categoria com alerta de estouro
-- Contas fixas recorrentes com lembrete
-- Fatura de cartão de crédito (fechamento e vencimento)
-- Áudio transcrito e foto de cupom (OCR) — ambos via Gemini
-- Custo escondido: lembrete e alerta são mensagens FORA da janela de 24h do
-  WhatsApp, ou seja, template utility pago (~US$ 0,008 a 0,03 cada)
 
 **Tutorial de primeiro uso** — o Kirk pediu para deixar por último
 

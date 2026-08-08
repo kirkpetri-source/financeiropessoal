@@ -39,6 +39,26 @@ async function enviarTexto(config, destino, texto) {
   return { messageId: resposta?.key?.id || resposta?.messageId || null, bruto: resposta };
 }
 
+/**
+ * Baixa o binário de uma mensagem de mídia (áudio ou imagem) em base64.
+ *
+ * NÃO testado contra o servidor real: sem uma mensagem de áudio ou imagem de
+ * verdade chegando pelo webhook não dá para confirmar o formato exato da
+ * resposta. Extrai de vários nomes de campo possíveis por segurança — se a
+ * Evolution devolver em outro formato, é aqui que ajusta.
+ */
+async function baixarMidia(config, messageKey) {
+  exigirConfig(config);
+
+  const url = `${base(config)}/chat/getBase64FromMediaMessage/${encodeURIComponent(config.instanceName)}`;
+  const resposta = await chamar(url, config.apiKey, { message: { key: messageKey }, convertToMp4: false });
+
+  return {
+    base64: resposta?.base64 || resposta?.media?.base64 || null,
+    mimetype: resposta?.mimetype || resposta?.mediaType || resposta?.media?.mimetype || null,
+  };
+}
+
 async function buscarMensagens(config, destino, opcoes = {}) {
   exigirConfig(config);
 
@@ -303,6 +323,7 @@ module.exports = {
   suportaBusca: true,
   enviarTexto,
   buscarMensagens,
+  baixarMidia,
   obterIdentidadePropria,
   criarInstancia,
   obterQrCode,

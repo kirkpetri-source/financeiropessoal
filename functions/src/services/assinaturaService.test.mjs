@@ -334,3 +334,61 @@ describe('cancelamento pelo cliente', () => {
     expect(armazem.docs['households/fam-1'].subscription.status).toBe(STATUS.CANCELADA);
   });
 });
+
+describe('ações administrativas (painel do operador, nunca do cliente)', () => {
+  it('pagamento manual ativa sem falar com o provedor e marca provider: manual', async () => {
+    const cliente = fakeCliente({});
+    const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente });
+
+    await svc.registrarPagamentoManual('fam-1', { diasDeAcesso: 30, motivo: 'pix direto', registradoPor: 'admin-1' });
+
+    expect(cliente().chamadas).toHaveLength(0);
+    const sub = armazem.docs['households/fam-1'].subscription;
+    expect(sub.status).toBe(STATUS.ATIVA);
+    expect(sub.provider).toBe('manual');
+    expect(sub.currentPeriodEnd.toDate).toBeTypeOf('function');
+
+    const chaveDoEvento = Object.keys(armazem.docs).find((k) => k.startsWith('households/fam-1/billingEvents/manual-'));
+    expect(armazem.docs[chaveDoEvento]).toMatchObject({
+      tipo: 'pagamento_manual', motivo: 'pix direto', registradoPor: 'admin-1',
+    });
+  });
+
+  it('marcarComoInterna ativa com preço zero e plano interno', async () => {
+    const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: fakeCliente({}) });
+
+    await svc.marcarComoInterna('fam-1', { registradoPor: 'admin-1' });
+
+    const sub = armazem.docs['households/fam-1'].subscription;
+    expect(sub).toMatchObject({ status: STATUS.ATIVA, plan: 'interno', priceCents: 0 });
+  });
+
+  it('desmarcarInterna devolve a família ao plano normal', async () => {
+    const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: fakeCliente({}) });
+
+    await svc.marcarComoInterna('fam-1');
+    await svc.desmarcarInterna('fam-1');
+
+    expect(armazem.docs['households/fam-1'].subscription.plan).toBe('familia');
+  });
+
+  it('bloquear grava o motivo e desbloquear reabre o acesso', async () => {
+    const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: fakeCliente({}) });
+
+    await svc.bloquear('fam-1', { motivo: 'chargeback', registradoPor: 'admin-1' });
+    let sub = armazem.docs['households/fam-1'].subscription;
+    expect(sub.adminOverride).toMatchObject({ blocked: true, reason: 'chargeback', blockedBy: 'admin-1' });
+
+    await svc.desbloquear('fam-1', { registradoPor: 'admin-1' });
+    sub = armazem.docs['households/fam-1'].subscription;
+    expect(sub.adminOverride.blocked).toBe(false);
+  });
+
+  it('toda ação administrativa fica registrada em billingEvents', async () => {
+    const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: fakeCliente({}) });
+
+    await svc.bloquear('fam-1', { motivo: 'teste' });
+    const eventos = Object.keys(armazem.docs).filter((k) => k.includes('billingEvents/bloqueio-'));
+    expect(eventos).toHaveLength(1);
+  });
+});

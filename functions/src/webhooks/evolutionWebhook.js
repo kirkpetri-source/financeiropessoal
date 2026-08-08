@@ -3,11 +3,14 @@ const { createLog, updateLog } = require('../services/whatsappLogService');
 const {
   acharHouseholdPorOrigem,
   lancarPorTexto,
+  lancarPorAudio,
+  lancarPorCupom,
   jaProcessada,
   looksLikeFinancialMessage,
 } = require('../services/lancamentoPorMensagem');
 const { tratarComando } = require('../services/comandosWhatsapp');
 const { responder, confirmarLancamentos, ehMensagemDoBot } = require('../services/respostaWhatsapp');
+const { provedorDe } = require('../canais');
 
 /**
  * Webhook do Evolution — porta de entrada instantânea das mensagens.
@@ -41,6 +44,10 @@ function extrairMensagem(payload) {
 
     return {
       messageId: data.key?.id || null,
+      // A chave completa (id + remoteJid + fromMe + participant) é o que a
+      // Evolution exige para baixar o binário de áudio/imagem depois —
+      // guardar só o id não bastaria.
+      key: data.key || null,
       remoteJid,
       fromMe,
       // Em grupo o remetente vem em key.participant; em conversa privada é o remoteJid.
@@ -53,7 +60,7 @@ function extrairMensagem(payload) {
     };
   } catch {
     return {
-      messageId: null, remoteJid: null, fromMe: false, senderJid: null, pushName: null,
+      messageId: null, key: null, remoteJid: null, fromMe: false, senderJid: null, pushName: null,
       timestamp: null, content: null, messageType: 'TEXT', instanceName: null,
     };
   }
@@ -96,9 +103,66 @@ async function processarMensagemRecebida(req) {
   const ehPrivado = !msg.remoteJid?.endsWith('@g.us');
   const origem = ehPrivado ? 'chat privado' : 'grupo';
 
-  // Mídia ainda não é interpretada. Registra como pendente só no grupo, para
-  // ficar visível na tela; no privado ignora em silêncio.
-  if (['IMAGE', 'AUDIO', 'DOCUMENT'].includes(msg.messageType)) {
+  // Áudio (transcrito) e imagem (lida como cupom) viram lançamento igual ao
+  // texto — passam pela IA multimodal e depois pelo MESMO caminho de
+  // interpretação (ver lancamentoPorMensagem.lancarPorAudio/lancarPorCupom).
+  // Funciona em grupo e no privado, igual o texto.
+  if (msg.messageType === 'AUDIO' || msg.messageType === 'IMAGE') {
+    if (await jaProcessada(msg.messageId)) return;
+
+    const log = await createLog(dados, {
+      messageId: msg.messageId,
+      groupId: msg.remoteJid,
+      sender: msg.pushName || (msg.fromMe ? 'você' : 'desconhecido'),
+      messageType: msg.messageType,
+      content: null,
+      processingStatus: 'PENDING',
+      rawPayload: req.body,
+    });
+
+    let midia = null;
+    try {
+      midia = await provedorDe(config).baixarMidia(config, msg.key);
+    } catch (err) {
+      console.error('[Webhook] Falha ao baixar mídia:', err.message);
+    }
+
+    if (!midia?.base64) {
+      const erro = 'Não consegui baixar o arquivo enviado. Tente digitar o lançamento.';
+      await updateLog(log.id, { processingStatus: 'ERROR', errorMessage: erro });
+      await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
+      return;
+    }
+
+    const dataDaMensagem = msg.timestamp
+      ? new Date(msg.timestamp * 1000).toISOString()
+      : new Date().toISOString();
+
+    const lancar = msg.messageType === 'AUDIO' ? lancarPorAudio : lancarPorCupom;
+    const { transacoes, criadas, erro } = await lancar({
+      householdId,
+      base64: midia.base64,
+      mimeType: midia.mimetype,
+      senderJid: msg.senderJid,
+      pushName: msg.pushName,
+      dataDaMensagem,
+      origem,
+    });
+
+    if (erro) {
+      await updateLog(log.id, { processingStatus: 'ERROR', errorMessage: erro });
+      await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
+      return;
+    }
+
+    await updateLog(log.id, { processingStatus: 'PROCESSED', transactionId: transacoes[0] });
+    await confirmarLancamentos(householdId, config, msg.remoteJid, criadas);
+    return;
+  }
+
+  // Documento e vídeo ainda não são interpretados. Registra como pendente só
+  // no grupo, para ficar visível na tela; no privado ignora em silêncio.
+  if (msg.messageType === 'DOCUMENT') {
     if (!ehPrivado && !(await jaProcessada(msg.messageId))) {
       const log = await createLog(dados, {
         messageId: msg.messageId,

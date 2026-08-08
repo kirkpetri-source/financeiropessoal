@@ -5,6 +5,7 @@ const {
   mensagemDaSituacao,
   paraData,
 } = require('../assinatura/estado');
+const { PLANO_INTERNO } = require('../assinatura/metricas');
 
 /**
  * Assinatura da família — a ponte entre o Firestore e o Mercado Pago.
@@ -248,6 +249,90 @@ function criarServicoDeAssinatura({ db, admin, cliente }) {
   }
 
   /**
+   * Ativação manual pelo OPERADOR — Pix fora do sistema, negociação, cortesia
+   * pontual. Ação de painel admin, nunca do cliente: por isso é uma função
+   * separada, que nunca fala com o Mercado Pago, em vez de reaproveitar
+   * `sincronizarDoProvedor`. Fica marcada como `provider: 'manual'` para não
+   * se confundir com um pagamento de verdade do provedor.
+   */
+  async function registrarPagamentoManual(householdId, { diasDeAcesso = 30, motivo = null, registradoPor }) {
+    const novoPeriodo = paraTimestamp(new Date(Date.now() + diasDeAcesso * 24 * 60 * 60 * 1000));
+
+    await refHousehold(householdId).update({
+      'subscription.status': STATUS.ATIVA,
+      'subscription.provider': 'manual',
+      'subscription.currentPeriodEnd': novoPeriodo,
+      'subscription.updatedAt': agora(),
+      updatedAt: agora(),
+    });
+
+    await registrarEvento(householdId, `manual-${Date.now()}`, {
+      tipo: 'pagamento_manual', diasDeAcesso, motivo, registradoPor,
+    });
+
+    return situacaoDaFamilia(householdId);
+  }
+
+  /** Cortesia vitalícia — mesmo efeito de tools/marcar-conta-interna.js, agora acionável pelo painel. */
+  async function marcarComoInterna(householdId, { registradoPor } = {}) {
+    await refHousehold(householdId).update({
+      'subscription.status': STATUS.ATIVA,
+      'subscription.plan': PLANO_INTERNO,
+      'subscription.priceCents': 0,
+      'subscription.internalNote': 'Conta interna (cortesia). Fora do MRR por decisão, não por falha de cobrança.',
+      'subscription.updatedAt': agora(),
+      updatedAt: agora(),
+    });
+
+    await registrarEvento(householdId, `interna-${Date.now()}`, { tipo: 'marcada_interna', registradoPor });
+    return situacaoDaFamilia(householdId);
+  }
+
+  async function desmarcarInterna(householdId, { registradoPor } = {}) {
+    await refHousehold(householdId).update({
+      'subscription.plan': 'familia',
+      'subscription.updatedAt': agora(),
+      updatedAt: agora(),
+    });
+
+    await registrarEvento(householdId, `desmarcar-interna-${Date.now()}`, { tipo: 'desmarcada_interna', registradoPor });
+    return situacaoDaFamilia(householdId);
+  }
+
+  /**
+   * Bloqueio manual do operador — fraude, abuso, pedido do próprio cliente
+   * por fora do fluxo normal. `estado.js` dá prioridade a este campo sobre
+   * trial/ativo/carência. Continua sendo só bloqueio de ESCRITA (regra 6):
+   * quem está bloqueado assim ainda lê e exporta o próprio histórico.
+   */
+  async function bloquear(householdId, { motivo = null, registradoPor } = {}) {
+    await refHousehold(householdId).update({
+      'subscription.adminOverride.blocked': true,
+      'subscription.adminOverride.reason': motivo,
+      'subscription.adminOverride.blockedAt': agora(),
+      'subscription.adminOverride.blockedBy': registradoPor || null,
+      'subscription.updatedAt': agora(),
+      updatedAt: agora(),
+    });
+
+    await registrarEvento(householdId, `bloqueio-${Date.now()}`, { tipo: 'bloqueio_manual', motivo, registradoPor });
+    return situacaoDaFamilia(householdId);
+  }
+
+  async function desbloquear(householdId, { registradoPor } = {}) {
+    await refHousehold(householdId).update({
+      'subscription.adminOverride.blocked': false,
+      'subscription.adminOverride.unblockedAt': agora(),
+      'subscription.adminOverride.unblockedBy': registradoPor || null,
+      'subscription.updatedAt': agora(),
+      updatedAt: agora(),
+    });
+
+    await registrarEvento(householdId, `desbloqueio-${Date.now()}`, { tipo: 'desbloqueio_manual', registradoPor });
+    return situacaoDaFamilia(householdId);
+  }
+
+  /**
    * Grava o evento com o id do provedor como id do documento.
    * Devolve false quando o evento já existia — é assim que a reentrega do
    * webhook para de contar duas vezes.
@@ -283,6 +368,11 @@ function criarServicoDeAssinatura({ db, admin, cliente }) {
     cancelar,
     registrarEvento,
     listarEventos,
+    registrarPagamentoManual,
+    marcarComoInterna,
+    desmarcarInterna,
+    bloquear,
+    desbloquear,
   };
 }
 
@@ -308,4 +398,9 @@ module.exports = {
   registrarPagamento: (...args) => servico().registrarPagamento(...args),
   cancelar: (...args) => servico().cancelar(...args),
   listarEventos: (...args) => servico().listarEventos(...args),
+  registrarPagamentoManual: (...args) => servico().registrarPagamentoManual(...args),
+  marcarComoInterna: (...args) => servico().marcarComoInterna(...args),
+  desmarcarInterna: (...args) => servico().desmarcarInterna(...args),
+  bloquear: (...args) => servico().bloquear(...args),
+  desbloquear: (...args) => servico().desbloquear(...args),
 };

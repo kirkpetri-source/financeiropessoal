@@ -11,6 +11,9 @@ const householdRoutes = require('./routes/households');
 const assinaturaRoutes = require('./routes/assinatura');
 const lgpdRoutes = require('./routes/lgpd');
 const adminRoutes = require('./routes/admin');
+const budgetRoutes = require('./routes/budgets');
+const recurringBillRoutes = require('./routes/recurringBills');
+const creditCardInvoiceRoutes = require('./routes/creditCardInvoices');
 const { handleEvolutionWebhook } = require('./webhooks/evolutionWebhook');
 const { handleMercadoPagoWebhook, handleMercadoPagoPing } = require('./webhooks/mercadoPagoWebhook');
 const errorHandler = require('./middlewares/errorHandler');
@@ -76,7 +79,13 @@ app.use('/payment-methods', paymentMethodRoutes);
 app.use('/households', householdRoutes);
 app.use('/subscription', assinaturaRoutes);
 app.use('/lgpd', lgpdRoutes);
-app.use('/admin', adminRoutes);
+app.use('/budgets', budgetRoutes);
+app.use('/recurring-bills', recurringBillRoutes);
+app.use('/faturas', creditCardInvoiceRoutes);
+// URL do painel do operador propositalmente não-óbvia — ver comentário em
+// routes/admin.js. A proteção real continua sendo o middleware apenasAdmin;
+// isto só evita descoberta casual por quem tenta "/admin".
+app.use('/portal-rc-9f21', adminRoutes);
 app.use('/whatsapp/poll', limitePolling);
 app.use('/whatsapp', whatsappRoutes);
 

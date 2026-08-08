@@ -8,7 +8,7 @@ const transactionSchema = z.object({
   paymentMethodId: z.string().min(1, 'Forma de pagamento obrigatória.'),
   date: z.string().min(1, 'Data obrigatória.'),
   notes: z.string().max(500).optional().nullable(),
-  origin: z.enum(['MANUAL', 'WHATSAPP', 'AI', 'AUDIO', 'IMAGE']).default('MANUAL'),
+  origin: z.enum(['MANUAL', 'WHATSAPP', 'AI', 'AUDIO', 'IMAGE', 'RECURRING']).default('MANUAL'),
   status: z.enum(['CONFIRMED', 'PENDING', 'ERROR']).default('CONFIRMED'),
   paidBy: z.string().max(100).optional().nullable(),
 });
