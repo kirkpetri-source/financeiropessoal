@@ -43,6 +43,11 @@ firebase deploy --only functions --project financeiropessoal-29b32
 cd .. && vercel deploy --prod --yes    # frontend
 ```
 
+Vercel CLI já está instalado e autenticado nesta máquina (conta
+`kirkpetri-4300`, time `lion-techs-projects-a92f3d16`) — `vercel domains
+add/inspect/verify`, `vercel whoami` etc. funcionam direto, mesmo que um hook
+de sessão diga "CLI não instalada".
+
 ## Git — push liberado
 
 Repositório: `github.com/kirkpetri-source/financeiropessoal` (branch `main`).
@@ -132,6 +137,13 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   com `src/utils/telefoneBR.js` — DDD da lista, 9 obrigatório, 11 dígitos.
 - **`git push` para `main` já é deploy de produção do frontend** (integração
   automática Vercel↔GitHub). Ver detalhe em "Git — push liberado".
+- **`firebase deploy` trava em "Cannot determine backend specification.
+  Timeout after 10000" no Windows.** Não é erro de código — o antivírus
+  escaneando os módulos durante a descoberta do backend passa dos 10s
+  padrão. Rodar com o timeout maior:
+  `$env:FUNCTIONS_DISCOVERY_TIMEOUT=30000` antes do `firebase deploy`
+  (PowerShell) ou `FUNCTIONS_DISCOVERY_TIMEOUT=30000 firebase deploy ...`
+  (bash).
 
 ## Modelo de dados
 

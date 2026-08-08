@@ -25,7 +25,13 @@ abaixo; isto é só o índice do que ainda não está feito.
 - [ ] Testar uma assinatura real com cartão de verdade e conferir a transição
       `pending → active` — não dá para automatizar: o checkout redireciona
       pro `init_point` hospedado pelo próprio Mercado Pago (não há Public Key
-      no frontend, não há como injetar cartão por script)
+      no frontend, não há como injetar cartão por script). Tentativa em
+      07/08/2026: Kirk chegou até o checkout (confirma que preapproval +
+      redirect funcionam com credencial de produção — família nasceu com
+      `status: pending` e `provider: mercadopago` certos) mas não completou o
+      pagamento de propósito. Família de teste ("Lion") apagada depois
+      (backup antes, `tools/apagar-familia.js`). Kirk vai testar de outra
+      forma mais adiante
 - [x] Registrar `revelacash.com.br` — feito 07/08/2026. DNS apontado pra
       Vercel (`A @ 76.76.21.21` e `A www 76.76.21.21`, sem CNAME/nameserver),
       domínio vinculado ao projeto `financeiropessoal` via `vercel domains
@@ -215,6 +221,36 @@ Testado com build de produção limpo e Playwright/agent-browser local (hero,
 seção de preço, modal de cadastro, seção "como funciona", seção
 individual/casal/família) — nada em produção ainda, fica pro Kirk revisar e
 autorizar o push (frontend = deploy automático).
+
+## Sessão de 07/08/2026 (parte 4) — pré-visualização colorida e log duplicado no WhatsApp
+
+Dois ajustes pequenos, ambos testados (`npm run build` limpo) e publicados
+(push = deploy automático do frontend).
+
+**Card de compartilhamento (og:image) trocado pro ícone colorido.** Kirk
+testou o link no WhatsApp com outro número — a prévia (favicon, título,
+descrição) funcionou — e pediu a versão roxo/verde no lugar da versão escura
+usada antes. Novo arquivo `frontend/public/brand/og-image-color.jpg`
+(1200×1200, mesmo formato quadrado, ícone sobre fundo claro com sombra suave
+gerada por script); `og:image`/`twitter:image` no `index.html` apontados pra
+ele. Commit `96b9e39`.
+
+Armadilha ao gerar a sombra: um `GaussianBlur` aplicado numa camada do
+**mesmo tamanho** da elipse corta o desfoque na borda do canvas, sobrando um
+retângulo cinza sólido em vez de sombra suave. Precisa de uma camada bem
+maior que a elipse (padding de várias vezes o raio do blur) para o
+desfoque ter espaço de esvanecer até transparente antes de bater na borda.
+
+**Log do WhatsApp mostrando lançamento "duplicado".** Não era duplicado de
+verdade: toda confirmação que o sistema manda de volta pro WhatsApp (barreira
+anti-loop, ver `respostaWhatsapp.js`) também grava um `whatsappLogs` com
+`sender: 'sistema'` e `processingStatus: 'BOT'` — proposital, é o que permite
+`jaProcessada()` reconhecer a própria mensagem do bot. A tela
+(`WhatsappLogsPage.jsx`) não conhecia esse status, caía no fallback
+`STATUS_CONFIG.PENDING` e mostrava como um segundo lançamento "Pendente" ao
+lado do real "Processado". Corrigido: rótulo próprio ("Confirmação
+enviada") e oculto da lista por padrão, igual já acontecia com `CANCELLED`.
+Commit `c0fc8fe`.
 
 ## Decisões já tomadas (não reabrir sem motivo)
 
