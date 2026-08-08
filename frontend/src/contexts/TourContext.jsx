@@ -150,6 +150,13 @@ export function TourProvider({ children }) {
     if (!user?.firebaseUid) return undefined;
     if (localStorage.getItem(chaveVista(user.firebaseUid))) return undefined;
     const t = setTimeout(() => {
+      // Só auto-inicia partindo do /dashboard — que é pra onde login e
+      // cadastro normais mandam. Alguém chegando direto num link específico
+      // (o painel admin, por exemplo, sem link nenhum no menu) não pode ser
+      // arrastado de volta pro dashboard só porque nunca viu o tour neste
+      // navegador; sem marcar como visto, ele começa sozinho da próxima vez
+      // que a pessoa passar pelo dashboard de verdade.
+      if (window.location.pathname !== '/dashboard') return;
       marcarVisto(); // marca já ao iniciar: se a pessoa fechar a aba no meio, não insiste de novo sozinho
       startTour();
     }, 900);
