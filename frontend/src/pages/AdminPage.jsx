@@ -91,7 +91,7 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
   async function carregar() {
     setCarregando(true);
     try {
-      const { data } = await api.get(`/portal-rc-9f21/familias/${familiaId}`);
+      const { data } = await api.get(`/plataforma/familias/${familiaId}`);
       setDetalhe(data);
     } catch {
       toast.error('Erro ao carregar detalhe da família.');
@@ -105,7 +105,7 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
   async function executar(acao, body = {}) {
     setAcaoEmCurso(acao);
     try {
-      await api.post(`/portal-rc-9f21/familias/${familiaId}/${acao}`, body);
+      await api.post(`/plataforma/familias/${familiaId}/${acao}`, body);
       toast.success('Feito.');
       await carregar();
       onMudou?.();
@@ -234,8 +234,8 @@ export default function AdminPage() {
     setCarregando(true);
     try {
       const [m, f] = await Promise.all([
-        api.get('/portal-rc-9f21/metricas'),
-        api.get('/portal-rc-9f21/familias'),
+        api.get('/plataforma/metricas'),
+        api.get('/plataforma/familias'),
       ]);
       setMetricas(m.data);
       setFamilias(f.data.familias || []);

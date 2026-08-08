@@ -82,10 +82,11 @@ app.use('/lgpd', lgpdRoutes);
 app.use('/budgets', budgetRoutes);
 app.use('/recurring-bills', recurringBillRoutes);
 app.use('/faturas', creditCardInvoiceRoutes);
-// URL do painel do operador propositalmente não-óbvia — ver comentário em
-// routes/admin.js. A proteção real continua sendo o middleware apenasAdmin;
-// isto só evita descoberta casual por quem tenta "/admin".
-app.use('/portal-rc-9f21', adminRoutes);
+// Painel do operador — login próprio (usuário/senha, ver
+// tools/criar-login-operador.js), separado da conta pessoal de qualquer
+// família. A proteção de verdade continua sendo o middleware apenasAdmin
+// (ADMIN_EMAILS/custom claim), não o nome da rota.
+app.use('/plataforma', adminRoutes);
 app.use('/whatsapp/poll', limitePolling);
 app.use('/whatsapp', whatsappRoutes);
 

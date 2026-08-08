@@ -16,11 +16,10 @@ const router = express.Router();
 // famílias. Isso é exatamente o oposto do isolamento por tenant, então fica
 // atrás do apenasAdmin e em rota separada, para ser visível na revisão.
 //
-// A URL onde esta rota é montada (ver app.js) propositalmente não é
-// "/admin" — só para não ficar na cara em uma varredura casual. A proteção
-// de verdade continua sendo o apenasAdmin logo abaixo: sem custom claim
-// nem ADMIN_EMAILS configurado, ninguém entra, nem por essa rota nem por
-// nenhuma outra.
+// Montada em /plataforma (ver app.js), acessada só pelo login dedicado do
+// operador (tools/criar-login-operador.js) — sem relação com nenhuma conta
+// de família. A proteção de verdade continua sendo o apenasAdmin logo
+// abaixo: sem custom claim nem ADMIN_EMAILS configurado, ninguém entra.
 router.use(authMiddleware, apenasAdmin);
 
 async function carregarFamilias() {

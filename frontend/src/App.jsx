@@ -15,7 +15,7 @@ import InvoicesPage from './pages/InvoicesPage';
 import SettingsPage from './pages/SettingsPage';
 import WhatsappLogsPage from './pages/WhatsappLogsPage';
 import AssinaturaPage from './pages/AssinaturaPage';
-import AdminPage from './pages/AdminPage';
+import PlataformaPage from './pages/PlataformaPage';
 import TermosPage from './pages/legal/TermosPage';
 import PrivacidadePage from './pages/legal/PrivacidadePage';
 
@@ -34,6 +34,12 @@ export default function App() {
             <Route path="/termos" element={<TermosPage />} />
             <Route path="/privacidade" element={<PrivacidadePage />} />
 
+            {/* Portal do operador — login próprio (usuário/senha), sem relação
+                com a conta de nenhuma família. Fica FORA do PrivateRoute de
+                propósito: não usa a sessão nem o layout da família, tem o
+                gate de acesso dele mesmo (ver PlataformaPage.jsx). */}
+            <Route path="/plataforma" element={<PlataformaPage />} />
+
             <Route element={<PrivateRoute />}>
               <Route element={<AppLayout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
@@ -45,10 +51,6 @@ export default function App() {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/whatsapp-logs" element={<WhatsappLogsPage />} />
                 <Route path="/assinatura" element={<AssinaturaPage />} />
-                {/* URL propositalmente não-óbvia — ver comentário em routes/admin.js
-                    no backend. A proteção real é o apenasAdmin do backend, não o
-                    caminho em si; isto só evita descoberta casual por "/admin". */}
-                <Route path="/portal-rc-9f21" element={<AdminPage />} />
               </Route>
             </Route>
 
