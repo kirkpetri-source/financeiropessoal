@@ -90,8 +90,13 @@ async function chamarGemini(base64, mimeType, prompt) {
   }
 }
 
-const PROMPT_AUDIO = 'Transcreva este áudio em português do Brasil, palavra por palavra, sem '
-  + 'adicionar comentário nenhum. Responda SÓ com a transcrição, em texto simples. '
+const PROMPT_AUDIO = 'Transcreva este áudio em português do Brasil, como se a pessoa estivesse '
+  + 'digitando a frase num app financeiro. Sem adicionar comentário nenhum. '
+  + 'IMPORTANTE sobre valores em dinheiro: se a pessoa falar o valor separando reais e centavos '
+  + '(por exemplo "quatro e cinquenta", "quatro reais e cinquenta centavos"), escreva o valor '
+  + 'JUNTO como um único número com vírgula decimal — "4,50" — nunca como dois números separados '
+  + 'por "e" (errado: "4 e 50"). Se falar um valor sem centavos (ex: "cinquenta reais"), escreva só '
+  + '"50". Responda SÓ com a transcrição, em texto simples. '
   + 'Se não conseguir entender nenhuma fala, responda exatamente: SEM_FALA';
 
 const PROMPT_CUPOM = 'Esta imagem é um cupom fiscal ou recibo de compra brasileiro. Leia o valor '

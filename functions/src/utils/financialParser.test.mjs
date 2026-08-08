@@ -61,6 +61,18 @@ describe('parseFinancialMessage — formato básico', () => {
     });
   });
 
+  // Achado em produção (08/08/2026): um áudio dizendo "gastei trident 4,50"
+  // virou R$50 porque o Gemini transcrevia o valor falado como "4 e 50" (dois
+  // números soltos) em vez de "4,50" — o parser pegava só o último ("50") e
+  // descartava o "4". Corrigido no prompt de transcrição (midiaParserService),
+  // não aqui: este teste garante que "4,50" como token único sempre foi
+  // interpretado certo, então a causa raiz era mesmo a transcrição.
+  it('lê valor decimal colado em vez de separado em dois números', () => {
+    const r = parseFinancialMessage('gastei trident 4,50');
+    expect(r.amount).toBe(4.5);
+    expect(r.description).toBe('trident');
+  });
+
   it('interpreta receita', () => {
     const r = parseFinancialMessage('receita manutenção notebook 250 pix');
     expect(r).toMatchObject({
@@ -162,6 +174,9 @@ describe('suggestCategory', () => {
     ['compras no supermercado', 'EXPENSE', 'Mercado'],
     ['gasolina do carro', 'EXPENSE', 'Combustível'],
     ['ifood da noite', 'EXPENSE', 'Alimentação'],
+    ['decio churrascaria', 'EXPENSE', 'Alimentação'],
+    ['padaria da esquina', 'EXPENSE', 'Alimentação'],
+    ['açougue', 'EXPENSE', 'Alimentação'],
     ['conta de energia', 'EXPENSE', 'Energia'],
     ['internet fibra', 'EXPENSE', 'Internet'],
     ['remédio da farmácia', 'EXPENSE', 'Farmácia'],

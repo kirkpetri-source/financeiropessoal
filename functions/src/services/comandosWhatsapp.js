@@ -1,5 +1,7 @@
 const { escopoDe } = require('../data/escopo');
-const { getMonthlySummary, listTransactions, deleteTransaction } = require('./transactionService');
+const { getMonthlySummary, listTransactions, deleteTransaction, updateTransaction } = require('./transactionService');
+const { listCategories } = require('./categoryService');
+const { bloqueioPorAssinatura } = require('./lancamentoPorMensagem');
 const { format } = require('date-fns');
 const { gerarCodigoVinculo } = require('../utils/codigoVinculo');
 
@@ -41,7 +43,8 @@ const AJUDA = [
   '*Comandos*',
   '• *resumo* — totais do mês',
   '• *ultimos* — últimos lançamentos',
-  '• *apagar ultimo* — desfaz o último lançamento',
+  '• *apagar ultimo* (ou *errado*, *apaga*, *cancela*) — desfaz o último lançamento',
+  '• *categoria mercado* — muda a categoria do último lançamento',
   '• *categorias* — categorias mais usadas no mês',
   '• *ajuda* — esta mensagem',
 ].join('\n');
@@ -94,8 +97,15 @@ async function comandoUltimos(householdId) {
 /**
  * Apaga o lançamento mais recente. Confirma o que foi apagado no texto da
  * resposta — sem isso o usuário não tem como saber o que sumiu.
+ *
+ * Como qualquer escrita (regra 6 do projeto), respeita o bloqueio de
+ * assinatura vencida — sem isso, "apagar ultimo"/"mudar categoria" seriam uma
+ * porta dos fundos de escrita para quem está bloqueado de lançar.
  */
 async function comandoApagarUltimo(householdId) {
+  const bloqueio = await bloqueioPorAssinatura(householdId);
+  if (bloqueio) return bloqueio;
+
   const dados = escopoDe(householdId);
   const mes = format(new Date(), 'yyyy-MM');
   const lista = await listTransactions(dados, { month: mes });
@@ -106,6 +116,39 @@ async function comandoApagarUltimo(householdId) {
   await deleteTransaction(dados, ultimo.id);
 
   return `🗑️ Apagado: ${ultimo.description} — ${moeda(ultimo.amount)}`;
+}
+
+/**
+ * Muda a categoria do lançamento mais recente. Não usa IA nem tenta entender
+ * frase livre — casa por nome exato (sem acento/maiúscula) contra as
+ * categorias já cadastradas, do mesmo tipo (receita/despesa) do lançamento.
+ * Errar o nome não muda nada, só avisa — silêncio seria pior que recusar.
+ */
+async function comandoMudarCategoria(householdId, nomeCategoria) {
+  const bloqueio = await bloqueioPorAssinatura(householdId);
+  if (bloqueio) return bloqueio;
+
+  if (!nomeCategoria) {
+    return 'Diga o nome da categoria: *categoria mercado*. Digite *categorias* para ver as usadas no mês.';
+  }
+
+  const dados = escopoDe(householdId);
+  const mes = format(new Date(), 'yyyy-MM');
+  const lista = await listTransactions(dados, { month: mes });
+
+  if (!lista.length) return 'Não há lançamento neste mês para mudar a categoria.';
+
+  const ultimo = lista[0];
+  const categorias = await listCategories(dados);
+  const alvo = categorias.find((c) => (c.type === ultimo.type || c.type === 'BOTH')
+    && normalizar(c.name) === normalizar(nomeCategoria));
+
+  if (!alvo) {
+    return `Não encontrei a categoria "${nomeCategoria}". Digite *categorias* para ver as usadas no mês, ou crie-a no painel.`;
+  }
+
+  await updateTransaction(dados, ultimo.id, { categoryId: alvo.id });
+  return `✅ Categoria de "${ultimo.description}" (${moeda(ultimo.amount)}) alterada para *${alvo.name}*.`;
 }
 
 async function comandoCategorias(householdId) {
@@ -185,8 +228,22 @@ async function tratarComando(texto, { householdId, remoteJid }) {
   if (limpo === 'ultimos' || limpo === 'ultimos lancamentos') {
     return comandoUltimos(householdId);
   }
-  if (limpo === 'apagar ultimo' || limpo === 'desfazer') {
+  // Correção conversacional: só reage quando a mensagem INTEIRA é um destes
+  // termos — "nossa, que dia errado" não pode virar um apagar acidental. Cada
+  // termo é a mensagem sozinha, do jeito que alguém manda logo depois de ver
+  // que o lançamento saiu errado.
+  const GATILHOS_APAGAR = [
+    'apagar ultimo', 'desfazer', 'errado', 'esta errado', 'ta errado',
+    'errou', 'apagar', 'apaga', 'cancela', 'cancelar', 'lancamento errado',
+  ];
+  if (GATILHOS_APAGAR.includes(limpo)) {
     return comandoApagarUltimo(householdId);
+  }
+  if (limpo.startsWith('categoria ') || limpo.startsWith('mudar categoria ') || limpo.startsWith('trocar categoria ')) {
+    const nomeCategoria = limpo
+      .replace(/^(mudar\s+|trocar\s+)?categoria\s+(para\s+)?/, '')
+      .trim();
+    return comandoMudarCategoria(householdId, nomeCategoria);
   }
   if (limpo === 'categorias') {
     return comandoCategorias(householdId);

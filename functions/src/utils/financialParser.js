@@ -39,7 +39,7 @@ const CATEGORY_MAP = {
   EXPENSE: [
     { keywords: ['mercado', 'supermercado', 'compra', 'feira'], category: 'Mercado' },
     { keywords: ['gasolina', 'combustível', 'combustivel', 'posto', 'diesel', 'álcool', 'alcool'], category: 'Combustível' },
-    { keywords: ['almoço', 'almoco', 'lanche', 'jantar', 'comida', 'restaurante', 'pizza', 'hamburguer', 'café', 'cafe', 'ifood', 'delivery'], category: 'Alimentação' },
+    { keywords: ['almoço', 'almoco', 'lanche', 'jantar', 'comida', 'restaurante', 'churrascaria', 'churrasco', 'lanchonete', 'padaria', 'açougue', 'acougue', 'pizza', 'hamburguer', 'café', 'cafe', 'ifood', 'delivery'], category: 'Alimentação' },
     { keywords: ['energia', 'luz', 'enel', 'celpe', 'copel'], category: 'Energia' },
     { keywords: ['água', 'agua', 'saneamento', 'compesa', 'sabesp'], category: 'Água' },
     { keywords: ['internet', 'wifi', 'net', 'vivo', 'claro', 'oi', 'tim'], category: 'Internet' },
