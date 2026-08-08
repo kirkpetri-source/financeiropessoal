@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
-  MessageCircle, Users, User, Home, Eye, ArrowLeftRight, History, FileBarChart,
-  ArrowRight, ArrowDown, CheckCircle2, X, ChevronDown,
+  Users, User, Home, Eye, ArrowLeftRight, History, FileBarChart,
+  ArrowRight, CheckCircle2, X, ChevronDown,
   TrendingUp, TrendingDown, DollarSign, Tag,
+  Keyboard, Mic, Camera, ShieldCheck, Clock, Undo2, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/brand/Logo';
@@ -13,54 +14,43 @@ import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog';
 /**
  * Landing page de vendas.
  *
- * Reescrita de conteúdo (08/08/2026): a versão anterior tinha copy
- * publicitária genérica ("Nada de instalar nada", "Você já vive no
- * WhatsApp") que não explicava o produto. Toda seção segue a mesma lógica —
- * usuário manda mensagem no WhatsApp → RevelaCash registra → dado organizado
- * aparece no painel — sem prometer resultado financeiro nem parecer banco,
- * conta digital ou carteira. Só descreve funcionalidade que existe de
- * verdade no sistema (ver DashboardPage, TransactionsPage, CategoriesPage,
- * AssinaturaContext.cancelar, TermosPage).
+ * Reescrita completa (08/08/2026): identidade visual definitiva (logo +
+ * fotos de produto) e os dois recursos novos (áudio e foto de cupom via IA)
+ * viraram o eixo da página — é a maior diferença prática do produto hoje.
  *
- * Pendências conscientes, fora do escopo desta implementação:
- * - Fotos de pessoas reais e prints reais do sistema: ver nota histórica no
- *   commit anterior. As recriações abaixo usam os mesmos tokens/cores do
- *   Dashboard real, não são screenshot.
- * - Números de categorias/exemplos são ilustrativos, marcados como tal.
+ * Continua a mesma regra da reescrita de conteúdo anterior: nenhuma
+ * funcionalidade citada é inventada, nenhum número de cliente/depoimento é
+ * fabricado. As fotos em public/brand/marketing/ são material de produto
+ * (mockups do próprio app), não depoimento de cliente — por isso não têm
+ * nome nem citação atribuída a ninguém.
  */
+
+const RECURSOS_LANCAMENTO = [
+  {
+    icon: Keyboard,
+    titulo: 'Digite do seu jeito',
+    desc: 'Escreva a mensagem como você já fala no dia a dia. Sem formulário, sem campo obrigatório.',
+    exemplo: 'gastei 84,90 no mercado',
+  },
+  {
+    icon: Mic,
+    titulo: 'Grave um áudio',
+    desc: 'Sem largar o que está fazendo. Fale o gasto — o RevelaCash transcreve e organiza sozinho.',
+    exemplo: '"gastei 45 reais no almoço"',
+  },
+  {
+    icon: Camera,
+    titulo: 'Fotografe o cupom',
+    desc: 'Tirou a nota fiscal do bolso? Manda a foto. Uma IA lê o valor e o estabelecimento por você.',
+    exemplo: 'foto do cupom fiscal',
+  },
+];
 
 const BENEFICIOS = [
   { icon: Eye, title: 'Visão dos gastos', desc: 'Veja quais categorias estão consumindo mais dinheiro durante o mês.' },
   { icon: ArrowLeftRight, title: 'Receitas e despesas', desc: 'Acompanhe quanto entrou, quanto saiu e qual é o seu saldo.' },
   { icon: History, title: 'Histórico', desc: 'Consulte suas movimentações sem depender da memória ou de anotações espalhadas.' },
   { icon: FileBarChart, title: 'Relatórios', desc: 'Visualize seus dados de forma organizada para entender melhor seus hábitos financeiros.' },
-];
-
-const PASSOS = [
-  {
-    n: '01',
-    title: 'Envie pelo WhatsApp',
-    desc: 'Informe o gasto ou a receita do jeito que você normalmente falaria.',
-    visual: <ChatBubbleOut texto="Gastei R$ 120 no supermercado." />,
-  },
-  {
-    n: '02',
-    title: 'O RevelaCash registra',
-    desc: 'O sistema identifica as informações da mensagem e adiciona a movimentação ao seu controle financeiro.',
-    visual: <MovimentacaoCard tipo="Despesa" valor="R$ 120,00" categoria="Supermercado" quando="Hoje" />,
-  },
-  {
-    n: '03',
-    title: 'Acompanhe tudo organizado',
-    desc: 'Consulte receitas, despesas, saldo, categorias e relatórios para entender como o seu dinheiro está sendo utilizado.',
-    visual: (
-      <div className="flex flex-wrap gap-1.5">
-        {['Mercado', 'Transporte', 'Contas'].map((c) => (
-          <span key={c} className="text-xs font-medium text-brand-dark bg-brand-light px-2.5 py-1 rounded-lg">{c}</span>
-        ))}
-      </div>
-    ),
-  },
 ];
 
 const CATEGORIAS_EXEMPLO = [
@@ -70,17 +60,10 @@ const CATEGORIAS_EXEMPLO = [
   { nome: 'Assinaturas', valor: 189, max: 1240 },
 ];
 
-const MENSAGENS_EXEMPLO = [
-  'Gastei R$ 52 no combustível.',
-  'Recebi R$ 3.500 de salário.',
-  'Paguei R$ 129 de internet.',
-  'Mercado R$ 287,40.',
-];
-
 const MODOS_DE_USO = [
   { icon: User, titulo: 'Individual', desc: 'Registre suas receitas e despesas e acompanhe sua própria vida financeira.' },
   { icon: Users, titulo: 'Casal', desc: 'Centralize as movimentações da casa para que os dois tenham uma visão mais clara das finanças.' },
-  { icon: Home, titulo: 'Família', desc: 'Reúna os lançamentos dos participantes e acompanhe as despesas familiares em um único lugar.' },
+  { icon: Home, titulo: 'Família', desc: 'Reúna os lançamentos dos participantes e acompanhe as despesas familiares em um único lugar, com até 8 pessoas.' },
 ];
 
 const CALLOUTS_PAINEL = [
@@ -88,39 +71,44 @@ const CALLOUTS_PAINEL = [
   { icon: TrendingDown, titulo: 'Despesas', desc: 'Quanto foi gasto.' },
   { icon: DollarSign, titulo: 'Saldo', desc: 'Resultado entre receitas e despesas.' },
   { icon: Tag, titulo: 'Categorias', desc: 'Veja onde está concentrada a maior parte dos gastos.' },
-  { icon: History, titulo: 'Histórico', desc: 'Consulte as movimentações registradas.' },
 ];
 
 const FORMA_TRADICIONAL = [
   'Lembrar do gasto depois',
-  'Abrir planilha ou sistema',
-  'Preencher informações',
-  'Organizar categorias',
+  'Abrir planilha ou app novo',
+  'Preencher formulário',
+  'Organizar categoria na mão',
 ];
 
 const RESULTADOS = [
   'Entenda onde você mais gasta.',
-  'Acompanhe seu saldo.',
-  'Compare receitas e despesas.',
+  'Acompanhe seu saldo em tempo real.',
+  'Compare receitas e despesas do mês.',
   'Tenha uma visão geral das finanças da casa.',
 ];
 
 const PLANO_INCLUI = [
-  'Lançamento de gastos e receitas pelo WhatsApp',
+  'Lançamento por texto, áudio ou foto do cupom',
   'Categorização automática das movimentações',
   'Relatórios e histórico completos',
   'Painel com receitas, despesas e saldo',
   'Até 8 pessoas na mesma família',
 ];
 
+const CONFIANCA = [
+  { icon: Clock, titulo: '7 dias grátis', desc: 'Sem cartão de crédito no cadastro.' },
+  { icon: Undo2, titulo: 'Cancele quando quiser', desc: 'Direto pelo painel, sem burocracia.' },
+  { icon: ShieldCheck, titulo: 'Dados protegidos', desc: 'Exportação e exclusão sob seu controle.' },
+];
+
 const FAQ = [
   {
     p: 'O que é o RevelaCash?',
-    r: 'O RevelaCash é uma plataforma de organização financeira pessoal e familiar. Você registra receitas e despesas pelo WhatsApp e acompanha as informações organizadas no painel.',
+    r: 'O RevelaCash é uma plataforma de organização financeira pessoal e familiar. Você registra receitas e despesas pelo WhatsApp — digitando, falando ou fotografando — e acompanha tudo organizado no painel.',
   },
   {
-    p: 'Como registro uma despesa?',
-    r: 'Envie uma mensagem pelo WhatsApp informando a movimentação. Por exemplo: "Gastei R$ 84,90 no mercado." O RevelaCash interpreta a mensagem e registra a despesa.',
+    p: 'Como funciona o lançamento por áudio ou foto?',
+    r: 'Grave um áudio contando o gasto ou envie a foto do cupom fiscal. Uma inteligência artificial lê o conteúdo, identifica valor, categoria e estabelecimento, e registra a movimentação automaticamente — do mesmo jeito que se você tivesse digitado.',
   },
   {
     p: 'Também posso registrar receitas?',
@@ -133,6 +121,10 @@ const FAQ = [
   {
     p: 'Posso usar com meu parceiro ou minha família?',
     r: 'Sim. O RevelaCash funciona individualmente ou com até 8 pessoas na mesma família, cada uma com seus lançamentos identificados pelo próprio número de WhatsApp.',
+  },
+  {
+    p: 'Meus dados financeiros ficam seguros?',
+    r: 'Sim. O acesso é protegido por login individual e cada família só enxerga os próprios dados. Você pode exportar ou pedir a exclusão completa das suas informações a qualquer momento — veja os detalhes na Política de Privacidade.',
   },
   {
     p: 'Quanto custa?',
@@ -162,11 +154,16 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg text-ink">
+    <div className="min-h-screen bg-bg text-ink overflow-x-hidden">
       {/* ── Nav ── */}
       <header className="border-b border-border bg-white/80 backdrop-blur sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Logo size="sm" />
+          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-muted">
+            <button type="button" onClick={() => irPara('como-funciona')} className="hover:text-ink">Como funciona</button>
+            <button type="button" onClick={() => irPara('preco')} className="hover:text-ink">Preço</button>
+            <button type="button" onClick={() => irPara('duvidas')} className="hover:text-ink">Dúvidas</button>
+          </nav>
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -184,19 +181,27 @@ export default function LandingPage() {
 
       {/* ── Hero ── */}
       <section className="relative z-0 overflow-hidden max-w-6xl mx-auto px-4 sm:px-6 pt-14 pb-16 sm:pt-20 sm:pb-24">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+        {/* Atmosfera de fundo — blobs de gradiente na cor da marca, técnica comum
+            em landing pages premium (Stripe/Linear) pra dar profundidade sem
+            competir com o conteúdo. */}
+        <div aria-hidden="true" className="pointer-events-none absolute -z-10 inset-0">
+          <div className="absolute top-10 -left-28 w-[420px] h-[420px] rounded-full bg-brand/20 blur-[110px]" />
+          <div className="absolute top-1/3 -right-28 w-[380px] h-[380px] rounded-full bg-accent/20 blur-[100px]" />
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           <div className="animate-revealcontent">
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand-dark bg-brand-light px-3 py-1 rounded-full">
-              Finanças organizadas pelo WhatsApp
+              <Sparkles className="w-3.5 h-3.5" /> Novo: lance por voz ou foto do cupom
             </span>
             <h1 className="mt-5 text-3xl sm:text-5xl font-extrabold leading-tight tracking-tight">
-              Descubra para onde<br />
-              <span className="text-brand">seu dinheiro está indo.</span>
+              Pare de se perguntar<br />
+              <span className="text-brand">pra onde foi seu dinheiro.</span>
             </h1>
             <p className="mt-5 text-base sm:text-lg text-muted max-w-lg">
-              Registre gastos e receitas pelo WhatsApp e acompanhe tudo organizado
-              no RevelaCash. Veja quanto entrou, quanto saiu, onde você mais gastou
-              e como está a sua vida financeira.
+              Manda um áudio, uma foto do cupom ou só digita no WhatsApp. O
+              RevelaCash entende a mensagem sozinho e organiza tudo no seu
+              painel — sem planilha, sem app novo pra aprender.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
               <button
@@ -204,7 +209,7 @@ export default function LandingPage() {
                 onClick={() => abrirAuth('criar')}
                 className="btn-primary justify-center flex items-center gap-2 py-3 px-6 text-base"
               >
-                Começar grátis <ArrowRight className="w-4 h-4" />
+                Começar grátis por 7 dias <ArrowRight className="w-4 h-4" />
               </button>
               <button
                 type="button"
@@ -215,120 +220,175 @@ export default function LandingPage() {
               </button>
             </div>
             <p className="mt-4 text-xs text-faint">
-              7 dias grátis • Depois, R$ 24,90/mês por família
+              Sem cartão de crédito no cadastro · Cancele quando quiser
             </p>
           </div>
 
-          {/* Demonstração: mensagem no WhatsApp → registro → painel. Mesmos
-              tokens/cores do Dashboard real, não é screenshot. */}
           <div className="animate-revealcontent" style={{ animationDelay: '0.12s' }}>
-            <div className="rounded-2xl border border-border bg-white shadow-modal p-4 sm:p-5 space-y-4">
-              <div className="space-y-2">
-                <ChatBubbleOut texto="Gastei R$ 84,90 no mercado." />
-                <div className="flex items-start gap-2">
-                  <div className="w-6 h-6 rounded-full bg-income flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <MessageCircle className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  <div className="bg-surface-alt rounded-2xl rounded-tl-sm border border-border px-3.5 py-2 text-sm">
-                    <p className="font-semibold text-ink">Despesa registrada</p>
-                    <p className="text-brand-dark font-mono font-bold mt-0.5">R$ 84,90</p>
-                    <p className="text-xs text-muted">Mercado</p>
-                  </div>
+            <div className="relative">
+              {/* Ícone da marca em tamanho real, saindo de trás da foto — não mais
+                  escondido numa marca d'água quase invisível. Vem primeiro no DOM
+                  (sem z-index negativo) para que a foto, logo depois, pinte por cima. */}
+              <img
+                src="/brand/icon-color-1024.webp"
+                alt=""
+                aria-hidden="true"
+                className="pointer-events-none select-none absolute -top-9 -right-5 sm:-top-12 sm:-right-9 w-32 sm:w-44 opacity-95 drop-shadow-2xl rotate-6"
+              />
+              <img
+                src="/brand/marketing/hero-mesa-caos.webp"
+                alt="Pessoa consultando o painel financeiro do RevelaCash no celular, com contas e comprovantes espalhados na mesa"
+                width={1600}
+                height={900}
+                className="relative w-full h-auto rounded-2xl shadow-modal object-cover border border-border"
+              />
+              <div className="absolute -bottom-5 -left-4 sm:-bottom-6 sm:-left-6 bg-white rounded-2xl shadow-modal border border-border px-4 py-3 flex items-center gap-3 max-w-[240px]">
+                <div className="w-9 h-9 rounded-full bg-income-light flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-income-dark" />
                 </div>
-              </div>
-
-              <div className="flex justify-center">
-                <ArrowDown className="w-4 h-4 text-faint" />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2.5">
-                  <p className="text-xs font-bold uppercase tracking-wide text-muted">Painel financeiro</p>
-                  <span className="text-[11px] text-faint">Agosto de 2026</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <MockKpi icon={TrendingUp} label="Receitas" value="R$ 8.400" color="#0d9488" />
-                  <MockKpi icon={TrendingDown} label="Despesas" value="R$ 5.180" color="#dc2626" />
-                  <MockKpi icon={DollarSign} label="Saldo" value="R$ 3.220" color="#2563eb" />
-                  <MockKpi icon={Tag} label="Categorias" value="6" color="#512b8d" />
+                <div>
+                  <p className="text-xs font-semibold text-ink leading-tight">Lançado por foto</p>
+                  <p className="text-sm font-mono font-bold text-brand-dark leading-tight">R$ 84,90</p>
+                  <p className="text-[11px] text-muted leading-tight">Mercado</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-        {/* Marca d'água decorativa — reforça a marca sem competir com o
-            conteúdo. Atrás da coluna de texto (fundo claro), não atrás do
-            card branco (ficaria encoberta). aria-hidden porque é só
-            ilustração. */}
-        <img
-          src="/brand/icon-color-1024.webp"
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none select-none absolute -z-10 top-1/2 left-0 w-[600px] max-w-[70vw] opacity-[0.10] -translate-y-1/2 -translate-x-1/4"
-        />
       </section>
 
-      {/* ── Como funciona ── */}
-      <section id="como-funciona" className="bg-white border-y border-border py-16 sm:py-20 scroll-mt-16">
+      {/* ── O problema ── */}
+      <section className="bg-white border-y border-border py-16 sm:py-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold leading-snug">
+                Mercado, posto, boleto, um pix aqui, outro ali...
+              </h2>
+              <p className="mt-4 text-muted">
+                No fim do mês quase ninguém lembra exatamente pra onde foi o
+                dinheiro. Sem controle, fica difícil saber se dá pra gastar
+                menos, guardar mais, ou só entender o que aconteceu com o
+                salário.
+              </p>
+            </div>
+            <div className="card">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted mb-4">Despesas por categoria</p>
+              <div className="space-y-3.5">
+                {CATEGORIAS_EXEMPLO.map((c) => (
+                  <div key={c.nome}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium text-ink">{c.nome}</span>
+                      <span className="font-mono text-muted">R$ {c.valor.toLocaleString('pt-BR')}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-surface-alt overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-brand"
+                        style={{ width: `${(c.valor / c.max) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-faint mt-4">Exemplo ilustrativo — não são dados de clientes reais.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Três jeitos de lançar ── */}
+      <section id="como-funciona" className="py-16 sm:py-20 scroll-mt-16">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-extrabold text-center">
-            Você envia a movimentação.<br className="hidden sm:block" /> O RevelaCash organiza.
+            Três jeitos de lançar. Você escolhe o mais fácil na hora.
           </h2>
           <p className="text-center text-muted mt-3 max-w-xl mx-auto">
-            Registrar uma despesa ou receita pode ser tão simples quanto enviar uma mensagem.
+            Digitando, falando ou fotografando — tudo cai no mesmo painel, organizado automaticamente.
           </p>
-          <div className="mt-12 grid sm:grid-cols-3 gap-8">
-            {PASSOS.map((p, i) => (
-              <div key={p.n}>
-                <div className="flex items-center gap-3">
-                  <span className={`w-9 h-9 rounded-xl ${i === 1 ? 'bg-accent' : 'bg-brand'} text-white font-mono font-bold text-sm flex items-center justify-center flex-shrink-0`}>
-                    {p.n}
-                  </span>
-                  <h3 className="font-bold text-lg">{p.title}</h3>
+
+          {/* Bento grid: um mosaico só, a tela real do WhatsApp e a cena do posto
+              como blocos grandes, os 3 jeitos de lançar como blocos menores ao
+              redor — mesmo padrão usado pelas SaaS de maior conversão hoje. */}
+          <div className="mt-12 grid grid-cols-1 lg:grid-cols-6 gap-5">
+            <div className="lg:col-span-2 lg:row-span-2 relative rounded-3xl overflow-hidden border border-border shadow-card min-h-[320px]">
+              <img
+                src="/brand/marketing/chat-recursos-ia.webp"
+                alt="Conversa no WhatsApp mostrando o RevelaCash registrando uma despesa a partir da foto de um cupom fiscal e de um áudio"
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            </div>
+
+            {RECURSOS_LANCAMENTO.map(({ icon: Icon, titulo, desc, exemplo }, i) => (
+              <div key={titulo} className="card lg:col-span-2">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${i === 1 ? 'bg-accent-light' : 'bg-brand-light'}`}>
+                  <Icon className={`w-5 h-5 ${i === 1 ? 'text-accent-dark' : 'text-brand-dark'}`} />
                 </div>
-                <p className="mt-3 text-sm text-muted">{p.desc}</p>
-                <div className="mt-4">{p.visual}</div>
+                <h3 className="mt-3 font-bold">{titulo}</h3>
+                <p className="mt-1.5 text-sm text-muted">{desc}</p>
+                <p className="mt-3 text-xs font-mono bg-surface-alt border border-border rounded-lg px-2.5 py-1.5 text-muted italic">
+                  {exemplo}
+                </p>
               </div>
             ))}
+
+            {/* Cena real: ela está PARADA no posto abastecendo, não dirigindo —
+                a legenda deixa isso explícito de propósito (não dá pra sugerir
+                uso de celular em movimento). */}
+            <div className="lg:col-span-2 relative rounded-3xl overflow-hidden border border-border shadow-card min-h-[240px]">
+              <img
+                src="/brand/marketing/audio-carro.webp"
+                alt="Mulher parada no carro, no posto de gasolina, gravando um áudio no celular para lançar um gasto no RevelaCash"
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/15 to-transparent" />
+              <div className="absolute top-4 right-4 inline-flex items-center gap-1.5 bg-white/95 backdrop-blur rounded-full px-3 py-1.5 shadow-card">
+                <Mic className="w-3.5 h-3.5 text-accent-dark flex-shrink-0" />
+                <span className="text-xs font-mono font-semibold text-ink">Combustível</span>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 p-5 text-white">
+                <p className="font-bold text-lg leading-snug">Direto do posto, sem digitar nada.</p>
+                <p className="text-sm text-white/75 mt-1.5">
+                  Parada pra abastecer, ela grava um áudio contando o gasto — o
+                  RevelaCash organiza sozinho, sem precisar abrir o painel depois.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 grid sm:grid-cols-3 gap-6">
+            <div className="flex items-start gap-2.5 text-sm">
+              <CheckCircle2 className="w-4 h-4 text-income flex-shrink-0 mt-0.5" />
+              Confirmação imediata, sem precisar abrir o painel
+            </div>
+            <div className="flex items-start gap-2.5 text-sm">
+              <CheckCircle2 className="w-4 h-4 text-income flex-shrink-0 mt-0.5" />
+              Reconhece o valor total mesmo em cupons longos
+            </div>
+            <div className="flex items-start gap-2.5 text-sm">
+              <CheckCircle2 className="w-4 h-4 text-income flex-shrink-0 mt-0.5" />
+              Funciona em português falado, do seu jeito
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── Principal problema ── */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold leading-snug">
-              O dinheiro vai saindo aos poucos. No fim do mês, fica difícil saber para onde ele foi.
-            </h2>
-            <p className="mt-4 text-muted">
-              Mercado, combustível, delivery, assinaturas, contas e pequenas compras se
-              acumulam durante o mês. O RevelaCash reúne essas movimentações para você
-              enxergar seus gastos de forma organizada.
-            </p>
-          </div>
-          <div className="card">
-            <p className="text-xs font-bold uppercase tracking-wide text-muted mb-4">Despesas por categoria</p>
-            <div className="space-y-3.5">
-              {CATEGORIAS_EXEMPLO.map((c) => (
-                <div key={c.nome}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium text-ink">{c.nome}</span>
-                    <span className="font-mono text-muted">R$ {c.valor.toLocaleString('pt-BR')}</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-surface-alt overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-brand"
-                      style={{ width: `${(c.valor / c.max) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-faint mt-4">Exemplo ilustrativo — não são dados de clientes reais.</p>
-          </div>
+      {/* ── Marca ── */}
+      <section className="relative z-0 overflow-hidden bg-white py-16 sm:py-20 text-center">
+        <div aria-hidden="true" className="pointer-events-none absolute -z-10 inset-0">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[520px] rounded-full bg-brand/10 blur-[120px]" />
         </div>
+        <img
+          src="/brand/icon-color-1024.webp"
+          alt="Ícone do RevelaCash"
+          className="mx-auto w-24 sm:w-32 drop-shadow-xl"
+        />
+        <h2 className="mt-6 text-2xl sm:text-3xl font-extrabold max-w-xl mx-auto leading-snug">
+          Conversa de um lado. Clareza financeira do outro.
+        </h2>
+        <p className="mt-3 text-muted max-w-md mx-auto">
+          É exatamente isso que o RevelaCash faz, mensagem após mensagem — sem
+          você precisar organizar nada por conta própria.
+        </p>
       </section>
 
       {/* ── Benefício principal ── */}
@@ -354,32 +414,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── WhatsApp ── */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <div className="order-2 lg:order-1 space-y-2">
-            {MENSAGENS_EXEMPLO.map((m) => (
-              <ChatBubbleOut key={m} texto={m} />
-            ))}
-          </div>
-          <div className="order-1 lg:order-2">
-            <h2 className="text-2xl sm:text-3xl font-extrabold leading-snug">
-              Registre seus gastos no momento em que eles acontecem.
-            </h2>
-            <p className="mt-4 text-muted">
-              Em vez de deixar para lembrar depois, envie a movimentação pelo WhatsApp
-              assim que fizer uma compra, pagar uma conta ou receber algum valor.
-            </p>
-            <p className="mt-4 text-muted">
-              O RevelaCash transforma essas mensagens em movimentações organizadas no
-              seu painel.
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* ── Individual, casal e família ── */}
-      <section className="bg-white border-y border-border py-16 sm:py-20">
+      <section className="py-16 sm:py-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-extrabold text-center max-w-2xl mx-auto leading-snug">
             Organize suas finanças sozinho ou junto com quem divide as contas com você.
@@ -398,57 +434,53 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Dashboard ── */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-center">Suas movimentações viram informação.</h2>
-        <p className="text-center text-muted mt-3 max-w-xl mx-auto">
-          O painel reúne os dados registrados para mostrar de forma simples como está
-          sua situação financeira.
-        </p>
+      {/* ── Painel ── */}
+      <section className="bg-white border-y border-border py-16 sm:py-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-center">Suas movimentações viram informação.</h2>
+          <p className="text-center text-muted mt-3 max-w-xl mx-auto">
+            O painel reúne os dados registrados para mostrar de forma simples como está sua situação financeira.
+          </p>
 
-        <div className="mt-12 grid lg:grid-cols-[1.3fr_1fr] gap-8 items-center">
-          <div className="rounded-2xl border border-border bg-white shadow-card p-4 sm:p-5">
-            <div className="grid grid-cols-2 gap-2.5 mb-3">
-              <MockKpi icon={TrendingUp} label="Receitas" value="R$ 8.400" color="#0d9488" />
-              <MockKpi icon={TrendingDown} label="Despesas" value="R$ 5.180" color="#dc2626" />
-              <MockKpi icon={DollarSign} label="Saldo" value="R$ 3.220" color="#2563eb" />
-              <MockKpi icon={Tag} label="Categorias" value="6" color="#512b8d" />
-            </div>
-            <div className="rounded-xl border border-border bg-surface-alt p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-faint mb-2">Transações recentes</p>
-              <div className="space-y-1.5">
-                {[
-                  { d: 'Mercado', v: '− R$ 84,90' },
-                  { d: 'Salário', v: '+ R$ 3.500,00' },
-                  { d: 'Internet', v: '− R$ 129,00' },
-                ].map((t) => (
-                  <div key={t.d} className="flex justify-between text-xs bg-white rounded-lg border border-border px-2.5 py-1.5">
-                    <span className="text-ink">{t.d}</span>
-                    <span className="font-mono text-muted">{t.v}</span>
+          <div className="mt-12 grid lg:grid-cols-[1fr_1.1fr] gap-10 items-center">
+            <div className="order-2 lg:order-1 space-y-4">
+              {CALLOUTS_PAINEL.map(({ icon: Icon, titulo, desc }) => (
+                <div key={titulo} className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-brand-light flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-4 h-4 text-brand-dark" />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <p className="font-semibold text-sm">{titulo}</p>
+                    <p className="text-sm text-muted">{desc}</p>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-
-          <div className="space-y-4">
-            {CALLOUTS_PAINEL.map(({ icon: Icon, titulo, desc }) => (
-              <div key={titulo} className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-brand-light flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-4 h-4 text-brand-dark" />
+            <div className="order-1 lg:order-2 relative">
+              <img
+                src="/brand/marketing/homem-dashboard.webp"
+                alt="Homem sorrindo mostrando o painel financeiro do RevelaCash no celular"
+                width={1400}
+                height={788}
+                loading="lazy"
+                className="w-full h-auto rounded-2xl shadow-modal border border-border"
+              />
+              <div className="absolute -bottom-4 -right-4 sm:-bottom-5 sm:-right-5 bg-white rounded-2xl shadow-modal border border-border px-4 py-3 flex items-center gap-3 max-w-[200px]">
+                <div className="w-9 h-9 rounded-full bg-balance-light flex items-center justify-center flex-shrink-0">
+                  <DollarSign className="w-5 h-5 text-balance-dark" />
                 </div>
                 <div>
-                  <p className="font-semibold text-sm">{titulo}</p>
-                  <p className="text-sm text-muted">{desc}</p>
+                  <p className="text-xs font-semibold text-ink leading-tight">Saldo do mês</p>
+                  <p className="text-sm font-mono font-bold text-balance-dark leading-tight">R$ 3.220,00</p>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ── Diferencial ── */}
-      <section className="bg-white border-y border-border py-16 sm:py-20">
+      <section className="py-16 sm:py-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <h2 className="text-2xl sm:text-3xl font-extrabold text-center leading-snug">
             Menos esforço para registrar.<br className="hidden sm:block" /> Mais clareza para acompanhar.
@@ -478,19 +510,47 @@ export default function LandingPage() {
       </section>
 
       {/* ── Resultado ── */}
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
-        <h2 className="text-2xl sm:text-3xl font-extrabold">Veja seu dinheiro de uma forma mais clara.</h2>
-        <p className="mt-4 text-muted max-w-2xl mx-auto">
-          Quando receitas e despesas estão organizadas, fica mais fácil identificar
-          seus hábitos, perceber excessos e tomar decisões com mais informação.
-        </p>
-        <div className="mt-10 grid sm:grid-cols-2 gap-4 max-w-xl mx-auto text-left">
-          {RESULTADOS.map((r) => (
-            <div key={r} className="flex items-start gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-income flex-shrink-0 mt-0.5" />
-              <span className="text-sm">{r}</span>
+      <section className="bg-white border-y border-border py-16 sm:py-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div className="relative order-2 lg:order-1">
+              <img
+                src="/brand/marketing/executiva-tablet.webp"
+                alt="Mulher analisando informações organizadas em um tablet"
+                width={1400}
+                height={788}
+                loading="lazy"
+                className="w-full h-auto rounded-2xl shadow-modal border border-border"
+              />
+              <div className="absolute -top-4 -left-4 sm:-top-5 sm:-left-5 bg-white rounded-2xl shadow-modal border border-border px-4 py-3 flex items-center gap-3 max-w-[220px]">
+                <div className="w-9 h-9 rounded-full bg-brand-light flex items-center justify-center flex-shrink-0">
+                  <Tag className="w-5 h-5 text-brand-dark" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-ink leading-tight">Maior gasto do mês</p>
+                  <p className="text-sm font-bold text-brand-dark leading-tight">Moradia</p>
+                </div>
+              </div>
             </div>
-          ))}
+            <div className="order-1 lg:order-2">
+              <h2 className="text-2xl sm:text-3xl font-extrabold leading-snug">
+                Informação organizada muda a forma como você decide.
+              </h2>
+              <p className="mt-4 text-muted">
+                Quando receitas e despesas estão organizadas, fica mais fácil
+                identificar seus hábitos, perceber excessos e tomar decisões
+                com mais informação.
+              </p>
+              <div className="mt-6 grid gap-3">
+                {RESULTADOS.map((r) => (
+                  <div key={r} className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-income flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -500,7 +560,7 @@ export default function LandingPage() {
           src="/brand/icon-white-1024.webp"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none select-none absolute -z-0 -bottom-16 -left-16 w-[420px] max-w-[55vw] opacity-[0.05]"
+          className="pointer-events-none select-none absolute -z-0 -bottom-16 -right-16 w-[480px] max-w-[60vw] opacity-[0.08]"
         />
         <div className="relative max-w-2xl mx-auto px-4 sm:px-6 text-center">
           <h2 className="text-2xl sm:text-3xl font-extrabold">Um único plano para organizar as finanças da sua casa.</h2>
@@ -532,6 +592,20 @@ export default function LandingPage() {
             </button>
             <p className="text-xs text-faint mt-3">Sem cartão de crédito no cadastro. Cancele quando quiser.</p>
           </div>
+
+          <div className="mt-10 grid sm:grid-cols-3 gap-4 text-left">
+            {CONFIANCA.map(({ icon: Icon, titulo, desc }) => (
+              <div key={titulo} className="flex items-start gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{titulo}</p>
+                  <p className="text-xs text-white/60">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -553,9 +627,15 @@ export default function LandingPage() {
 
       {/* ── CTA final ── */}
       <section className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
+        <img
+          src="/brand/icon-color-1024.webp"
+          alt=""
+          aria-hidden="true"
+          className="mx-auto w-14 sm:w-16 mb-5 drop-shadow-lg"
+        />
         <h2 className="text-2xl sm:text-3xl font-extrabold">Comece a entender para onde seu dinheiro está indo.</h2>
         <p className="mt-3 text-muted">
-          Registre suas próximas movimentações pelo WhatsApp e acompanhe tudo organizado no RevelaCash.
+          Digite, fale ou fotografe a próxima movimentação no WhatsApp e acompanhe tudo organizado no RevelaCash.
         </p>
         <button
           type="button"
@@ -564,7 +644,7 @@ export default function LandingPage() {
         >
           Começar grátis <ArrowRight className="w-4 h-4" />
         </button>
-        <p className="text-xs text-faint mt-3">7 dias grátis</p>
+        <p className="text-xs text-faint mt-3">7 dias grátis · sem cartão de crédito</p>
       </section>
 
       {/* ── Entrar / criar conta — modal inline, sem sair da landing ── */}
@@ -612,20 +692,6 @@ export default function LandingPage() {
   );
 }
 
-function MockKpi({ icon: Icon, label, value, color }) {
-  return (
-    <div className="rounded-xl border border-border bg-white p-3">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <div className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: color }}>
-          <Icon className="w-3 h-3 text-white" />
-        </div>
-        <span className="text-[9.5px] font-bold uppercase tracking-wide text-muted">{label}</span>
-      </div>
-      <p className="font-mono text-base font-bold" style={{ color }}>{value}</p>
-    </div>
-  );
-}
-
 /** Bolha de mensagem enviada pelo usuário no WhatsApp — só o lado de fora (saída). */
 function ChatBubbleOut({ texto }) {
   return (
@@ -633,19 +699,6 @@ function ChatBubbleOut({ texto }) {
       <div className="bg-brand text-white rounded-2xl rounded-tr-sm px-3.5 py-2 text-sm max-w-[85%]">
         {texto}
       </div>
-    </div>
-  );
-}
-
-/** Cartão de movimentação já registrada, como aparece no painel. */
-function MovimentacaoCard({ tipo, valor, categoria, quando }) {
-  return (
-    <div className="rounded-xl border border-border bg-white p-3 text-sm">
-      <div className="flex justify-between">
-        <span className="font-semibold text-ink">{tipo}</span>
-        <span className="font-mono font-bold text-expense">{valor}</span>
-      </div>
-      <p className="text-xs text-muted mt-0.5">{categoria} · {quando}</p>
     </div>
   );
 }
