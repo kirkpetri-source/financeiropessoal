@@ -26,7 +26,7 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 280 testes (vitest)
+npm test                 # 320 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed              # só categorias e formas de pagamento padrão
@@ -140,6 +140,15 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     filtro (dezenas de documentos, não milhares), prefira `where` sozinho +
     ordenar em memória a criar mais um índice — `adminAuditService.js` é o
     exemplo.
+13. **Mudança em CORS/CSP nunca é "testada" só com `curl`.** `curl` não faz o
+    preflight `OPTIONS` que o navegador dispara sozinho antes de mandar um
+    header novo — um `allowedHeaders` desatualizado passa limpo em qualquer
+    teste de terminal e quebra 100% dos logins reais. Depois de mexer em
+    `app.js` (CORS) ou `vercel.json` (CSP), simular o preflight de verdade
+    (`curl -X OPTIONS ... -H "Access-Control-Request-Headers: ..."`) e abrir
+    o site real no navegador (`agent-browser`, sessão nova) antes de dar por
+    resolvido — foi assim que o rollout do App Check em 10/08/2026 quebrou o
+    login em produção duas vezes seguidas antes de alguém notar.
 
 ## Armadilhas já pagas (não repetir)
 
@@ -198,6 +207,79 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   em `state={{ from: location }}`; `AuthForm` lê `location.state.from` no
   login (não no cadastro — conta nova não tem "de onde voltar" que faça
   sentido).
+- **Gemini transcreve valor falado "quatro e cinquenta" como dois números
+  soltos ("4 e 50"), não como "4,50".** O parser por regra pega sempre o
+  ÚLTIMO valor numérico da frase — um áudio de R$4,50 virava lançamento de
+  R$50. Achado com mensagem real do Kirk. Corrigido no PROMPT do
+  `midiaParserService.transcreverAudio`, instruindo a IA a já escrever o
+  valor falado como número único com vírgula.
+- **O parser por regra só extrai UM valor por mensagem.** "gastei 30 no
+  mercado e 80 de gasolina" virava um único lançamento de R$80 em Mercado —
+  pegava o último número e descartava o resto em silêncio. Corrigido:
+  `financialParser.parseFinancialMessage` devolve `null` (cai pra IA, que já
+  sabia separar vários lançamentos numa frase) sempre que a mensagem tem
+  mais de um valor numérico plausível.
+- **`CATEGORY_MAP` do parser é uma lista fechada de palavras-chave — nome de
+  estabelecimento real fora da lista cai em "Outros" em silêncio.** Um cupom
+  de churrascaria caiu em Outros porque "churrascaria" não estava mapeada
+  pra Alimentação (só "restaurante", "pizza" etc. estavam). Vale revisar essa
+  lista sempre que aparecer uma categorização estranha.
+- **IntersectionObserver + screenshot de página inteira (`--full`) dá falso
+  positivo de "seção em branco".** Testado um efeito de reveal-on-scroll e
+  depois `loading="lazy"` em imagens — a captura de página inteira não
+  dispara scroll de verdade, então o observer/lazy-load nunca ativa e a
+  seção aparece vazia na screenshot mesmo funcionando perfeitamente pra um
+  usuário rolando de verdade. Sempre confirmar rolando de fato
+  (`agent-browser scroll` + screenshot por posição) antes de concluir que é
+  bug.
+- **Legenda de foto de marketing precisa ser conferida contra a cena real da
+  imagem, não só contra a ideia da feature.** Uma foto de lançamento por
+  áudio mostrava a pessoa parada num posto de gasolina, mas o texto dizia
+  "até dirigindo, sem tirar as mãos do volante" — sugeria usar celular em
+  movimento, o que a própria imagem não mostra e que seria um problema de
+  segurança/legal se mostrasse. Corrigido pra descrever a cena de verdade
+  (parada, abastecendo).
+- **Firebase App Check não injeta o header sozinho numa API Express
+  própria.** `getToken()`/anexar `X-Firebase-Appcheck` só acontece
+  automaticamente em chamadas feitas por outros SDKs do Firebase (Firestore,
+  Functions callable) — numa API REST própria (como `services/api.js` deste
+  projeto) o interceptor precisa buscar o token e anexar à mão, do mesmo
+  jeito que já faz com o `Authorization: Bearer`. Esquecer isso não dá erro
+  nenhum até a exigência (`APP_CHECK_ENFORCE`) ser ligada no backend.
+- **CORS: header novo no frontend (`X-Firebase-Appcheck`) precisa entrar em
+  `allowedHeaders` no `app.js`, senão o preflight do navegador recusa a
+  chamada inteira antes dela sair** — mesmo com a exigência desligada no
+  backend, porque o frontend já manda o header sempre que `appCheckInstance`
+  existe. Foi o que derrubou o login em produção por alguns minutos em
+  10/08/2026; só apareceu no `curl` depois, nunca durante os testes com
+  `curl` sem preflight simulado (ver regra 13).
+- **CSP do reCAPTCHA v3 precisa de `www.google.com`/`www.gstatic.com` em
+  `script-src` E TAMBÉM em `connect-src`** (e `www.google.com` em
+  `frame-src`) — o script não só carrega de lá, ele troca dados com o Google
+  o tempo inteiro enquanto funciona (`api2/reload`, `api2/clr`, `api2/bcn`).
+  Faltar só o `connect-src` não dá erro nenhum na maioria das visitas (o
+  navegador já tem cache/sessão), só aparece limpo em aba anônima/sessão
+  nova — testar sempre em sessão sem cache antes de dar por resolvido.
+- **Registrar reCAPTCHA v3 no Firebase Console → App Check pede a chave
+  SECRETA do reCAPTCHA, não a site key.** Contraintuitivo: o site key (a
+  pública, usada no frontend) é o que se manda pro `VITE_RECAPTCHA_SITE_KEY`
+  e pro provider do SDK; mas o campo de registro do app no Console pede a
+  outra chave (a que o backend do Firebase usa pra validar a pontuação
+  direto com o Google). Confundir as duas dá erro `App not registered`
+  mesmo com o app "registrado" na lista.
+- **reCAPTCHA v3 pontua navegador automatizado/headless como bot — de
+  propósito.** Testar o fluxo de App Check com `agent-browser` no modo
+  padrão (headless) sempre falha com `App attestation failed`
+  (`PERMISSION_DENIED`), mesmo com tudo configurado certo; é o reCAPTCHA
+  funcionando como devia. Pra confirmar que a configuração está correta, usa
+  `--headed` (navegador visível) — só assim a pontuação sai alta o
+  suficiente pra passar, do mesmo jeito que passaria pra um usuário real.
+- **Firebase CLI não tem comando pra App Check** (`firebase appcheck ...`
+  não existe nesta versão) **nem pra gerar chave de reCAPTCHA** — os dois
+  passos (criar a chave em `google.com/recaptcha/admin` e registrar o app em
+  Firebase Console → App Check) são cliques manuais mesmo, sem caminho de
+  CLI/API. É uma das poucas exceções genuínas à regra 8: exige a conta
+  Google do Kirk, não tem script que substitua.
 
 ## Modelo de dados
 
@@ -235,19 +317,32 @@ O painel GESTOR (`/plataforma`) é outra coisa: login próprio
 (`kirkdouglas_19`, ver regra 11), sem household, sem relação com nenhuma
 família — não confundir com o login de membro acima.
 
-## Estado (08/08/2026)
+## Estado (10/08/2026)
 
-Fases 0 a 5.1 e a Fase 4 inteira (orçamento, contas recorrentes, fatura de
-cartão, áudio/foto por IA) no ar e verificadas em produção. Cobrança já em
+Fases 0 a 5.1 e a Fase 4 inteira no ar e verificadas em produção. Cobrança em
 credencial de **produção**. Painel gestor separado em `/plataforma`, login
-próprio, todos os botões testados um a um contra família descartável.
+próprio. Domínio real em uso pelos clientes: **`revelacash.com.br`**.
+
+**Auditoria de segurança completa + escalada** (sessão de 09-10/08/2026):
+isolamento entre famílias corrigido num ponto real (categoria/forma de
+pagamento de outra família aceitas sem checar posse), `/auth` validado,
+CORS restrito, headers de segurança (CSP/HSTS) no `vercel.json`, teto diário
+de IA por família (60/dia, `limiteIAService.js`), rate limit por família
+além do global (40 msg/min, `limiteMensagensService.js`), `npm audit` (23 de
+39 vulnerabilidades corrigidas sem quebra), CI no GitHub Actions, e
+**Firebase App Check** ativo e exigido (`APP_CHECK_ENFORCE=true`) — depois
+de um rollout com dois incidentes reais de produção (CORS e CSP faltando o
+header/origem novos), ambos corrigidos e verificados em sessão anônima. Ver
+as novas entradas em "Armadilhas já pagas" acima antes de mexer em App
+Check/CORS/CSP de novo. Detalhe completo em **`ESTADO.md`**.
+
+16 artes de Instagram (2 semanas, apresentação do produto + diferenciais
+familiares) em `C:\Users\Predator\Documents\RevelaCash\instagram-lancamento`.
 
 Próximo passo em aberto, o Kirk decide:
 1. Ampliar o parser (`Lanche 38,00 crédito` cai na IA por decisão consciente)
 2. Convite de membro com login próprio (hoje um segundo login vira outra família)
 3. Tutorial de primeiro uso (ele pediu pra deixar por último)
-4. Testar áudio/foto com mensagem real de WhatsApp (nunca exercitado contra
-   o servidor Evolution de verdade)
 
 O detalhe de tudo — sessão por sessão, o que foi verificado, o que não foi, e
 as armadilhas que já custaram horas — está em **`ESTADO.md`**.

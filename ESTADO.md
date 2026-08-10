@@ -1,6 +1,282 @@
-# Estado do projeto — 08/08/2026 (Fase 4 completa + painel gestor separado, testado botão a botão)
+# Estado do projeto — 10/08/2026 (auditoria de segurança + escalada + App Check no ar)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
+
+## Sessão de 09-10/08/2026 — auditoria de segurança, escalada e Firebase App Check
+
+Pedido inicial do Kirk: varredura de segurança de ponta a ponta no sistema em
+produção. Depois de corrigido, pediu também os 4 pontos de "pronto para
+escalar" e artes de Instagram pra divulgação — sessão longa, em blocos.
+
+### Bloco 1 — auditoria de segurança (achados e correções)
+
+Três agentes de exploração em paralelo (backend, frontend, config/segredos).
+Achados **bons confirmados**: Firestore com `allow read, write: if false`
+(cliente nunca acessa direto), isolamento de tenant já testado, HMAC+anti-replay
+no webhook do Mercado Pago, segredos só no Secret Manager, nenhum
+`dangerouslySetInnerHTML`/XSS, nenhum arquivo sensível no git.
+
+**Achados reais corrigidos:**
+- `categoryId`/`paymentMethodId` aceitos sem checar se são da própria família
+  em `transactionService.js`/`recurringBillService.js`/`budgetService.js` —
+  um ID Firestore de outra família (se descoberto por outro canal) vazava
+  nome/cor de categoria/forma de pagamento alheia num lançamento. Corrigido
+  com `dados.buscarDoc()` (já existia em `escopo.js`) antes de gravar.
+- `/auth/register` e `/auth/me` sem validação de schema — os `zod` schemas
+  existiam em `validators/auth.js` mas nunca eram importados em rota
+  nenhuma, e estavam desatualizados (pediam senha, que essas rotas nunca
+  recebem). Reescritos e conectados.
+- CORS aberto (`*`) por padrão quando `ALLOWED_ORIGINS` não estava setado.
+  Restrito à lista fixa de domínios de produção.
+- `whatsappLogService.updateLog` atualizava por ID cru, sem checar
+  `householdId` — seguro na prática (só chamado internamente com ID recém-
+  criado), mas sem barreira própria. Migrado para `dados.atualizar()`.
+- Headers de segurança (CSP, HSTS, X-Frame-Options, Referrer-Policy,
+  Permissions-Policy) ausentes no `vercel.json` — adicionados.
+- `middlewares/auth.js` e `middlewares/webhookAuth.js` sem teste unitário
+  dedicado — `auth.js` precisou virar fábrica (`criarAuthMiddleware`) pro
+  teste não arrastar o Firebase Admin real, mesmo padrão de `escopo.js`.
+
+**Achado crítico ANTES de qualquer deploy**: o plano original ia restringir o
+CORS só a `financeiropessoal-tau.vercel.app`. O domínio real usado pelos
+clientes ativos é **`revelacash.com.br`** (confirmado no `ESTADO.md` da
+sessão de 08/08) — se tivesse ido pro ar como planejado, o primeiro deploy
+trancava o Kirk e a Raquel fora do próprio sistema. Corrigido antes do
+primeiro `firebase deploy`.
+
+Testado: suíte completa, build do frontend servido localmente com os mesmos
+headers do `vercel.json` (script `serve-csp.js` no scratchpad), aberto no
+navegador de verdade — zero erro de console, zero violação de CSP, chamada
+real ao Firebase Auth confirmada saindo. Deploy feito e reverificado ao vivo
+(`curl` nos headers de `revelacash.com.br`, CORS preflight na origem real e
+numa origem estranha).
+
+### Bloco 2 — teto de IA por família
+
+Pedido à parte do Kirk, depois de eu explicar o risco (número comprometido
+ou automação gerando chamada de IA sem limite, custeada pelo projeto — a
+assinatura é fixa, não por uso; e como a chave Gemini é uma só, uma família
+sozinha podia derrubar a IA de todo mundo estourando cota).
+
+`limiteIAService.js` — `verificarLimiteDeIA(householdId)`, transação atômica
+no Firestore, contador em `whatsappConfigs/{householdId}.iaContagemDiaria` +
+`.iaContagemData` (reseta sozinho quando a data muda). Padrão 60/dia,
+ajustável via `LIMITE_DIARIO_IA`. Plugado nos 3 pontos reais de chamada ao
+Gemini em `lancamentoPorMensagem.js` (texto via IA, transcrição de áudio,
+leitura de cupom) — mensagem que o parser por regra resolve não conta nada.
+
+### Bloco 3 — os 4 pontos de escalada
+
+- **`npm audit`**: 23 de 39 vulnerabilidades corrigidas nos dois projetos
+  sem `--force` (sem breaking change). As 16 restantes exigiriam upgrade
+  major (`firebase-admin` 14, `vite` 8→rolldown) — não forçado; confirmado
+  que o backend não usa `@google-cloud/storage` (caminho vulnerável morto) e
+  que o do frontend é só do dev server do Vite, não do bundle publicado.
+- **Rate limit por família**: `limiteMensagensService.js`, 40 mensagens/min
+  por família, em memória, silencioso (sem resposta no WhatsApp — não
+  alimentar rajada com mais tráfego). Independente do limite global de
+  120/min do webhook (que é por instância/compartilhado entre famílias).
+- **CI mínimo**: `.github/workflows/ci.yml` — testes do backend + build do
+  frontend em todo push/PR pra `main`. Confirmado rodando com sucesso via
+  API pública do GitHub depois do primeiro push.
+- **Firebase App Check**: ver bloco 4, foi a parte que deu trabalho de verdade.
+
+### Bloco 4 — Firebase App Check: rollout com dois incidentes reais em produção
+
+App Check confirma que quem chama a API é o painel publicado, não um script
+direto no endpoint com um token de usuário vazado por outro caminho.
+Implementado em duas frentes desde o início (`middlewares/appCheck.js` no
+backend, `initializeAppCheck` em `firebase.js` no frontend), desligado por
+padrão (`APP_CHECK_ENFORCE`/`VITE_RECAPTCHA_SITE_KEY`) até existir o site
+key do reCAPTCHA v3 — que só o Kirk pode gerar (conta Google, sem CLI/API
+pra isso; nem o Firebase CLI tem comando de App Check nesta versão).
+
+Passo a passo dado ao Kirk: gerar chave reCAPTCHA v3 em
+`google.com/recaptcha/admin` (domínios `revelacash.com.br`/`www.`), registrar
+o app no Firebase Console → App Check. Ele mandou a site key rápido demais —
+faltava eu ter checado meu próprio código antes de considerar pronto:
+
+1. **Faltava o interceptor enviar o token.** App Check só anexa o header
+   sozinho em chamadas de outros SDKs do Firebase, não numa API Express
+   própria. Sem isso, ligar a exigência quebraria a API inteira na hora.
+   Corrigido (`api.js` busca o token via `getToken()`, mesmo padrão do
+   `Authorization: Bearer`) **antes** de qualquer deploy com enforcement.
+2. Registro no Firebase Console pediu a **chave secreta** do reCAPTCHA, não
+   a site key — eu tinha dito ao Kirk que só precisaríamos da site key,
+   errado. Corrigido depois que ele mandou print da tela mostrando o campo.
+3. Depois de registrado, teste automatizado (`agent-browser` headless) dava
+   `App attestation failed` — não era bug, era o reCAPTCHA pontuando o
+   navegador automatizado como bot corretamente. Confirmado testando com
+   `--headed`: 200 OK.
+4. **Liguei `APP_CHECK_ENFORCE=true` e testei com curl (sem preflight) —
+   passou.** Deploy feito. **O Kirk reportou login quebrado em produção**:
+   `curl` não simula o preflight `OPTIONS` que o navegador dispara sozinho,
+   e `X-Firebase-Appcheck` não estava em `allowedHeaders` do CORS. Corrigido
+   e deployado em minutos, confirmado com preflight simulado de verdade
+   desta vez.
+5. **Segundo aviso do Kirk, em aba anônima**: CSP bloqueando
+   `recaptcha__pt_br.js` chamando `www.google.com/recaptcha/api2/clr`. Tinha
+   liberado `google.com`/`gstatic.com` só em `script-src`/`frame-src`, não
+   em `connect-src` — o script não só carrega de lá, troca dados o tempo
+   todo. Corrigido, e desta vez testado numa sessão **nova e isolada**
+   (`agent-browser --session teste-anonimo`) antes de avisar o Kirk: console
+   limpo, todas as chamadas de reCAPTCHA/App Check em 200.
+
+As 4 correções deste bloco (interceptor, CORS, CSP×2) e as armadilhas
+específicas estão documentadas no `CLAUDE.md` ("Armadilhas já pagas") —
+consultar antes de mexer em App Check, CORS ou CSP de novo.
+
+Também corrigido nesta rodada: `vercel.live` liberado no CSP (widget de
+feedback do próprio Vercel, cosmético, pedido do Kirk).
+
+### Bloco 5 — nomes reais removidos das artes de marketing
+
+O Kirk apontou que "Kirk" e "Raquel" apareciam em 3 das artes de Instagram
+(exemplos ilustrativos de membros da família) e no texto do relatório —
+trocados por papéis genéricos (Pai/Mãe/Filho/Avó) em todos os lugares,
+artes re-renderizadas, relatório republicado.
+
+### Bloco 6 — varredura final de confiança
+
+Depois de tudo no ar: suíte completa (320 testes), build do frontend, CI
+verde nos últimos 4 commits (API pública do GitHub), bateria de checagens
+de saúde do backend via `curl` (health, CORS preflight em origem real e
+estranha, App Check com token real, webhooks), e varredura visual em 5
+páginas públicas de produção (`/`, `/login`, `/termos`, `/privacidade`,
+`/plataforma`) em sessão nova do navegador — console limpo em todas.
+
+**Não verificado nesta sessão** (não tenho como logar com credencial real
+do Kirk): o fluxo autenticado completo (dashboard, criar lançamento) com
+App Check habilitado. Testado de forma equivalente com um token de App
+Check real extraído de uma sessão de navegador de verdade, direto contra o
+backend via `curl` — comportamento correto confirmado (passa do App Check,
+para na autenticação por falta de login). Vale o Kirk confirmar visualmente
+o dashboard/lançamento numa próxima sessão dele.
+
+Ferramentas de teste ponta a ponta com conta descartável já existem
+(`tools/testar-assinatura-ponta-a-ponta.js`, `tools/testar-canal-ponta-a-ponta.js`)
+mas exigem credencial de **teste** do Mercado Pago (`TEST-...`), e a
+credencial ativa hoje é a de produção — não rodados nesta sessão por esse
+motivo, não por falta de tentativa.
+
+## Sessão de 08/08/2026 (parte 6) — áudio/foto testados com mensagem real, comando conversacional, landing page reescrita
+
+Primeira vez que o Kirk usou áudio e foto de cupom com mensagens reais dele
+mesmo no WhatsApp (a parte 4/5 tinham corrigido o modelo do Gemini, mas
+nunca com uma mensagem real do dia a dia). Achou 2 bugs de verdade na hora.
+
+**Bug 1 — cupom de churrascaria caiu em "Outros".** Confirmado direto no
+Firestore: `description: "decio churrascaria"`, `categoryId:
+default-expense-outros`. Causa: `CATEGORY_MAP` (financialParser.js) tinha
+"restaurante", "pizza", "hamburguer" etc. em Alimentação, mas não
+"churrascaria" — nem sinônimos comuns (lanchonete, padaria, açougue).
+Corrigido ampliando a lista. É uma lacuna estrutural: qualquer estabelecimento
+fora da lista cai em Outros em silêncio, sem erro nenhum.
+
+**Bug 2 — áudio "gastei trident 4,50" virou R$ 50,00.** Investigado direto
+no Firestore (não por suposição): a transação real tinha `description: "4 e
+com Trident."`, `amount: 50`. O Gemini transcreveu o valor falado
+("quatro e cinquenta") como dois números soltos — "4 e 50" — em vez de
+"4,50". O parser por regra (`detectAmount`) varre a frase de trás pra frente
+e pega o PRIMEIRO valor válido que encontra (ou seja, o ÚLTIMO da frase),
+descartando o "4" em silêncio. Corrigido no PROMPT de transcrição
+(`midiaParserService.PROMPT_AUDIO`), instruindo a IA a escrever valor falado
+em reais-e-centavos como um número só com vírgula, nunca "X e Y" separado.
+
+**Bug 3, achado testando eu mesmo (não reportado pelo Kirk) — mensagem com
+2 lançamentos virava 1 errado.** "gastei 30 reais no mercado e 80 reais de
+gasolina" virava um único lançamento de R$80 em Mercado, pelo mesmo motivo
+do bug 2: o parser por regra só sabe extrair UM valor. Como a IA
+(`aiParserService`) já sabia separar vários lançamentos numa frase desde o
+início (só nunca era chamada porque o parser por regra "tinha sucesso"
+primeiro, mesmo errado), a correção foi: `parseFinancialMessage` devolve
+`null` sempre que a mensagem tem mais de um valor numérico plausível,
+deixando a IA assumir. Confirmado com chamada real ao Gemini: 2 e depois 3-4
+lançamentos na mesma frase, todos separados corretamente.
+
+**Comando conversacional pelo WhatsApp — pedido do Kirk.** Antes só existia
+o comando exato "apagar ultimo". Adicionado:
+- Sinônimos naturais que apagam o último lançamento quando são a mensagem
+  INTEIRA (não substring, pra não disparar sozinho no meio de uma frase
+  qualquer): `errado`, `apaga`, `apagar`, `cancela`, `cancelar`, `errou`,
+  `ta errado`, além do "apagar ultimo"/"desfazer" que já existia.
+- `categoria <nome>` (ou "mudar categoria X"/"trocar categoria para X") —
+  muda a categoria do último lançamento. Casa por nome exato
+  (sem acento/maiúscula) contra as categorias já cadastradas do mesmo tipo;
+  se não achar, avisa em vez de adivinhar.
+- Os dois passaram a respeitar o bloqueio de assinatura vencida (regra 6) —
+  gap que já existia até no "apagar ultimo" original: comando de escrita via
+  WhatsApp não checava `bloqueioPorAssinatura`.
+- Não é IA entendendo conversa livre — de propósito. Frase livre por IA
+  arriscaria apagar lançamento por ambiguidade ("nossa, que dia errado" não
+  pode acionar nada). Reconhecimento de frase curta e exata, mesmo padrão já
+  usado pelos outros comandos.
+
+284 testes (280 → 284, casos de churrascaria/padaria/açougue e valor
+decimal colado vs. separado). `firebase deploy --only functions:api` feito
+duas vezes nesta sessão (uma por bloco de correção).
+
+**Landing page reescrita do zero — pedido do Kirk.** Ele entregou a
+identidade visual definitiva (arquivos já conhecidos da sessão de marca,
+07-08/08) e 5 fotos novas de produto (mockups de app gerados, não fotos de
+cliente real) em `C:\Users\Predator\Documents\Revela Cash Identidade
+Visual`. Processadas com Pillow → WebP (55-95 KB cada) em
+`frontend/public/brand/marketing/`: mesa cheia de contas + celular com o
+painel, homem apontando pro painel, mulher parada no carro no posto gravando
+áudio, mulher executiva com tablet, e o print real do WhatsApp mostrando
+cupom + áudio sendo processados.
+
+Primeira versão: estrutura toda reescrita (hero, "3 jeitos de lançar",
+benefícios, individual/casal/família, painel, diferencial, resultado,
+preço, FAQ com 2 perguntas novas sobre áudio/foto e segurança de dados),
+copy focada nos 2 recursos de IA como diferencial. Testei com um efeito de
+"revelar ao rolar" (IntersectionObserver) que **quebrou** — rolando de
+verdade a página ficava em branco por um bom trecho antes das seções
+aparecerem, timing do observer não confiável. Removido antes de qualquer
+publicação (nunca foi ao ar quebrado).
+
+Feedback do Kirk pediu mais: "a logo só aparece colorida no topo, o resto é
+cortado ou com transparência"; "expanda as imagens, seja designer avançado,
+crie elementos"; "pesquise landing pages de alta conversão e copie com
+nossas imagens"; e um alerta de segurança — a foto da mulher no carro tinha
+legenda "até dirigindo, sem tirar as mãos do volante", sugerindo uso de
+celular em movimento, quando a cena real é ela PARADA no posto (dá pra ver a
+bomba de combustível atrás dela).
+
+Segunda passada:
+- Pesquisado (WebSearch) padrões de landing page de alta conversão antes de
+  aplicar: bento grid (67% das SaaS top do ProductHunt em 2026), produto/tela
+  real no hero converte mais que ilustração, gradiente sutil pra
+  profundidade.
+- Ícone 3D colorido da marca (`icon-color-1024.webp` — já processado com
+  fundo removido numa sessão anterior) usado em tamanho real, opacidade
+  quase total, em 4 pontos: saindo de trás da foto no hero, numa seção nova
+  só de marca ("Conversa de um lado. Clareza financeira do outro."), no CTA
+  final, e mais forte na seção de preço. Antes era só uma marca d'água a 10%
+  de opacidade, quase invisível.
+- "Três jeitos de lançar" virou bento grid: tela real do WhatsApp em bloco
+  grande (2 colunas x 2 linhas), os 3 cards de recurso ao redor, foto do
+  posto como bloco largo com legenda sobreposta (gradiente escuro por cima
+  da foto, texto branco).
+- Legenda do carro corrigida: "Direto do posto, sem digitar nada — parada
+  pra abastecer, ela grava um áudio". Deixa explícito que está parada, sem
+  qualquer menção a dirigir.
+- Fotos do painel e do resultado ganharam chip flutuante (mesmo padrão do
+  hero: cartão branco com ícone + dado, tipo "Saldo do mês — R$ 3.220,00"),
+  em vez de retângulo simples com borda.
+
+Testado com `npm run build` + `agent-browser` a cada iteração (desktop,
+mobile 390px, CTA abrindo o modal de cadastro, FAQ abrindo/fechando,
+console sem erro) antes de mostrar pro Kirk. Descoberta de metodologia:
+`agent-browser screenshot --full` não dispara scroll de verdade, então
+`loading="lazy"` e observers baseados em IntersectionObserver aparecem como
+"quebrados" (imagem em branco) na captura de página inteira mesmo
+funcionando perfeitamente pra um usuário rolando — sempre confirmar rolando
+de fato antes de reportar bug de imagem/animação.
+
+Aprovado pelo Kirk e publicado: `git push` → Vercel (deploy automático),
+confirmado ao vivo em `revelacash.com.br` com `agent-browser`, idêntico ao
+testado local.
 
 ## Sessão de 08/08/2026 (parte 5) — bugs reais achados testando de verdade, painel gestor virou portal separado
 
@@ -233,11 +509,15 @@ abaixo; isto é só o índice do que ainda não está feito.
 - [x] Mockup final do logo — recebido e implementado 08/08/2026 (ver sessão
       abaixo). Era só wordmark; agora tem ícone (balão de chat + lupa com
       gráfico, metade roxa/metade verde) em várias variantes
-- [ ] Fotos reais para a landing (banco licenciado ou próprias — hoje são
-      recriações com os tokens do sistema, não screenshot nem foto real)
+- [x] Fotos reais para a landing — feito 08/08/2026 (parte 6). O Kirk
+      forneceu 5 mockups de produto (não são fotos de cliente real, sem
+      depoimento nem nome atribuído), processados pra WebP e usados em bento
+      grid na landing nova, aprovada e publicada
 - [ ] Aplicar para **Meta Verified**, se quiser o canal WhatsApp oficial
       (leva de 2 a 8 semanas)
-- [ ] Revisar a landing nova em produção e aprovar, ou pedir ajuste
+- [x] Revisar a landing nova em produção e aprovar — feito 08/08/2026 (parte
+      6), duas passadas (primeira versão + ajustes de design pedidos pelo
+      Kirk), publicada em `revelacash.com.br`
 - [x] Painel gestor virou portal separado (`/plataforma`, login próprio
       usuário/senha) e teve todos os 8 botões testados um a um — feito
       08/08/2026 (parte 5). Credenciais: usuário `kirkdouglas_19`, senha
@@ -253,22 +533,20 @@ abaixo; isto é só o índice do que ainda não está feito.
 2. Convite de membro com login próprio (hoje um 2º login vira outra família)
 3. Tutorial de primeiro uso (Kirk pediu pra deixar por último; o tour
    guiado interativo já existe — isto seria material escrito/vídeo à parte)
-4. Testar áudio e foto de cupom com uma mensagem de WhatsApp de verdade —
-   `baixarMidia` foi escrito conforme a documentação da Evolution mas nunca
-   exercitado contra o servidor real (ver dívidas). O modelo Gemini e o
-   fluxo de transcrição/OCR já foram corrigidos e confirmados funcionando
-   (parte 5) — só falta a mensagem real do WhatsApp pra fechar o ciclo
+
+~~4. Testar áudio e foto de cupom com uma mensagem de WhatsApp de verdade~~ —
+feito 08/08/2026 (parte 6), com mensagem real do próprio Kirk. `baixarMidia`
+funcionou (download da mídia sem erro); 2 bugs reais achados e corrigidos na
+interpretação (valor do áudio virando 10x maior, categoria de estabelecimento
+não mapeada) — ver detalhe na sessão parte 6.
 
 **Dívidas técnicas conhecidas, sem prioridade definida** (detalhe no fim do
 arquivo, seção "Dívidas conhecidas"): README desatualizado, pasta `backend/`
 morta, rate limit só em memória, `cloudApiProvider.js` nunca testado contra
-API real, `evolutionProvider.baixarMidia` (áudio/foto) idem — download da
-mídia em si já confirmado funcionando em produção (log sem erro nessa etapa),
-só a interpretação pelo Gemini que ainda não rodou com mensagem real — bundle
-do frontend ~1,3 MB sem code splitting, zero testes automatizados no
-frontend, `/plataforma` não pagina a lista de famílias (ok para dezenas,
-dói em milhares), uma instância Evolution por família (limite de VPS não
-medido).
+API real — bundle do frontend ~1,3 MB sem code splitting, zero testes
+automatizados no frontend, `/plataforma` não pagina a lista de famílias (ok
+para dezenas, dói em milhares), uma instância Evolution por família (limite
+de VPS não medido).
 
 ## Sessão de 07/08/2026 — marca, redesign visual e landing page
 
@@ -681,12 +959,18 @@ Resolvidos nesta sessão (não repetir): telefone do Johnny conferido (campo
 
 - `README.md` descreve stack que não existe mais (PostgreSQL/Prisma)
 - Pasta `backend/` é legado morto
-- Rate limit é em memória, portanto por instância — segura flood trivial,
-  não ataque distribuído. App Check resolveria
+- ~~Rate limit é em memória, portanto por instância — segura flood trivial,
+  não ataque distribuído. App Check resolveria~~ **App Check no ar desde
+  10/08/2026** (`APP_CHECK_ENFORCE=true`, ver sessão 09-10/08). Resolve o
+  cenário de script direto contra o endpoint. O rate limit por IP em si
+  continua em memória (limitação aceita, documentada no próprio código) —
+  ganhou um complemento por família (`limiteMensagensService.js`, 40/min),
+  mas ainda não é distribuído entre instâncias
 - `cloudApiProvider.js` está escrito conforme a documentação mas **nunca foi
   exercitado contra a API real**. Tratar como não verificado
-- Bundle do frontend em ~985 kB, sem code splitting
-- Zero testes no frontend (backend tem 246)
+- Bundle do frontend em ~1,35 MB (cresceu com Firebase App Check/reCAPTCHA),
+  sem code splitting
+- Zero testes no frontend (backend tem 320)
 - `/admin/metricas` lê todos os households a cada chamada. Serve de sobra para
   dezenas ou centenas de famílias; passa a doer nos milhares
 - Uma instância Evolution por família consome recursos da VPS. Dezenas de
