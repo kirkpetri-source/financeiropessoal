@@ -58,11 +58,25 @@ router.get('/familias', async (req, res, next) => {
     const agora = new Date();
     const familias = await carregarFamilias();
 
-    const lista = familias.map((f) => {
+    // Nome da família é escolhido livremente pelo cliente (duas famílias podem
+    // se chamar igual, sem conflito nenhum — o isolamento é pelo householdId).
+    // Pra não confundir na hora de gerir, a lista traz também quem é o dono
+    // (nome + telefone cadastrados), buscado da subcoleção de membros.
+    const membrosPorFamilia = await Promise.all(
+      familias.map((f) => householdService.listarMembros(f.id).catch(() => [])),
+    );
+
+    const lista = familias.map((f, i) => {
       const situacao = situacaoDaAssinatura(f.subscription, agora);
+      const dono = membrosPorFamilia[i].find((m) => m.id === f.ownerId)
+        || membrosPorFamilia[i].find((m) => m.role === 'owner');
+
       return {
         id: f.id,
         nome: f.name || null,
+        donoNome: dono?.name || null,
+        donoTelefone: dono?.phone || null,
+        donoEmail: dono?.email || null,
         criadaEm: f.createdAt?.toDate?.()?.toISOString() || null,
         status: f.subscription?.status || null,
         provedor: f.subscription?.provider || null,

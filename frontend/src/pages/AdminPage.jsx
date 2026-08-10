@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, Lock, RefreshCw, X, ShieldOff, ShieldCheck, Gift, RotateCcw, Ban, HandCoins } from 'lucide-react';
 import api from '../services/api';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { formatarParaLeitura } from '../utils/telefone';
 import toast from 'react-hot-toast';
 
 /**
@@ -120,13 +121,20 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
   const s = detalhe?.subscription;
   const bloqueada = !!s?.adminOverride?.blocked;
   const interna = s?.plan === 'interno';
+  const dono = detalhe?.membros?.find((m) => m.role === 'owner');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6 space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-ink">{detalhe?.nome || 'Família'}</h2>
+          <div>
+            <h2 className="text-base font-semibold text-ink">
+              {dono?.name || detalhe?.nome || 'Família'}
+              {dono?.phone && <span className="text-faint font-normal"> · {formatarParaLeitura(dono.phone)}</span>}
+            </h2>
+            <p className="text-xs text-faint">{detalhe?.nome || 'sem nome de família'}</p>
+          </div>
           <button onClick={onClose} className="text-faint hover:text-ink"><X className="w-5 h-5" /></button>
         </div>
 
@@ -331,7 +339,7 @@ export default function AdminPage() {
           <table className="w-full text-sm">
             <thead className="bg-surface-alt text-xs text-muted uppercase">
               <tr>
-                <th className="text-left px-4 py-2 font-medium">Família</th>
+                <th className="text-left px-4 py-2 font-medium">Cliente</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
                 <th className="text-left px-4 py-2 font-medium">Vence</th>
                 <th className="text-right px-4 py-2 font-medium">Dias</th>
@@ -342,9 +350,14 @@ export default function AdminPage() {
               {familias.map((f) => (
                 <tr key={f.id} className="table-row cursor-pointer" onClick={() => setFamiliaAberta(f.id)}>
                   <td className="px-4 py-2.5">
-                    <p className="text-ink">{f.nome || '(sem nome)'}</p>
+                    <p className="text-ink">
+                      {f.donoNome || '(sem nome cadastrado)'}
+                      {f.donoTelefone && (
+                        <span className="text-faint font-normal"> · {formatarParaLeitura(f.donoTelefone)}</span>
+                      )}
+                    </p>
                     <p className="text-xs text-faint">
-                      desde {formatDate(f.criadaEm)}
+                      {f.nome || 'sem nome de família'} · desde {formatDate(f.criadaEm)}
                       {f.exclusaoAgendadaPara && (
                         <span className="text-red-500"> · exclusão em {formatDate(f.exclusaoAgendadaPara)}</span>
                       )}
