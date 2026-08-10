@@ -4,6 +4,7 @@ const { parseFinancialMessage, looksLikeFinancialMessage } = require('../utils/f
 const { detectarParcelamento, montarParcelas } = require('../utils/parcelamento');
 const { parseWithAI } = require('./aiParserService');
 const { verificarLimiteDeIA } = require('./limiteIAService');
+const { permitirMensagem, limite: limiteMensagens } = require('./limiteMensagensService');
 const { createTransaction } = require('./transactionService');
 const householdService = require('./householdService');
 const { situacaoDaAssinatura, mensagemDaSituacao } = require('../assinatura/estado');
@@ -153,6 +154,11 @@ async function bloqueioPorAssinatura(householdId) {
 const ORIGEM_LABEL = { AUDIO: 'áudio transcrito', IMAGE: 'foto de cupom' };
 
 async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaMensagem, origem, origin = 'WHATSAPP' }) {
+  if (!permitirMensagem(householdId)) {
+    console.warn(`[LimiteMensagens] Família ${householdId} passou de ${limiteMensagens} mensagens/min — descartada.`);
+    return { transacoes: [], criadas: [], erro: 'Muitas mensagens em pouco tempo.', silencioso: true };
+  }
+
   const bloqueio = await bloqueioPorAssinatura(householdId);
   if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
 
@@ -274,6 +280,11 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
  * pagamento e pagador, e mesmo bloqueio por assinatura vencida.
  */
 async function lancarPorAudio({ householdId, base64, mimeType, senderJid, pushName, dataDaMensagem, origem }) {
+  if (!permitirMensagem(householdId)) {
+    console.warn(`[LimiteMensagens] Família ${householdId} passou de ${limiteMensagens} mensagens/min — descartada.`);
+    return { transacoes: [], criadas: [], erro: 'Muitas mensagens em pouco tempo.', silencioso: true };
+  }
+
   const bloqueio = await bloqueioPorAssinatura(householdId);
   if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
 
@@ -288,6 +299,11 @@ async function lancarPorAudio({ householdId, base64, mimeType, senderJid, pushNa
 }
 
 async function lancarPorCupom({ householdId, base64, mimeType, senderJid, pushName, dataDaMensagem, origem }) {
+  if (!permitirMensagem(householdId)) {
+    console.warn(`[LimiteMensagens] Família ${householdId} passou de ${limiteMensagens} mensagens/min — descartada.`);
+    return { transacoes: [], criadas: [], erro: 'Muitas mensagens em pouco tempo.', silencioso: true };
+  }
+
   const bloqueio = await bloqueioPorAssinatura(householdId);
   if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
 

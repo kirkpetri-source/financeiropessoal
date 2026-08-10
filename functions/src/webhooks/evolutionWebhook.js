@@ -139,7 +139,7 @@ async function processarMensagemRecebida(req) {
       : new Date().toISOString();
 
     const lancar = msg.messageType === 'AUDIO' ? lancarPorAudio : lancarPorCupom;
-    const { transacoes, criadas, erro } = await lancar({
+    const { transacoes, criadas, erro, silencioso } = await lancar({
       householdId,
       base64: midia.base64,
       mimeType: midia.mimetype,
@@ -151,7 +151,9 @@ async function processarMensagemRecebida(req) {
 
     if (erro) {
       await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: erro });
-      await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
+      // Rate limit por família (limiteMensagensService) não gera resposta —
+      // responder durante uma rajada só adiciona mais tráfego em cima dela.
+      if (!silencioso) await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
       return;
     }
 
@@ -211,7 +213,7 @@ async function processarMensagemRecebida(req) {
     ? new Date(msg.timestamp * 1000).toISOString()
     : new Date().toISOString();
 
-  const { transacoes, criadas, erro } = await lancarPorTexto({
+  const { transacoes, criadas, erro, silencioso } = await lancarPorTexto({
     householdId,
     texto: msg.content,
     senderJid: msg.senderJid,
@@ -223,8 +225,9 @@ async function processarMensagemRecebida(req) {
   if (erro) {
     await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: erro });
     // Avisa que não entendeu, em vez de deixar o usuário no escuro achando
-    // que registrou. O erro só aparecia numa tela que ninguém abre.
-    await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
+    // que registrou. O erro só aparecia numa tela que ninguém abre. Exceção:
+    // rate limit por família (silencioso) não responde — não alimentar rajada.
+    if (!silencioso) await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
     return;
   }
 

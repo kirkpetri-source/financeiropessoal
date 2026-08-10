@@ -19,6 +19,7 @@ const { handleMercadoPagoWebhook, handleMercadoPagoPing } = require('./webhooks/
 const errorHandler = require('./middlewares/errorHandler');
 const { webhookAuth } = require('./middlewares/webhookAuth');
 const { limiteWebhook, limiteAuth, limitePolling, limiteGeral } = require('./middlewares/rateLimit');
+const appCheckMiddleware = require('./middlewares/appCheck');
 
 const app = express();
 
@@ -85,6 +86,12 @@ app.post('/webhooks/mercadopago', limiteWebhook, handleMercadoPagoWebhook);
 app.get('/webhooks/mercadopago', limiteWebhook, handleMercadoPagoPing);
 
 app.use(limiteGeral);
+
+// Confere que quem chama é o painel publicado, não um script direto contra o
+// endpoint — nunca os webhooks acima, que são servidor-a-servidor e não
+// carregam token de App Check. Desligado até o site key do reCAPTCHA existir
+// (ver middlewares/appCheck.js); enquanto isso, next() imediato.
+app.use(appCheckMiddleware);
 
 app.use('/auth', limiteAuth, authRoutes);
 app.use('/transactions', transactionRoutes);
