@@ -182,10 +182,16 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
   async function apagarAgora({ confirmarNome, motivo }) {
     setAcaoEmCurso('apagar-agora');
     try {
-      await api.post(`/plataforma/familias/${familiaId}/apagar-agora`, {
+      const { data } = await api.post(`/plataforma/familias/${familiaId}/apagar-agora`, {
         confirmarNome, motivo: motivo || null,
       });
       toast.success('Família apagada.');
+      // A instância pode não ter conseguido avisar o WhatsApp de verdade (só
+      // dá pra desvincular com a sessão aberta) — sem isto o próximo
+      // pareamento com o mesmo número falha sem explicação nenhuma.
+      if (data.avisoWhatsapp) {
+        toast(data.avisoWhatsapp, { icon: '⚠️', duration: 12000 });
+      }
       setConfirmandoExclusao(false);
       onClose();
       onMudou?.();
@@ -273,7 +279,10 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
               </AcaoBtn>
               <p className="text-xs text-faint mt-2">
                 Pula o prazo de arrependimento da LGPD. Uso do operador para limpar
-                conta de teste — não use numa família de cliente de verdade.
+                conta de teste — não use numa família de cliente de verdade. Se a
+                instância do WhatsApp não estava conectada no momento, o número pode
+                não conseguir parear de novo até você remover o aparelho antigo em
+                "Aparelhos conectados" no celular dele.
               </p>
             </div>
 

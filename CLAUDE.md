@@ -280,6 +280,21 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   Firebase Console → App Check) são cliques manuais mesmo, sem caminho de
   CLI/API. É uma das poucas exceções genuínas à regra 8: exige a conta
   Google do Kirk, não tem script que substitua.
+- **Apagar uma família com o WhatsApp desconectado deixa o número "meio
+  vinculado" do lado do WhatsApp.** Desvincular um aparelho de verdade exige
+  uma sessão ABERTA — é ela que manda o sinal de logout. Instância já em
+  `close` na hora de apagar não tem canal pra mandar nada: os arquivos somem
+  do nosso lado, mas o WhatsApp continua lembrando do aparelho até expirar
+  sozinho (pode levar dias). Pareamento novo com o MESMO número falha nesse
+  meio tempo com "não foi possível conectar ao dispositivo" — sem relação
+  nenhuma com código expirado ou limite de dispositivos. Descoberto quando o
+  Kirk apagou a `Família Vinicius` (conta de teste) pelo `/plataforma` e não
+  conseguiu reconectar o mesmo número do zero. Resolve na hora removendo o
+  aparelho antigo em WhatsApp → Aparelhos conectados, no celular do número
+  afetado. `lgpdService.apagarFamiliaAgora` agora loga um aviso
+  (`avisoWhatsapp`) quando a instância já estava desconectada — vale também
+  para um CLIENTE de verdade que cancela e tenta assinar de novo com o mesmo
+  WhatsApp depois.
 
 ## Modelo de dados
 

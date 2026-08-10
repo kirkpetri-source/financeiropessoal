@@ -192,12 +192,38 @@ async function apagarFamiliaAgora(householdId, { provider = null, evolutionConfi
   const membros = await householdService.listarMembros(householdId);
   const configCanal = await getConfig(householdId).catch(() => null);
 
+  // Some junto com o resultado quando o WhatsApp pode não liberar o número na
+  // hora — sem isso, o operador só descobre tentando conectar de novo e
+  // recebendo "não foi possível conectar ao dispositivo" sem explicação.
+  let avisoWhatsapp = null;
+
   if (provider && evolutionConfig && configCanal?.instanceName) {
+    const instanceName = configCanal.instanceName;
     try {
-      await provider.desconectarInstancia(evolutionConfig, configCanal.instanceName);
-      await provider.apagarInstancia(evolutionConfig, configCanal.instanceName);
-    } catch {
+      const estado = await provider.estadoDaConexao(evolutionConfig, instanceName);
+
+      if (!estado.conectada) {
+        // Sem sessão aberta não tem canal pra mandar o logout de verdade pro
+        // WhatsApp — apagar aqui só limpa o registro local. O número pode
+        // ficar temporariamente "meio vinculado" do lado do WhatsApp.
+        avisoWhatsapp = 'A instância já estava desconectada, então o WhatsApp pode não ter '
+          + 'liberado o número na hora. Se o pareamento falhar, remova o aparelho antigo em '
+          + 'WhatsApp > Aparelhos conectados no celular do número usado por esta família.';
+        console.warn(`[LGPD] ${instanceName}: instância desconectada (${estado.estado}) antes de apagar — logout não pôde ser enviado ao WhatsApp.`);
+      }
+
+      const logout = await provider.desconectarInstancia(evolutionConfig, instanceName);
+      if (!logout.desconectada) {
+        console.warn(`[LGPD] ${instanceName}: logout respondeu status ${logout.status} (não-ok) ao apagar.`);
+      }
+
+      const apagou = await provider.apagarInstancia(evolutionConfig, instanceName);
+      if (!apagou.apagada) {
+        console.warn(`[LGPD] ${instanceName}: exclusão da instância no servidor respondeu status ${apagou.status} (não-ok).`);
+      }
+    } catch (err) {
       // Instância pode já não existir no servidor — não impede a exclusão do dado.
+      console.warn(`[LGPD] ${configCanal.instanceName}: erro ao desligar/apagar no servidor Evolution: ${err.message}`);
     }
   }
 
@@ -214,7 +240,7 @@ async function apagarFamiliaAgora(householdId, { provider = null, evolutionConfi
     }
   }
 
-  return { nome: familia.name || null, contagem, loginsRemovidos };
+  return { nome: familia.name || null, contagem, loginsRemovidos, avisoWhatsapp };
 }
 
 /** Firestore não tem "delete where". Vai em lotes de 400 (o teto do batch é 500). */

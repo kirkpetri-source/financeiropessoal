@@ -123,6 +123,9 @@ async function main() {
   console.log(`  logins removidos: ${resultado.loginsRemovidos.join(', ') || 'nenhum'}`);
 
   console.log('\nOK — família apagada.');
+  if (resultado.avisoWhatsapp) {
+    console.log(`\nAVISO: ${resultado.avisoWhatsapp}`);
+  }
   process.exit(0);
 }
 

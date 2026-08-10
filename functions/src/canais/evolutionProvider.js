@@ -252,20 +252,29 @@ async function estadoDaConexao(config, instanceName) {
   return { estado, conectada: estado === 'open' };
 }
 
+/**
+ * Logout só desvincula o aparelho de verdade se a instância estiver com
+ * sessão ABERTA — é a sessão viva que manda o sinal pro WhatsApp. Instância já
+ * desconectada (`close`) não tem canal pra mandar nada: o WhatsApp continua
+ * "lembrando" do aparelho vinculado até expirar sozinho (pode levar dias),
+ * e um pareamento novo com o mesmo número falha nesse meio tempo. Por isso o
+ * `ok` aqui importa — quem chama precisa saber se o desligamento foi de
+ * verdade ou só apagou o registro local.
+ */
 async function desconectarInstancia(config, instanceName) {
-  await chamarBruto(
+  const { ok, status } = await chamarBruto(
     `${base(config)}/instance/logout/${encodeURIComponent(instanceName)}`,
     config.apiKey, null, 'DELETE',
   );
-  return { desconectada: true };
+  return { desconectada: ok, status };
 }
 
 async function apagarInstancia(config, instanceName) {
-  await chamarBruto(
+  const { ok, status } = await chamarBruto(
     `${base(config)}/instance/delete/${encodeURIComponent(instanceName)}`,
     config.apiKey, null, 'DELETE',
   );
-  return { apagada: true };
+  return { apagada: ok, status };
 }
 
 /**
