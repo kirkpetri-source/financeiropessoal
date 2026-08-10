@@ -19,9 +19,15 @@ export const auth = getAuth(app);
 // funciona normalmente sem essa camada extra; o backend (APP_CHECK_ENFORCE)
 // também continua desligado até então, então nenhum cliente fica bloqueado
 // no meio do caminho.
+//
+// Exportado para o interceptor de api.js poder pegar o token e mandar no
+// header X-Firebase-Appcheck — App Check só anexa esse header sozinho em
+// chamadas feitas pelo SDK do Firebase (Firestore, Functions callable), não
+// numa API Express própria como esta.
+export let appCheckInstance = null;
 const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 if (recaptchaSiteKey) {
-  initializeAppCheck(app, {
+  appCheckInstance = initializeAppCheck(app, {
     provider: new ReCaptchaV3Provider(recaptchaSiteKey),
     isTokenAutoRefreshEnabled: true,
   });

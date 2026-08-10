@@ -8,9 +8,26 @@ const api = axios.create({
 });
 
 // Injeta o token do Firebase em todas as requisições
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   const token = localStorage.getItem('@financeiro:token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  // App Check só existe quando VITE_RECAPTCHA_SITE_KEY está configurado (ver
+  // config/firebase.js). O SDK não anexa esse header sozinho numa API Express
+  // própria — só em chamadas feitas por outros SDKs do Firebase.
+  const { appCheckInstance } = await import('../config/firebase');
+  if (appCheckInstance) {
+    try {
+      const { getToken } = await import('firebase/app-check');
+      const { token: appCheckToken } = await getToken(appCheckInstance, false);
+      config.headers['X-Firebase-Appcheck'] = appCheckToken;
+    } catch {
+      // Sem o header, a chamada segue normal — falha do lado do servidor
+      // (com mensagem clara) é melhor que travar o app aqui na hora de montar
+      // a requisição.
+    }
+  }
+
   return config;
 });
 
