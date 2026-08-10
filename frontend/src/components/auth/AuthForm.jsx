@@ -75,7 +75,7 @@ export default function AuthForm({ initialAba = 'entrar' }) {
     setCarregando(true);
     try {
       await signUp({
-        nome: dados.nome.trim(),
+        nome: [dados.nome.trim(), dados.sobrenome.trim()].filter(Boolean).join(' '),
         email: dados.email.trim(),
         senha: dados.password,
         telefone: paraApi(dados.telefone),
@@ -179,17 +179,31 @@ export default function AuthForm({ initialAba = 'entrar' }) {
 
       <form onSubmit={handleSubmit(ehCadastro ? criarConta : entrar)} className="space-y-4">
         {ehCadastro && (
-          <div>
-            <label className="label">Seu nome</label>
-            <input
-              placeholder="Como devemos te chamar"
-              className={`input ${errors.nome ? 'border-expense focus:ring-expense' : ''}`}
-              {...register('nome', {
-                required: 'Nome obrigatório.',
-                minLength: { value: 2, message: 'Nome muito curto.' },
-              })}
-            />
-            {errors.nome && <p className="text-xs text-expense mt-1">{errors.nome.message}</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Nome</label>
+              <input
+                placeholder="Como devemos te chamar"
+                className={`input ${errors.nome ? 'border-expense focus:ring-expense' : ''}`}
+                {...register('nome', {
+                  required: 'Nome obrigatório.',
+                  minLength: { value: 2, message: 'Nome muito curto.' },
+                })}
+              />
+              {errors.nome && <p className="text-xs text-expense mt-1">{errors.nome.message}</p>}
+            </div>
+            <div>
+              <label className="label">Sobrenome</label>
+              <input
+                placeholder="Seu sobrenome"
+                className={`input ${errors.sobrenome ? 'border-expense focus:ring-expense' : ''}`}
+                {...register('sobrenome', {
+                  required: 'Sobrenome obrigatório.',
+                  minLength: { value: 2, message: 'Sobrenome muito curto.' },
+                })}
+              />
+              {errors.sobrenome && <p className="text-xs text-expense mt-1">{errors.sobrenome.message}</p>}
+            </div>
           </div>
         )}
 
@@ -211,7 +225,7 @@ export default function AuthForm({ initialAba = 'entrar' }) {
           <div>
             <label className="label">Seu WhatsApp</label>
             <input
-              placeholder="(64) 99955-5364"
+              placeholder="(11) 91234-5678"
               inputMode="numeric"
               className={`input ${errors.telefone ? 'border-expense focus:ring-expense' : ''}`}
               {...register('telefone', {

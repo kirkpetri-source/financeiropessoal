@@ -83,7 +83,7 @@ export default function ParticipantesDaFamilia({
                 className="input flex-1 text-sm"
                 value={rascunho.telefone}
                 onChange={(e) => setRascunho((r) => ({ ...r, telefone: mascararTelefone(e.target.value) }))}
-                placeholder="(64) 99955-5364"
+                placeholder="(11) 91234-5678"
                 inputMode="numeric"
               />
               <button type="button" onClick={() => salvarEdicao(m.id)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg">
@@ -141,13 +141,13 @@ export default function ParticipantesDaFamilia({
           <div className="flex gap-2 items-center">
             <input
               className="input flex-1"
-              placeholder="Nome (ex: Raquel)"
+              placeholder="Nome (ex: Ana)"
               value={novo.nome}
               onChange={(e) => setNovo((n) => ({ ...n, nome: e.target.value }))}
             />
             <input
               className={`input flex-1 ${erroNovo ? 'border-red-400 focus:ring-red-400' : ''}`}
-              placeholder="(64) 99955-5364"
+              placeholder="(11) 91234-5678"
               value={novo.telefone}
               onChange={(e) => setNovo((n) => ({ ...n, telefone: mascararTelefone(e.target.value) }))}
               inputMode="numeric"

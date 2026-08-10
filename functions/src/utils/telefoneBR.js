@@ -54,7 +54,7 @@ function validarCelular(entrada) {
     return {
       valido: false,
       // Mensagem que diz o que fazer, não o que está errado.
-      erro: 'Faltam dígitos. Use DDD + 9 + o número: (64) 99955-5364.',
+      erro: 'Faltam dígitos. Use DDD + 9 + o número: (11) 91234-5678.',
       e164: null,
     };
   }
