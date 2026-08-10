@@ -67,11 +67,11 @@ function Passo({ numero, titulo, Icone, estado, children }) {
  * Celular não lê QR Code exibido na própria tela — é preciso um segundo
  * aparelho, ou abrir o painel no computador.
  *
- * O código de pareamento de 8 dígitos resolveria isso, e chegou a ser
- * implementado, mas está QUEBRADO no Baileys: o WhatsApp responde "código
- * inválido" mesmo com o código correto e dentro do prazo. São issues abertas
- * no projeto Evolution (2033, 2215, 1471). Oferecer um caminho que sempre
- * falha é pior que não oferecer, então ele saiu.
+ * O código de pareamento de 8 letras resolve isso. Chegou a ser removido por
+ * dar "código inválido" no WhatsApp (issues 2033/2215/1471 da Evolution), mas
+ * a causa era a sessão já ter emitido QR antes de pedir o código — corrigida
+ * criando a instância direto sem QR (`instanciaService.conectar`). É por
+ * isso que quem está no celular começa neste método.
  */
 function pareceCelular() {
   if (typeof window === 'undefined') return false;
@@ -344,6 +344,10 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
           <div className="space-y-3">
             {pairingCode ? (
               <>
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Este código expira rápido. Já deixe o WhatsApp aberto na tela de
+                  "Conectar com número de telefone" antes de olhar o código abaixo.
+                </p>
                 <p className="text-sm text-muted">Digite este código no WhatsApp:</p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="font-mono text-2xl tracking-[0.25em] font-bold text-ink bg-surface-alt border border-border-strong rounded-xl px-4 py-3 select-all">
@@ -362,10 +366,11 @@ export default function ConectarWhatsapp({ podeGerir, membros = [], acoesDeMembr
                   <li>Toque nos três pontinhos e em <strong>Dispositivos conectados</strong></li>
                   <li>Toque em <strong>Conectar dispositivo</strong></li>
                   <li>Toque em <strong>Conectar com número de telefone</strong></li>
-                  <li>Digite o código acima</li>
+                  <li>Digite o código acima assim que ele aparecer</li>
                 </ol>
                 <p className="text-xs text-faint">
-                  O código vale por poucos minutos. Se expirar, gere outro.
+                  Deu "código inválido"? Ele expirou. Toque em "Gerar outro" abaixo e
+                  digite mais rápido desta vez.
                 </p>
               </>
             ) : (

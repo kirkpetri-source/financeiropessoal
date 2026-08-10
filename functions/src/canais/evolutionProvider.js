@@ -146,9 +146,12 @@ async function criarInstancia(config, { instanceName, webhookUrl, numero = null,
       // O número identifica a instância no painel da Evolution.
       //
       // Ele TAMBÉM faz a Evolution devolver um código de pareamento de 8
-      // caracteres — que não usamos: o pareamento está quebrado no Baileys e o
-      // WhatsApp responde "código inválido" (issues 2033, 2215 e 1471 do
-      // projeto). Quem depende dele fica sem conectar. A conexão é só por QR.
+      // caracteres. Chegou a ser removido (o WhatsApp respondia "código
+      // inválido" mesmo com o código certo — issues 2033, 2215 e 1471 do
+      // projeto Evolution) e depois reintroduzido: o problema era pedir o
+      // código numa sessão que já tinha emitido QR. Criando com qrcode:false
+      // (comQrCode aqui), a sessão nasce só para pareamento e o código passa
+      // a valer. Ver `METODOS.CODIGO` em `instanciaService.js`.
       ...(digitos ? { number: digitos } : {}),
       // Só MESSAGES_UPSERT: é o que o webhook trata. Assinar todos os eventos
       // multiplicaria por dez o tráfego para o Cloud Functions sem uso nenhum.
