@@ -49,6 +49,9 @@ const PROTEGIDOS = new Set([
   'instanceName', 'groupId', 'groupInviteUrl', 'ownerJid',
   'evolutionApiUrl', 'apiKey',
   'householdId', 'conectadoEm', 'provisionadaEm', 'grupoCriadoEm',
+  // Teto diário de chamadas de IA (limiteIAService.js) — contador do sistema,
+  // não um campo de configuração.
+  'iaContagemDiaria', 'iaContagemData',
 ]);
 
 async function updateConfig(householdId, entrada) {
