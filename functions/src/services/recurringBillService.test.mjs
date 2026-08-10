@@ -73,6 +73,7 @@ beforeEach(() => {
   estado.documentos = {
     'categories/cat-aluguel': { householdId: FAMILIA, name: 'Moradia' },
     'paymentMethods/pm-pix': { householdId: FAMILIA, name: 'Pix' },
+    'categories/cat-de-outra-familia': { householdId: 'fam-2', name: 'Categoria da fam-2' },
   };
 });
 
@@ -140,6 +141,17 @@ describe('CRUD via escopo', () => {
 
     const lista = await svc.listRecurringBills(dados);
     expect(lista).toHaveLength(1);
+  });
+
+  it('recusa criar conta recorrente com categoria de outra família', async () => {
+    const svc = criarServicoDeContasRecorrentes({ db: fakeDb, criarTransacao: criarTransacaoFalsa() });
+    const dados = escopoDe(FAMILIA);
+    await expect(
+      svc.createRecurringBill(dados, {
+        description: 'Aluguel', amountCents: 150000, type: 'EXPENSE',
+        dueDay: 10, categoryId: 'cat-de-outra-familia', paymentMethodId: 'pm-pix',
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 });
 

@@ -99,7 +99,20 @@ function criarServicoDeContasRecorrentes({ db, criarTransacao }) {
     return enriquecer(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   }
 
+  async function validarReferencias(dados, { categoryId, paymentMethodId }) {
+    if (categoryId !== undefined) {
+      const categoria = await dados.buscarDoc('categories', categoryId);
+      if (!categoria) throw Object.assign(new Error('Categoria inválida.'), { statusCode: 400 });
+    }
+    if (paymentMethodId !== undefined) {
+      const forma = await dados.buscarDoc('paymentMethods', paymentMethodId);
+      if (!forma) throw Object.assign(new Error('Forma de pagamento inválida.'), { statusCode: 400 });
+    }
+  }
+
   async function createRecurringBill(dados, entrada) {
+    await validarReferencias(dados, { categoryId: entrada.categoryId, paymentMethodId: entrada.paymentMethodId });
+
     const criada = await dados.criar('recurringBills', {
       description: entrada.description,
       amountCents: entrada.amountCents,
@@ -120,6 +133,8 @@ function criarServicoDeContasRecorrentes({ db, criarTransacao }) {
     for (const campo of campos) {
       if (entrada[campo] !== undefined) alteracao[campo] = entrada[campo];
     }
+
+    await validarReferencias(dados, { categoryId: entrada.categoryId, paymentMethodId: entrada.paymentMethodId });
 
     const atualizada = await dados.atualizar('recurringBills', billId, alteracao);
     const [enriquecida] = await enriquecer([atualizada]);

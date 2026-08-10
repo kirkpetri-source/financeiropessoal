@@ -52,8 +52,8 @@ async function createLog(dados, entrada) {
   return dados.criar('whatsappLogs', entrada);
 }
 
-async function updateLog(logId, entrada) {
-  await db.collection('whatsappLogs').doc(logId).update(entrada);
+async function updateLog(dados, logId, entrada) {
+  await dados.atualizar('whatsappLogs', logId, entrada);
 }
 
 /**

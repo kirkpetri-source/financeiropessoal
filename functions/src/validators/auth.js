@@ -1,19 +1,17 @@
 const { z } = require('zod');
 
-const loginSchema = z.object({
-  email: z.string().email('E-mail inválido.'),
-  password: z.string().min(1, 'Senha obrigatória.'),
-});
-
+// Chamado só depois que o Firebase Auth já criou a conta no frontend — este
+// endpoint apenas salva o perfil no Firestore, por isso não recebe senha.
 const registerSchema = z.object({
-  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres.'),
+  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres.').max(100),
   email: z.string().email('E-mail inválido.'),
-  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres.'),
+  telefone: z.string().max(20).optional(),
+  aceitouTermos: z.boolean().optional(),
 });
 
-const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, 'Senha atual obrigatória.'),
-  newPassword: z.string().min(6, 'Nova senha deve ter pelo menos 6 caracteres.'),
+const updateProfileSchema = z.object({
+  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres.').max(100).optional(),
+  email: z.string().email('E-mail inválido.').optional(),
 });
 
-module.exports = { loginSchema, registerSchema, changePasswordSchema };
+module.exports = { registerSchema, updateProfileSchema };

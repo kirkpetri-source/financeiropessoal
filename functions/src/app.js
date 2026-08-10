@@ -26,12 +26,26 @@ const app = express();
 // para todo mundo. O 1 restringe a confiança ao primeiro proxy da cadeia.
 app.set('trust proxy', 1);
 
-// Origens permitidas. A autenticação é por Bearer token (não por cookie), então
-// liberar geral não expõe sessão de ninguém; ainda assim dá para restringir
-// definindo ALLOWED_ORIGINS="https://app.exemplo.com,https://outro.com".
+// Origens permitidas. ALLOWED_ORIGINS sobrescreve para outros ambientes:
+// ALLOWED_ORIGINS="https://app.exemplo.com,https://outro.com".
+// Sem a env definida, cai na lista fixa dos domínios de produção — nunca em
+// "*": mesmo a API sendo autenticada por Bearer token e não por cookie,
+// liberar qualquer origem facilita abuso da API por um site de terceiro caso
+// um token vaze por outro caminho (ex.: XSS numa extensão de navegador).
+// revelacash.com.br é o domínio custom em uso pelos clientes reais desde
+// 08/08/2026 (DNS -> Vercel); o .vercel.app continua valendo como alias.
+const ORIGENS_PRODUCAO = [
+  'https://revelacash.com.br',
+  'https://www.revelacash.com.br',
+  'https://financeiropessoal-tau.vercel.app',
+];
+const ORIGENS_DEV = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
 const origensPermitidas = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-  : '*';
+  : process.env.NODE_ENV === 'production'
+    ? ORIGENS_PRODUCAO
+    : [...ORIGENS_PRODUCAO, ...ORIGENS_DEV];
 
 app.use(cors({
   origin: origensPermitidas,

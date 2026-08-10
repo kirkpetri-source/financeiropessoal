@@ -129,7 +129,7 @@ async function processarMensagemRecebida(req) {
 
     if (!midia?.base64) {
       const erro = 'Não consegui baixar o arquivo enviado. Tente digitar o lançamento.';
-      await updateLog(log.id, { processingStatus: 'ERROR', errorMessage: erro });
+      await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: erro });
       await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
       return;
     }
@@ -150,12 +150,12 @@ async function processarMensagemRecebida(req) {
     });
 
     if (erro) {
-      await updateLog(log.id, { processingStatus: 'ERROR', errorMessage: erro });
+      await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: erro });
       await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
       return;
     }
 
-    await updateLog(log.id, { processingStatus: 'PROCESSED', transactionId: transacoes[0] });
+    await updateLog(dados, log.id, { processingStatus: 'PROCESSED', transactionId: transacoes[0] });
     await confirmarLancamentos(householdId, config, msg.remoteJid, criadas);
     return;
   }
@@ -173,7 +173,7 @@ async function processarMensagemRecebida(req) {
         processingStatus: 'PENDING',
         rawPayload: req.body,
       });
-      await updateLog(log.id, {
+      await updateLog(dados, log.id, {
         errorMessage: `Processamento de ${msg.messageType.toLowerCase()} ainda não implementado.`,
       });
     }
@@ -221,14 +221,14 @@ async function processarMensagemRecebida(req) {
   });
 
   if (erro) {
-    await updateLog(log.id, { processingStatus: 'ERROR', errorMessage: erro });
+    await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: erro });
     // Avisa que não entendeu, em vez de deixar o usuário no escuro achando
     // que registrou. O erro só aparecia numa tela que ninguém abre.
     await responder(householdId, config, msg.remoteJid, `⚠️ ${erro}`);
     return;
   }
 
-  await updateLog(log.id, { processingStatus: 'PROCESSED', transactionId: transacoes[0] });
+  await updateLog(dados, log.id, { processingStatus: 'PROCESSED', transactionId: transacoes[0] });
 
   // Fecha o ciclo: até agora o usuário lançava e não sabia se tinha entrado.
   await confirmarLancamentos(householdId, config, msg.remoteJid, criadas);

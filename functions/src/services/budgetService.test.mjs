@@ -60,10 +60,27 @@ beforeEach(() => {
   estado.documentos = {
     'categories/cat-mercado': { householdId: FAMILIA, name: 'Mercado', color: '#111' },
     'categories/cat-lazer': { householdId: FAMILIA, name: 'Lazer', color: '#222' },
+    'categories/cat-de-outra-familia': { householdId: 'fam-2', name: 'Categoria da fam-2', color: '#333' },
   };
 });
 
 describe('budgetService', () => {
+  it('recusa criar orçamento com categoria de outra família', async () => {
+    const dados = escopoDe(FAMILIA);
+    await expect(
+      svc.createBudget(dados, { categoryId: 'cat-de-outra-familia', monthlyLimitCents: 50000 })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('recusa atualizar orçamento apontando para categoria de outra família', async () => {
+    const dados = escopoDe(FAMILIA);
+    const criado = await svc.createBudget(dados, { categoryId: 'cat-mercado', monthlyLimitCents: 50000 });
+
+    await expect(
+      svc.updateBudget(dados, criado.id, { categoryId: 'cat-de-outra-familia' })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('cria um orçamento e recusa duplicar a mesma categoria', async () => {
     const dados = escopoDe(FAMILIA);
     await svc.createBudget(dados, { categoryId: 'cat-mercado', monthlyLimitCents: 50000 });

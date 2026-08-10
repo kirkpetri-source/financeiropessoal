@@ -33,7 +33,15 @@ function criarServicoDeOrcamento({ db }) {
     return enriquecer(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   }
 
+  async function validarCategoria(dados, categoryId) {
+    if (categoryId === undefined) return;
+    const categoria = await dados.buscarDoc('categories', categoryId);
+    if (!categoria) throw Object.assign(new Error('Categoria inválida.'), { statusCode: 400 });
+  }
+
   async function createBudget(dados, entrada) {
+    await validarCategoria(dados, entrada.categoryId);
+
     const existente = await dados.consultar('budgets')
       .where('categoryId', '==', entrada.categoryId).limit(1).get();
     if (!existente.empty) {
@@ -54,6 +62,8 @@ function criarServicoDeOrcamento({ db }) {
     if (entrada.categoryId !== undefined) alteracao.categoryId = entrada.categoryId;
     if (entrada.monthlyLimitCents !== undefined) alteracao.monthlyLimitCents = entrada.monthlyLimitCents;
     if (entrada.active !== undefined) alteracao.active = entrada.active;
+
+    await validarCategoria(dados, entrada.categoryId);
 
     const atualizado = await dados.atualizar('budgets', budgetId, alteracao);
     const [enriquecido] = await enriquecer([atualizado]);
