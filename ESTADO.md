@@ -2,6 +2,94 @@
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
+## Sessão de 10/08/2026 (continuação) — pareamento, painel gestor, marketing e caminho pro WhatsApp oficial
+
+- **Investigação do código de pareamento**: relato de cliente sem conseguir
+  conectar. Testado ao vivo contra o servidor Evolution — funciona; o
+  comentário no código que dizia "quebrado, foi removido" estava
+  desatualizado (sobrou de uma versão anterior). Corrigido o comentário e
+  reforçada a UX de expiração do código (aviso antes de gerar, dica quando
+  dá "código inválido").
+- **Painel `/plataforma`**: lista de famílias agora mostra nome+telefone de
+  quem cadastrou, não só o nome da família (evita confusão entre famílias
+  homônimas — nome não é identificador, `householdId` é).
+- **Cadastro público**: campo único "nome" virou Nome + Sobrenome. Placeholder
+  do telefone (cadastro, tela de conectar WhatsApp, mensagem de erro de
+  validação) usava o número pessoal do Kirk como exemplo — trocado por
+  `(11) 91234-5678` nos três lugares. "Nome (ex: Raquel)" também trocado por
+  "ex: Ana" (mesmo cuidado já tomado nas artes de marketing).
+- **Exclusão imediata pelo painel** (`apagar-agora`): novo botão no
+  `/plataforma` pra apagar conta de teste sem esperar os 7 dias de
+  arrependimento da LGPD, com confirmação por nome digitado. Reaproveita
+  `tools/apagar-familia.js` (mesma implementação, dois pontos de entrada).
+  **Achado no primeiro uso real**: apagar uma família com o WhatsApp
+  desconectado no momento não desvincula o aparelho de verdade do lado do
+  WhatsApp (logout exige sessão aberta) — o mesmo número não consegue
+  parear de novo até o WhatsApp expirar a sessão sozinha ou o aparelho
+  antigo ser removido manualmente em "Aparelhos conectados". Corrigido:
+  `apagarFamiliaAgora` agora loga e avisa (`avisoWhatsapp`) quando isso
+  acontece, em vez de falhar em silêncio. Detalhe em "Armadilhas já pagas"
+  do `CLAUDE.md`.
+- **4 artes de Instagram novas** (família compartilhando conta, praticidade
+  do áudio, cadastro fácil de membros, clareza na decisão), com fotos reais
+  fornecidas pelo Kirk, em `RevelaCash/instagram-lancamento/21-24-*.png` +
+  legendas completas em `21-24-legendas.txt`.
+- **Pesquisa: caminho pra API oficial do WhatsApp + risco de ban da
+  Evolution API** — ver seção própria abaixo, "Caminho pro WhatsApp
+  oficial (Cloud API / OBA)".
+
+## Caminho pro WhatsApp oficial (Cloud API / OBA) — pesquisado em 10/08/2026
+
+Pesquisado contra a documentação oficial da Meta for Developers (não só
+blogs de terceiros). **Correção importante**: as notas antigas deste
+arquivo diziam que a Official Business Account "sai via Meta Verified" —
+isso misturava dois caminhos diferentes. Meta Verified é uma **assinatura
+paga** (~R$ 69,90/mês), pensada pra empresa pequena usando o app comum do
+WhatsApp Business. OBA é **gratuita**, via verificação de negócio (CNPJ) +
+tempo de uso da Cloud API — é o caminho certo pra quem já está na
+plataforma, como o RevelaCash.
+
+Passo a passo:
+1. **Cloud API**: conta no Meta Business Suite com dados da Lion Tech
+   (CNPJ, endereço, e-mail corporativo, site) → criar app no Meta for
+   Developers com produto WhatsApp → criar/vincular WABA → registrar um
+   **número de telefone dedicado do operador** (não pode ser o pessoal —
+   mesmo problema de "dispositivo vinculado" resolvido na sessão de hoje
+   se aplicaria aqui) → gerar token de usuário do sistema. 1 a 3 dias se a
+   verificação correr bem.
+2. **Verificação de negócio** (Meta Business Manager): documentos legais
+   da Lion Tech. Prazo variável — é o que mais demora, vale pedir cedo.
+3. **Official Business Account**: exige (a) cumprir a política de
+   mensagens comerciais, (b) 30 dias na WhatsApp Business Platform, (c)
+   verificação de negócio feita, (d) autenticação em duas etapas no
+   número, (e) nome de exibição aprovado. Pedido pelo WhatsApp Manager →
+   Phone numbers → Profile → Official Business Account → Submit Request.
+   Recusou, espera 30 dias pra tentar de novo. Sem custo.
+4. **Groups API**: libera automaticamente com a OBA, sem exigência extra.
+   8 participantes por grupo, 10.000 grupos por número, cobrança por
+   mensagem.
+
+Fontes: [Official Business Accounts — Meta for Developers](https://developers.facebook.com/documentation/business-messaging/whatsapp/official-business-accounts/),
+[Groups API — Meta for Developers](https://developers.facebook.com/documentation/business-messaging/whatsapp/groups),
+[Request a WhatsApp Official Business Account — Meta Business Help Center](https://www.facebook.com/business/help/604726921052590).
+
+### Risco de ban usando Evolution API (Baileys) — pesquisado em 10/08/2026
+
+Risco real, não teórico: Evolution/Baileys reproduz o protocolo do
+WhatsApp Web de forma não-oficial, o que viola os Termos de Serviço do
+WhatsApp por definição — a Meta pode mudar o protocolo a qualquer
+momento (risco de quebra de serviço, categoria à parte de risco de ban).
+
+O perfil de risco do RevelaCash é mais baixo que o cenário típico dos
+artigos sobre o tema (que falam de disparo em massa pra contato frio,
+alto volume, comportamento de spam) — o uso aqui é poucas mensagens por
+dia, dentro de conversa que já existe (a pessoa falando consigo mesma ou
+com a própria família), sem mensagem não solicitada. Reduz a chance, não
+zera. Não dá pra prometer ao cliente que o WhatsApp pessoal dele nunca
+vai ter problema — é exatamente por isso que a migração pra Cloud API
+(seção acima) está no roadmap: só ela tira esse risco de vez, porque o
+número que fala com o cliente passa a ser institucional.
+
 ## Sessão de 09-10/08/2026 — auditoria de segurança, escalada e Firebase App Check
 
 Pedido inicial do Kirk: varredura de segurança de ponta a ponta no sistema em
@@ -513,8 +601,12 @@ abaixo; isto é só o índice do que ainda não está feito.
       forneceu 5 mockups de produto (não são fotos de cliente real, sem
       depoimento nem nome atribuído), processados pra WebP e usados em bento
       grid na landing nova, aprovada e publicada
-- [ ] Aplicar para **Meta Verified**, se quiser o canal WhatsApp oficial
-      (leva de 2 a 8 semanas)
+- [ ] Migrar pro canal WhatsApp oficial: registrar número dedicado do
+      operador na Cloud API, passar pela verificação de negócio da Lion
+      Tech (CNPJ), rodar 30 dias na plataforma e então pedir a **Official
+      Business Account** — gratuita, não depende de Meta Verified (ver
+      correção em 10/08/2026, pesquisa contra a documentação oficial da
+      Meta)
 - [x] Revisar a landing nova em produção e aprovar — feito 08/08/2026 (parte
       6), duas passadas (primeira versão + ajustes de design pedidos pelo
       Kirk), publicada em `revelacash.com.br`
@@ -743,7 +835,7 @@ Commit `c0fc8fe`.
 
 | Tema | Decisão | Por quê |
 |---|---|---|
-| Canal WhatsApp | **Adapter**: Evolution agora, Cloud API oficial depois | Lança rápido sem ficar preso; a Groups API oficial (aberta jun/2026) permite 8 participantes por grupo e 10.000 grupos por número, e o fluxo recebe→confirma custa R$ 0,00. Depende da OBA, que sai via Meta Verified (~R$ 69,90/mês) |
+| Canal WhatsApp | **Adapter**: Evolution agora, Cloud API oficial depois | Lança rápido sem ficar preso; a Groups API oficial (aberta jun/2026) permite 8 participantes por grupo e 10.000 grupos por número, e o fluxo recebe→confirma custa R$ 0,00. Depende da OBA — verificação de negócio (CNPJ) + 30 dias na Cloud API, **gratuita**, não é a mesma coisa que a assinatura paga Meta Verified (corrigido em 10/08/2026) |
 | Cobrança | **Mercado Pago** | Escolha do Kirk. Taxa pesa mais que as alternativas no ticket baixo, mas a marca reduz atrito na venda. Alternativas avaliadas: Asaas com Pix Automático (~1%), AbacatePay (R$ 0,80 Pix recorrente) |
 | Dados do Kirk | Migrados no mesmo projeto Firebase | Zero perda, ele segue usando durante a obra e é o primeiro testador |
 
@@ -940,15 +1032,20 @@ Fatos apurados, para não repesquisar:
   Custo não é critério de escolha
 - O limite de 250 contatos/dia **não se aplica**: só vale para mensagem
   iniciada pelo negócio fora da janela
-- Groups API oficial exige **Official Business Account** (logo, Meta Verified);
-  1:1 não exige
+- Groups API oficial exige **Official Business Account** (verificação de
+  negócio + 30 dias na Cloud API, gratuita — não é a assinatura paga Meta
+  Verified, os dois caminhos são diferentes); 1:1 não exige nada disso
 - **Grupo não suporta botões nem listas interativas.** Limita confirmação do
   tipo "está certo? [Sim] [Corrigir]"
 - Groups API: 8 participantes por grupo, 10.000 grupos por número
 
 ## Pendências operacionais do Kirk
 
-- Aplicar para **Meta Verified** se quiser o canal oficial (2 a 8 semanas)
+- Migrar pro canal oficial: registrar número dedicado do operador na Cloud
+  API (Meta for Developers), passar pela verificação de negócio da Lion
+  Tech, esperar 30 dias na plataforma, então pedir a Official Business
+  Account (gratuita) — libera a Groups API. Detalhe do passo a passo na
+  sessão de 10/08/2026
 
 Resolvidos nesta sessão (não repetir): telefone do Johnny conferido (campo
 `phone` já correto), vault Obsidian atualizado (`projetos/financeiro.md` e
