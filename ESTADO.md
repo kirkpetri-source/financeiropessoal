@@ -78,6 +78,53 @@ Fontes: [Official Business Accounts — Meta for Developers](https://developers.
 [Groups API — Meta for Developers](https://developers.facebook.com/documentation/business-messaging/whatsapp/groups),
 [Request a WhatsApp Official Business Account — Meta Business Help Center](https://www.facebook.com/business/help/604726921052590).
 
+### Progresso da migração — checkpoint pra retomar (10/08/2026)
+
+O Kirk começou a execução ao vivo, dentro do Business Manager
+(business.facebook.com → Configurações → Contas do WhatsApp), no portfólio
+"Lion Tech" (Business ID `1140397533171413`).
+
+**Feito:**
+- [x] Verificação de negócio da Lion Tech — já estava pronta desde
+      18/10/2025, não precisou fazer nada
+- [x] Passou pela tela de login travada em "chave de acesso" (passkey) do
+      Meta — resolvido criando a passkey de verdade pelo app do Facebook no
+      iPhone (Central de Contas → Senha e segurança → Chaves de acesso)
+- [x] Localizou "Contas do WhatsApp" no menu — já existem várias WABAs
+      antigas da Lion Tech nessa lista (`liontechloja`, `Liontechsolucoes`,
+      `Liontechsalvy`, `liontechvivo`, `Kirk Douglas - Lion Tech`, `Kirk`,
+      `Test WhatsApp Business Account`, entre outras) — **nenhuma delas é
+      do RevelaCash**, não confundir/reaproveitar
+- [x] Clicou em "Adicionar" → escolheu **"Crie uma nova conta do WhatsApp
+      Business"** (não "Solicite pra um cliente", não "Vincular uma conta
+      existente")
+- [ ] **EM ANDAMENTO**: na tela "Escolha o número que deseja usar",
+      selecionou **"Adicionar um novo número"** (não "Usar somente um nome
+      de exibição" — esse é pra notificação de uma via só, tipo OTP, não
+      serve pro caso de uso do RevelaCash). Ativando um número novo e
+      dedicado agora (nunca usado em WhatsApp comum, WhatsApp Business App
+      ou na Evolution) — verificação por SMS/ligação com código de 6
+      dígitos.
+
+**Falta (retomar exatamente daqui):**
+1. Terminar a verificação do número novo (código de 6 dígitos)
+2. Criar o app em **developers.facebook.com** (tipo "Empresa", produto
+   WhatsApp) e vincular à WABA nova do RevelaCash
+3. Gerar o **token de usuário do sistema** (Business Manager → Usuários →
+   Usuários do sistema), com permissão `whatsapp_business_messaging` e
+   `whatsapp_business_management` — guardar como segredo, mesmo tratamento
+   que `EVOLUTION_API_KEY` (Secret Manager, nunca em arquivo do repo)
+4. Deixar rodando 30 dias corridos na Cloud API antes de poder pedir a OBA
+5. Depois dos 30 dias: WhatsApp Manager → Phone numbers → Profile →
+   Official Business Account → Submit Request (gratuito)
+6. Groups API libera sozinha com a OBA aprovada
+
+**Pendente do lado do código** (ainda não comecei): `cloudApiProvider.js`
+existe no adapter (`src/canais/`) mas nunca foi testado contra a API real —
+tratar como não verificado até ter o token do item 3 acima pra testar de
+verdade. Ofereci adiantar isso enquanto o número/token não ficam prontos;
+Kirk ainda não pediu.
+
 ### Risco de ban usando Evolution API (Baileys) — pesquisado em 10/08/2026
 
 Risco real, não teórico: Evolution/Baileys reproduz o protocolo do

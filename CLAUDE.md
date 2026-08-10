@@ -351,13 +351,23 @@ header/origem novos), ambos corrigidos e verificados em sessão anônima. Ver
 as novas entradas em "Armadilhas já pagas" acima antes de mexer em App
 Check/CORS/CSP de novo. Detalhe completo em **`ESTADO.md`**.
 
-16 artes de Instagram (2 semanas, apresentação do produto + diferenciais
-familiares) em `C:\Users\Predator\Documents\RevelaCash\instagram-lancamento`.
+24 artes de Instagram (apresentação do produto + diferenciais familiares) em
+`C:\Users\Predator\Documents\RevelaCash\instagram-lancamento`.
+
+**EM ANDAMENTO (10/08/2026) — migração pro WhatsApp oficial (Cloud API).**
+Verificação de negócio da Lion Tech já estava pronta (18/10/2025, achado
+nesta sessão). Kirk está criando agora, dentro do Business Manager
+(business.facebook.com → Configurações → Contas do WhatsApp), uma WABA nova
+dedicada ao RevelaCash e ativando um número novo e dedicado (nunca usado em
+WhatsApp comum nem na Evolution). Passo a passo completo, com o que já foi
+concluído e o que falta, em **`ESTADO.md`**, seção "Caminho pro WhatsApp
+oficial (Cloud API / OBA)" — continuar exatamente dali na próxima sessão.
 
 Próximo passo em aberto, o Kirk decide:
-1. Ampliar o parser (`Lanche 38,00 crédito` cai na IA por decisão consciente)
-2. Convite de membro com login próprio (hoje um segundo login vira outra família)
-3. Tutorial de primeiro uso (ele pediu pra deixar por último)
+1. Terminar a migração pro WhatsApp oficial (em andamento, ver acima)
+2. Ampliar o parser (`Lanche 38,00 crédito` cai na IA por decisão consciente)
+3. Convite de membro com login próprio (hoje um segundo login vira outra família)
+4. Tutorial de primeiro uso (ele pediu pra deixar por último)
 
 O detalhe de tudo — sessão por sessão, o que foi verificado, o que não foi, e
 as armadilhas que já custaram horas — está em **`ESTADO.md`**.
