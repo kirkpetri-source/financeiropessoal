@@ -59,6 +59,11 @@ Passo a passo:
    verificação correr bem.
 2. **Verificação de negócio** (Meta Business Manager): documentos legais
    da Lion Tech. Prazo variável — é o que mais demora, vale pedir cedo.
+   **Já feita** — confirmado em 10/08/2026 no portfólio empresarial "Lion
+   Tech" (Business ID 1140397533171413): status "Verificada" desde
+   18/10/2025. Vale pra qualquer WABA/app novo criado dentro do mesmo
+   portfólio, não precisa reverificar. Pula direto pra passo 1 (WABA + app
+   + número dedicado)
 3. **Official Business Account**: exige (a) cumprir a política de
    mensagens comerciais, (b) 30 dias na WhatsApp Business Platform, (c)
    verificação de negócio feita, (d) autenticação em duas etapas no
