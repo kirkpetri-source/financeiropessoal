@@ -174,6 +174,49 @@ async function apagarHousehold(householdId) {
   return contagem;
 }
 
+/**
+ * Apaga a família AGORA, sem os 7 dias de arrependimento — caminho do
+ * OPERADOR para limpar conta de teste (o cliente nunca aciona isto; ele só
+ * tem `solicitarExclusao`, que agenda). Reaproveitado pelo painel
+ * `/plataforma` e por `tools/apagar-familia.js` — mesma implementação, dois
+ * pontos de entrada, para não haver duas versões da mesma exclusão irreversível.
+ *
+ * Faz o que `apagarHousehold` faz e mais: desliga a instância no servidor
+ * Evolution (se houver) e remove do Firebase Auth os logins de quem só
+ * participava desta família — quem participa de outra família mantém o
+ * acesso, porque apagar o login de terceiro por causa desta família seria
+ * apagar dado que não é dela.
+ */
+async function apagarFamiliaAgora(householdId, { provider = null, evolutionConfig = null } = {}) {
+  const familia = await householdService.buscarHousehold(householdId);
+  const membros = await householdService.listarMembros(householdId);
+  const configCanal = await getConfig(householdId).catch(() => null);
+
+  if (provider && evolutionConfig && configCanal?.instanceName) {
+    try {
+      await provider.desconectarInstancia(evolutionConfig, configCanal.instanceName);
+      await provider.apagarInstancia(evolutionConfig, configCanal.instanceName);
+    } catch {
+      // Instância pode já não existir no servidor — não impede a exclusão do dado.
+    }
+  }
+
+  const contagem = await apagarHousehold(householdId);
+
+  const loginsRemovidos = [];
+  for (const membro of membros) {
+    if (membro.id.startsWith('wa-') || membro.id.startsWith('pendente-')) continue; // sem login
+    try {
+      await admin.auth().deleteUser(membro.id);
+      loginsRemovidos.push(membro.id);
+    } catch {
+      // Login pode já não existir.
+    }
+  }
+
+  return { nome: familia.name || null, contagem, loginsRemovidos };
+}
+
 /** Firestore não tem "delete where". Vai em lotes de 400 (o teto do batch é 500). */
 async function apagarEmLote(query, tamanho = 400) {
   let total = 0;
@@ -226,6 +269,7 @@ module.exports = {
   solicitarExclusao,
   cancelarExclusao,
   apagarHousehold,
+  apagarFamiliaAgora,
   apagarEmLote,
   familiasParaApagar,
   sairDaFamilia,

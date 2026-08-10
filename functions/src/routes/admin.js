@@ -8,6 +8,7 @@ const { situacaoDaAssinatura } = require('../assinatura/estado');
 const householdService = require('../services/householdService');
 const assinaturaService = require('../services/assinaturaService');
 const adminAuditService = require('../services/adminAuditService');
+const lgpdService = require('../services/lgpdService');
 const validate = require('../middlewares/validate');
 
 const router = express.Router();
@@ -220,6 +221,55 @@ router.post('/familias/:id/desbloquear', async (req, res, next) => {
       adminUid: req.userId, adminEmail: req.userEmail, acao: 'desbloquear', householdId: req.params.id,
     });
     res.json(resultado);
+  } catch (err) { next(err); }
+});
+
+const apagarAgoraSchema = z.object({
+  confirmarNome: z.string().min(1, 'Digite o nome da família para confirmar.'),
+  motivo: z.string().max(300).optional().nullable(),
+});
+
+/**
+ * Apaga a família AGORA, sem o prazo de arrependimento de 7 dias do fluxo de
+ * LGPD do cliente — caminho do OPERADOR para limpar conta de teste entre uma
+ * rodada de teste ponta a ponta e outra. Irreversível: sem "desfazer", sem
+ * congelamento antes. Por isso a segunda trava aqui: o nome da família
+ * digitado pelo operador precisa bater com o nome de verdade (a UI já exige
+ * isso antes de habilitar o botão; o backend confere de novo).
+ */
+router.post('/familias/:id/apagar-agora', validate(apagarAgoraSchema), async (req, res, next) => {
+  try {
+    const familia = await carregarFamilia(req.params.id);
+
+    // Espelha o fallback do frontend: família sem nome (não deveria acontecer)
+    // exige a palavra fixa "APAGAR" em vez de deixar um campo vazio confirmar
+    // um nome vazio.
+    const alvo = (familia.name || '').trim() || 'APAGAR';
+    if (req.body.confirmarNome !== alvo) {
+      throw Object.assign(
+        new Error('O nome digitado não confere com o nome da família. Nada foi apagado.'),
+        { statusCode: 409, codigo: 'CONFIRMACAO_NAO_CONFERE' },
+      );
+    }
+
+    const { servidor, servidorConfigurado } = require('../config/evolutionServidor');
+    const provider = require('../canais/evolutionProvider');
+    const evolutionConfig = servidorConfigurado()
+      ? (({ url, apiKey }) => ({ evolutionApiUrl: url, apiKey }))(servidor())
+      : null;
+
+    const resultado = await lgpdService.apagarFamiliaAgora(req.params.id, { provider, evolutionConfig });
+
+    // Auditoria gravada ANTES da família sumir da lista — householdId aqui
+    // fica órfão de propósito (a família não existe mais), é só o rastro de
+    // que a exclusão aconteceu, quem fez e por quê.
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'apagar_agora',
+      householdId: req.params.id,
+      detalhes: { nome: resultado.nome, motivo: req.body.motivo || null, contagem: resultado.contagem },
+    });
+
+    res.json({ apagada: true, ...resultado });
   } catch (err) { next(err); }
 });
 

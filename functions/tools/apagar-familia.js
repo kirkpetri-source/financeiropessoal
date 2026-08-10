@@ -23,10 +23,10 @@ carregar(['EVOLUTION_API_KEY']);
 
 const fs = require('fs');
 const path = require('path');
-const { admin, db } = require('../src/config/firebaseAdmin');
+const { db } = require('../src/config/firebaseAdmin');
 const lgpdService = require('../src/services/lgpdService');
 const provider = require('../src/canais/evolutionProvider');
-const { servidor, servidorConfigurado, nomeDaInstancia } = require('../src/config/evolutionServidor');
+const { servidor, servidorConfigurado } = require('../src/config/evolutionServidor');
 
 const HORAS_DE_VALIDADE_DO_BACKUP = 24;
 
@@ -110,38 +110,17 @@ async function main() {
   }
   console.log(`\nBackup: ${backup.nome} (${backup.idadeHoras.toFixed(1)}h atrás)`);
 
-  // 1. Instância no servidor Evolution — antes do Firestore, porque depois o
-  //    nome dela deixa de estar registrado em algum lugar.
-  const instanceName = canal.exists ? canal.data().instanceName : nomeDaInstancia(householdId);
-  if (instanceName && servidorConfigurado()) {
+  // Instância, dados, contas de login: tudo em lgpdService.apagarFamiliaAgora,
+  // reaproveitado pelo painel /plataforma — mesma implementação, dois pontos
+  // de entrada, para não haver duas versões da mesma exclusão irreversível.
+  const evolutionConfig = servidorConfigurado() ? (() => {
     const { url, apiKey } = servidor();
-    const config = { evolutionApiUrl: url, apiKey };
-    try {
-      await provider.desconectarInstancia(config, instanceName);
-      await provider.apagarInstancia(config, instanceName);
-      console.log(`  instância ${instanceName} apagada do servidor`);
-    } catch (err) {
-      console.warn(`  aviso: não apagou a instância (${err.message})`);
-    }
-  }
+    return { evolutionApiUrl: url, apiKey };
+  })() : null;
 
-  // 2. Dados da família. Reaproveita o caminho de LGPD, que já é o que roda
-  //    quando um cliente pede exclusão — nada de segunda implementação.
-  const contagem = await lgpdService.apagarHousehold(householdId);
-  console.log(`  dados apagados: ${JSON.stringify(contagem)}`);
-
-  // 3. Contas de login e o documento em users/.
-  for (const uid of logins) {
-    try {
-      await admin.auth().deleteUser(uid);
-      console.log(`  login ${uid} removido do Firebase Auth`);
-    } catch (err) {
-      console.warn(`  aviso: não removeu o login ${uid} (${err.message})`);
-    }
-    try {
-      await db.collection('users').doc(uid).delete();
-    } catch { /* já foi */ }
-  }
+  const resultado = await lgpdService.apagarFamiliaAgora(householdId, { provider, evolutionConfig });
+  console.log(`  dados apagados: ${JSON.stringify(resultado.contagem)}`);
+  console.log(`  logins removidos: ${resultado.loginsRemovidos.join(', ') || 'nenhum'}`);
 
   console.log('\nOK — família apagada.');
   process.exit(0);

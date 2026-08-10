@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Lock, RefreshCw, X, ShieldOff, ShieldCheck, Gift, RotateCcw, Ban, HandCoins } from 'lucide-react';
+import { Loader2, Lock, RefreshCw, X, ShieldOff, ShieldCheck, Gift, RotateCcw, Ban, HandCoins, Trash2 } from 'lucide-react';
 import api from '../services/api';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { formatarParaLeitura } from '../utils/telefone';
@@ -83,11 +83,69 @@ function PedirMotivo({ titulo, onConfirmar, onCancelar, loading }) {
   );
 }
 
+/**
+ * Confirmação da exclusão imediata — mais fricção que `PedirMotivo` de
+ * propósito: bloquear/cancelar dá pra desfazer clicando em "Desbloquear" ou
+ * registrando pagamento de novo; apagar não tem volta. O botão de confirmar
+ * só liga quando o nome digitado bate exatamente com o nome da família.
+ */
+function ConfirmarExclusao({ nomeFamilia, onConfirmar, onCancelar, loading }) {
+  const [digitado, setDigitado] = useState('');
+  const [motivo, setMotivo] = useState('');
+  // Sem nome de família (não deveria acontecer — criarHousehold sempre grava
+  // um) a confirmação cai para uma palavra fixa, pra nunca deixar o campo
+  // vazio "confirmar" um campo vazio.
+  const alvo = nomeFamilia?.trim() || 'APAGAR';
+  const confere = digitado === alvo;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onCancelar} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-3">
+        <h3 className="font-semibold text-red-700 text-sm">Apagar "{alvo}" agora</h3>
+        <p className="text-xs text-muted">
+          Sem prazo de arrependimento, sem "desfazer". Apaga lançamentos, canal do
+          WhatsApp e contas de login de quem só participava desta família.
+        </p>
+        <div>
+          <label className="label text-xs">
+            Digite <strong>{alvo}</strong> para confirmar
+          </label>
+          <input
+            className="input"
+            value={digitado}
+            onChange={(e) => setDigitado(e.target.value)}
+            autoFocus
+          />
+        </div>
+        <textarea
+          className="input"
+          rows={2}
+          placeholder="Motivo (opcional, aparece na auditoria)"
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+        />
+        <div className="flex gap-2">
+          <button className="btn-secondary flex-1 text-sm" onClick={onCancelar} disabled={loading}>Cancelar</button>
+          <button
+            className="btn-danger flex-1 text-sm disabled:opacity-40"
+            onClick={() => onConfirmar({ confirmarNome: digitado, motivo })}
+            disabled={loading || !confere}
+          >
+            {loading ? 'Apagando...' : 'Apagar para sempre'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DetalheFamilia({ familiaId, onClose, onMudou }) {
   const [detalhe, setDetalhe] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [acaoEmCurso, setAcaoEmCurso] = useState(null);
   const [pedindoMotivoPara, setPedindoMotivoPara] = useState(null);
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
 
   async function carregar() {
     setCarregando(true);
@@ -115,6 +173,26 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
     } finally {
       setAcaoEmCurso(null);
       setPedindoMotivoPara(null);
+    }
+  }
+
+  // Rota diferente das outras: dá 409 se o nome não bater, e depois de apagar
+  // a família não existe mais — não dá pra `carregar()` de novo (404), então
+  // fecha os dois modais e só avisa a lista pra recarregar.
+  async function apagarAgora({ confirmarNome, motivo }) {
+    setAcaoEmCurso('apagar-agora');
+    try {
+      await api.post(`/plataforma/familias/${familiaId}/apagar-agora`, {
+        confirmarNome, motivo: motivo || null,
+      });
+      toast.success('Família apagada.');
+      setConfirmandoExclusao(false);
+      onClose();
+      onMudou?.();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao apagar a família.');
+    } finally {
+      setAcaoEmCurso(null);
     }
   }
 
@@ -188,6 +266,17 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
               </p>
             </div>
 
+            <div className="pt-3 border-t border-red-100">
+              <p className="text-xs font-medium text-red-700 uppercase tracking-wide mb-2">Zona de risco</p>
+              <AcaoBtn icon={Trash2} tone="danger" onClick={() => setConfirmandoExclusao(true)}>
+                Apagar agora (sem esperar 7 dias)
+              </AcaoBtn>
+              <p className="text-xs text-faint mt-2">
+                Pula o prazo de arrependimento da LGPD. Uso do operador para limpar
+                conta de teste — não use numa família de cliente de verdade.
+              </p>
+            </div>
+
             {detalhe.billingEvents?.length > 0 && (
               <div>
                 <p className="text-xs font-medium text-muted uppercase tracking-wide mb-2">Histórico de cobrança</p>
@@ -225,6 +314,15 @@ function DetalheFamilia({ familiaId, onClose, onMudou }) {
           loading={acaoEmCurso === pedindoMotivoPara}
           onCancelar={() => setPedindoMotivoPara(null)}
           onConfirmar={(motivo) => executar(pedindoMotivoPara, { motivo })}
+        />
+      )}
+
+      {confirmandoExclusao && (
+        <ConfirmarExclusao
+          nomeFamilia={detalhe?.nome || ''}
+          loading={acaoEmCurso === 'apagar-agora'}
+          onCancelar={() => setConfirmandoExclusao(false)}
+          onConfirmar={apagarAgora}
         />
       )}
     </div>
