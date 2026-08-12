@@ -355,13 +355,23 @@ Check/CORS/CSP de novo. Detalhe completo em **`ESTADO.md`**.
 `C:\Users\Predator\Documents\RevelaCash\instagram-lancamento`.
 
 **EM ANDAMENTO (10/08/2026) — migração pro WhatsApp oficial (Cloud API).**
-Verificação de negócio da Lion Tech já estava pronta (18/10/2025, achado
-nesta sessão). Kirk está criando agora, dentro do Business Manager
-(business.facebook.com → Configurações → Contas do WhatsApp), uma WABA nova
-dedicada ao RevelaCash e ativando um número novo e dedicado (nunca usado em
-WhatsApp comum nem na Evolution). Passo a passo completo, com o que já foi
-concluído e o que falta, em **`ESTADO.md`**, seção "Caminho pro WhatsApp
-oficial (Cloud API / OBA)" — continuar exatamente dali na próxima sessão.
+Verificação de negócio da Lion Tech já estava pronta (18/10/2025). WABA
+`revelacash` (ID `1517576109683204`) e número dedicado `+55 64 9613-0798`
+(Phone Number ID `1229153730286556`) criados e verificados; app
+`revelacash` (App ID `1581075037136939`) criado em developers.facebook.com;
+usuário do sistema `revelacash-api` criado e token de longa duração gerado
+(`whatsapp_business_management` + `whatsapp_business_messaging`), salvo no
+Secret Manager como `WHATSAPP_CLOUD_API_TOKEN` — testado com sucesso contra
+a API real da Meta (chamada de leitura, `curl` direto). Falta: testar
+`cloudApiProvider.js` (o código do adapter) contra a API real, e depois
+esperar 30 dias corridos usando a Cloud API antes de pedir a Official
+Business Account (gratuita — exigência da Meta, não do código; sem ela a
+Groups API não libera, então o "modo grupo" do canal só funciona por Cloud
+API depois disso). A Evolution API continua sendo o canal ativo dos
+clientes reais até a migração de fato acontecer — nada foi trocado ainda.
+Passo a passo completo e checkpoint atualizado em **`ESTADO.md`**, seção
+"Caminho pro WhatsApp oficial (Cloud API / OBA)" — continuar exatamente
+dali na próxima sessão.
 
 Próximo passo em aberto, o Kirk decide:
 1. Terminar a migração pro WhatsApp oficial (em andamento, ver acima)

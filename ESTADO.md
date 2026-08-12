@@ -98,32 +98,67 @@ O Kirk começou a execução ao vivo, dentro do Business Manager
 - [x] Clicou em "Adicionar" → escolheu **"Crie uma nova conta do WhatsApp
       Business"** (não "Solicite pra um cliente", não "Vincular uma conta
       existente")
-- [ ] **EM ANDAMENTO**: na tela "Escolha o número que deseja usar",
-      selecionou **"Adicionar um novo número"** (não "Usar somente um nome
-      de exibição" — esse é pra notificação de uma via só, tipo OTP, não
-      serve pro caso de uso do RevelaCash). Ativando um número novo e
-      dedicado agora (nunca usado em WhatsApp comum, WhatsApp Business App
-      ou na Evolution) — verificação por SMS/ligação com código de 6
-      dígitos.
+- [x] Número novo e dedicado ativado e verificado por SMS (código de 6
+      dígitos aceito). WABA **`revelacash`**, ID **`1517576109683204`**,
+      número **+55 64 9613-0798**. Status em "Phone numbers": "Pendente"
+      (análise automática da Meta — normal, não bloqueia o próximo passo) e
+      nome de exibição "revelacash" em "Em análise" (revisão separada).
+
+- [x] App criado em developers.facebook.com: **`revelacash`**, App ID
+      `1581075037136939`, vinculado ao business `1140397533171413`
+      (Kirk Douglas / Lion Tech), caso de uso "Conectar-se com clientes
+      pelo WhatsApp".
+- [x] Confirmado no WhatsApp Manager: WABA `revelacash`
+      (`1517576109683204`) e número `+55 64 9613-0798` vinculados certo ao
+      app. **Phone Number ID: `1229153730286556`** (ID interno usado nas
+      chamadas da API, diferente do número em si).
+
+IDs de referência desta migração (guardar, não são segredo):
+- App ID: `1581075037136939`
+- WABA ID (`revelacash`): `1517576109683204`
+- Phone Number ID: `1229153730286556`
+- Business ID (Lion Tech): `1140397533171413`
+
+- [x] Usuário do sistema `revelacash-api` (ID `61592788245665`, acesso
+      Employee) criado no portfólio Lion Tech. WABA `revelacash` atribuída
+      com acesso total. Papel adicionado no app `revelacash` (Contas →
+      Apps) pra desbloquear as permissões — sem isso o passo de "Gerar
+      token" mostra "Nenhuma permissão disponível".
+- [x] **Token de usuário do sistema gerado** com `whatsapp_business_management`
+      + `whatsapp_business_messaging`, salvo no Secret Manager como
+      `WHATSAPP_CLOUD_API_TOKEN` (`firebase functions:secrets:set
+      WHATSAPP_CLOUD_API_TOKEN --project financeiropessoal-29b32`, rodado
+      no terminal do Kirk — nunca colado no chat). Confirmado existente via
+      `firebase functions:secrets:access` (sem exibir o valor).
+- [x] **Token testado contra a API real da Meta** — chamada de leitura
+      (`GET /{phone-number-id}?fields=verified_name,display_phone_number,
+      quality_rating,code_verification_status`, `curl` direto, sem passar
+      pelo código do projeto): respondeu 200 com `verified_name:
+      "revelacash"`, `code_verification_status: "VERIFIED"`. Confirma
+      token + Phone Number ID + permissões corretos. Não manda mensagem
+      (bloqueado mesmo, por falta de forma de pagamento na conta) — só
+      confirma autenticação.
+
+**Por que esperar 30 dias antes da OBA**: é exigência da Meta (não do
+nosso código) — junto com política de mensagens comerciais cumprida,
+verificação de negócio (já feita), 2FA no número e nome de exibição
+aprovado. Sem a OBA a **Groups API** não libera, e o "modo grupo" do
+canal (`whatsappConfigs.modo`) depende dela na Cloud API — só o modo
+individual funciona por Cloud API nesse meio tempo. A Evolution API
+continua sendo o canal ativo dos clientes reais até a migração de fato
+acontecer; nada foi trocado ainda.
 
 **Falta (retomar exatamente daqui):**
-1. Terminar a verificação do número novo (código de 6 dígitos)
-2. Criar o app em **developers.facebook.com** (tipo "Empresa", produto
-   WhatsApp) e vincular à WABA nova do RevelaCash
-3. Gerar o **token de usuário do sistema** (Business Manager → Usuários →
-   Usuários do sistema), com permissão `whatsapp_business_messaging` e
-   `whatsapp_business_management` — guardar como segredo, mesmo tratamento
-   que `EVOLUTION_API_KEY` (Secret Manager, nunca em arquivo do repo)
-4. Deixar rodando 30 dias corridos na Cloud API antes de poder pedir a OBA
-5. Depois dos 30 dias: WhatsApp Manager → Phone numbers → Profile →
+1. Testar `cloudApiProvider.js` (o código do adapter em `src/canais/`,
+   ainda não exercitado) contra a API real usando o token
+   (`WHATSAPP_CLOUD_API_TOKEN`), o Phone Number ID (`1229153730286556`) e
+   o WABA ID (`1517576109683204`) — a chamada de `curl` acima confirmou a
+   credencial, mas não passou pelo código do projeto; tratar como não
+   verificado até isso acontecer
+2. Deixar rodando 30 dias corridos na Cloud API antes de poder pedir a OBA
+3. Depois dos 30 dias: WhatsApp Manager → Phone numbers → Profile →
    Official Business Account → Submit Request (gratuito)
-6. Groups API libera sozinha com a OBA aprovada
-
-**Pendente do lado do código** (ainda não comecei): `cloudApiProvider.js`
-existe no adapter (`src/canais/`) mas nunca foi testado contra a API real —
-tratar como não verificado até ter o token do item 3 acima pra testar de
-verdade. Ofereci adiantar isso enquanto o número/token não ficam prontos;
-Kirk ainda não pediu.
+4. Groups API libera sozinha com a OBA aprovada
 
 ### Risco de ban usando Evolution API (Baileys) — pesquisado em 10/08/2026
 
