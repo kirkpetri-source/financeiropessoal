@@ -48,11 +48,12 @@ async function despejar(query) {
 async function exportarDados(householdId, solicitadoPor) {
   const dados = escopoDe(householdId);
 
-  const [familia, membros, transacoes, categorias, formas, logs, config, orcamentos, contasFixas, faturas] = await Promise.all([
+  const [familia, membros, transacoes, categorias, subcategorias, formas, logs, config, orcamentos, contasFixas, faturas] = await Promise.all([
     householdService.buscarHousehold(householdId),
     householdService.listarMembros(householdId),
     despejar(dados.consultar('transactions')),
     despejar(dados.consultar('categories')),
+    despejar(dados.consultar('subcategories')),
     despejar(dados.consultar('paymentMethods')),
     despejar(dados.consultar('whatsappLogs')),
     getConfig(householdId),
@@ -75,6 +76,7 @@ async function exportarDados(householdId, solicitadoPor) {
     membros: paraJson(membros),
     lancamentos: transacoes,
     categoriasPersonalizadas: categorias,
+    subcategorias,
     formasDePagamentoPersonalizadas: formas,
     mensagensDoWhatsapp: logs,
     orcamentos,
@@ -136,8 +138,8 @@ async function apagarHousehold(householdId) {
   const contagem = {};
 
   for (const colecao of [
-    'transactions', 'whatsappLogs', 'categories', 'paymentMethods',
-    'budgets', 'recurringBills', 'creditCardInvoices',
+    'transactions', 'whatsappLogs', 'categories', 'subcategories', 'paymentMethods',
+    'budgets', 'recurringBills', 'creditCardInvoices', 'pendingSubcategoryConfirmations',
   ]) {
     contagem[colecao] = await apagarEmLote(dados.consultar(colecao));
   }

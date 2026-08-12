@@ -28,7 +28,7 @@ function criarServicoDeTransacoes({ db, admin }) {
    * família ou registro padrão — sem isso, um ID Firestore de outra família
    * gravava normalmente e o enriquecimento exibia nome/cor de categoria alheia.
    */
-  async function validarReferencias(dados, { categoryId, paymentMethodId }) {
+  async function validarReferencias(dados, { categoryId, subcategoryId, paymentMethodId }, categoriaEfetiva) {
     if (categoryId !== undefined) {
       const categoria = await dados.buscarDoc('categories', categoryId);
       if (!categoria) throw Object.assign(new Error('Categoria inválida.'), { statusCode: 400 });
@@ -36,6 +36,15 @@ function criarServicoDeTransacoes({ db, admin }) {
     if (paymentMethodId !== undefined) {
       const forma = await dados.buscarDoc('paymentMethods', paymentMethodId);
       if (!forma) throw Object.assign(new Error('Forma de pagamento inválida.'), { statusCode: 400 });
+    }
+    if (subcategoryId !== undefined && subcategoryId !== null) {
+      const subcategoria = await dados.buscarDoc('subcategories', subcategoryId);
+      if (!subcategoria) throw Object.assign(new Error('Subcategoria inválida.'), { statusCode: 400 });
+
+      const categoriaAlvo = categoryId !== undefined ? categoryId : categoriaEfetiva;
+      if (subcategoria.categoryId !== categoriaAlvo) {
+        throw Object.assign(new Error('Subcategoria não pertence à categoria informada.'), { statusCode: 400 });
+      }
     }
   }
 
@@ -61,13 +70,18 @@ function criarServicoDeTransacoes({ db, admin }) {
   }
 
   async function createTransaction(dados, entrada, criadoPor = null) {
-    await validarReferencias(dados, { categoryId: entrada.categoryId, paymentMethodId: entrada.paymentMethodId });
+    await validarReferencias(dados, {
+      categoryId: entrada.categoryId,
+      subcategoryId: entrada.subcategoryId,
+      paymentMethodId: entrada.paymentMethodId,
+    }, entrada.categoryId);
 
     const criada = await dados.criar('transactions', {
       type: entrada.type,
       description: entrada.description,
       amount: Number(entrada.amount),
       categoryId: entrada.categoryId,
+      subcategoryId: entrada.subcategoryId || null,
       paymentMethodId: entrada.paymentMethodId,
       date: admin.firestore.Timestamp.fromDate(new Date(entrada.date)),
       referenceMonth: mesDeReferencia(entrada.date),
@@ -91,7 +105,7 @@ function criarServicoDeTransacoes({ db, admin }) {
   async function updateTransaction(dados, transactionId, entrada) {
     const alteracao = {};
 
-    const camposDiretos = ['type', 'description', 'categoryId', 'paymentMethodId', 'notes', 'origin', 'status', 'paidBy'];
+    const camposDiretos = ['type', 'description', 'categoryId', 'subcategoryId', 'paymentMethodId', 'notes', 'origin', 'status', 'paidBy'];
     for (const campo of camposDiretos) {
       if (entrada[campo] !== undefined) alteracao[campo] = entrada[campo];
     }
@@ -101,7 +115,19 @@ function criarServicoDeTransacoes({ db, admin }) {
       alteracao.referenceMonth = mesDeReferencia(entrada.date);
     }
 
-    await validarReferencias(dados, { categoryId: entrada.categoryId, paymentMethodId: entrada.paymentMethodId });
+    // Subcategoria só valida contra a categoria-mãe se a mensagem não trouxe
+    // categoryId novo — nesse caso a categoria efetiva é a que já está gravada.
+    let categoriaEfetiva = entrada.categoryId;
+    if (categoriaEfetiva === undefined && entrada.subcategoryId !== undefined && entrada.subcategoryId !== null) {
+      const atual = await dados.buscarDoc('transactions', transactionId);
+      categoriaEfetiva = atual?.categoryId;
+    }
+
+    await validarReferencias(dados, {
+      categoryId: entrada.categoryId,
+      subcategoryId: entrada.subcategoryId,
+      paymentMethodId: entrada.paymentMethodId,
+    }, categoriaEfetiva);
 
     const atualizada = await dados.atualizar('transactions', transactionId, alteracao);
     const lista = await enriquecer([{ ...atualizada, date: atualizada.date?.toDate?.() || atualizada.date }]);
@@ -179,26 +205,32 @@ function criarServicoDeTransacoes({ db, admin }) {
     if (!transacoes.length) return [];
 
     const idsCategorias = [...new Set(transacoes.map((t) => t.categoryId).filter(Boolean))];
+    const idsSubcategorias = [...new Set(transacoes.map((t) => t.subcategoryId).filter(Boolean))];
     const idsPagamentos = [...new Set(transacoes.map((t) => t.paymentMethodId).filter(Boolean))];
 
     const refs = [
       ...idsCategorias.map((id) => db.collection('categories').doc(id)),
+      ...idsSubcategorias.map((id) => db.collection('subcategories').doc(id)),
       ...idsPagamentos.map((id) => db.collection('paymentMethods').doc(id)),
     ];
 
     const docs = refs.length ? await db.getAll(...refs) : [];
 
     const categorias = {};
+    const subcategorias = {};
     const pagamentos = {};
     docs.forEach((doc, i) => {
       if (!doc.exists) return;
-      const alvo = i < idsCategorias.length ? categorias : pagamentos;
+      let alvo = pagamentos;
+      if (i < idsCategorias.length) alvo = categorias;
+      else if (i < idsCategorias.length + idsSubcategorias.length) alvo = subcategorias;
       alvo[doc.id] = { id: doc.id, ...doc.data() };
     });
 
     return transacoes.map((t) => ({
       ...t,
       category: categorias[t.categoryId] || { id: t.categoryId, name: 'Desconhecida', color: '#94a3b8' },
+      subcategory: t.subcategoryId ? (subcategorias[t.subcategoryId] || { id: t.subcategoryId, name: 'Desconhecida' }) : null,
       paymentMethod: pagamentos[t.paymentMethodId] || { id: t.paymentMethodId, name: 'Desconhecido' },
     }));
   }

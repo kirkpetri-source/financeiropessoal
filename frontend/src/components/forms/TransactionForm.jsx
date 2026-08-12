@@ -13,12 +13,13 @@ const STATUSES = [
   { value: 'PENDING', label: 'Pendente' },
 ];
 
-export default function TransactionForm({ onSubmit, initialData, categories, paymentMethods, isLoading, payers = [] }) {
+export default function TransactionForm({ onSubmit, initialData, categories, subcategories = [], paymentMethods, isLoading, payers = [] }) {
   const {
     register,
     handleSubmit,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm({
     defaultValues: {
@@ -30,6 +31,7 @@ export default function TransactionForm({ onSubmit, initialData, categories, pay
   });
 
   const selectedType = watch('type');
+  const selectedCategoryId = watch('categoryId');
 
   useEffect(() => {
     if (initialData) {
@@ -40,6 +42,7 @@ export default function TransactionForm({ onSubmit, initialData, categories, pay
           : format(new Date(), 'yyyy-MM-dd'),
         amount: Number(initialData.amount),
         categoryId: initialData.categoryId,
+        subcategoryId: initialData.subcategoryId || '',
         paymentMethodId: initialData.paymentMethodId,
       });
     }
@@ -49,8 +52,14 @@ export default function TransactionForm({ onSubmit, initialData, categories, pay
     (c) => c.type === selectedType || c.type === 'BOTH'
   );
 
+  const filteredSubcategories = subcategories.filter((s) => s.categoryId === selectedCategoryId);
+
   async function handleFormSubmit(data) {
-    await onSubmit({ ...data, amount: parseFloat(String(data.amount).replace(',', '.')) });
+    await onSubmit({
+      ...data,
+      amount: parseFloat(String(data.amount).replace(',', '.')),
+      subcategoryId: data.subcategoryId || null,
+    });
   }
 
   return (
@@ -124,7 +133,15 @@ export default function TransactionForm({ onSubmit, initialData, categories, pay
         <label className="label">Categoria *</label>
         <select
           className={`input ${errors.categoryId ? 'border-red-400' : ''}`}
-          {...register('categoryId', { required: 'Categoria obrigatória.' })}
+          {...register('categoryId', {
+            required: 'Categoria obrigatória.',
+            // Trocar de categoria invalida a subcategoria escolhida antes —
+            // ela pode não pertencer mais à nova categoria. Fica no onChange
+            // (não num useEffect por selectedCategoryId) para não disparar
+            // também quando o reset() do modo edição seta os dois campos
+            // juntos, o que apagaria a subcategoria que viria do lançamento.
+            onChange: () => setValue('subcategoryId', ''),
+          })}
         >
           <option value="">Selecione a categoria</option>
           {filteredCategories.map((c) => (
@@ -133,6 +150,19 @@ export default function TransactionForm({ onSubmit, initialData, categories, pay
         </select>
         {errors.categoryId && <p className="text-xs text-red-500 mt-1">{errors.categoryId.message}</p>}
       </div>
+
+      {/* Subcategoria */}
+      {filteredSubcategories.length > 0 && (
+        <div>
+          <label className="label">Subcategoria</label>
+          <select className="input" {...register('subcategoryId')}>
+            <option value="">Nenhuma</option>
+            {filteredSubcategories.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Forma de Pagamento */}
       <div>

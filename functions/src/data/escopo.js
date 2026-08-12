@@ -24,6 +24,8 @@ const COLECOES_ESCOPADAS = new Set([
   'budgets',
   'recurringBills',
   'creditCardInvoices',
+  'subcategories',
+  'pendingSubcategoryConfirmations',
 ]);
 
 // Coleções que misturam registros globais (isDefault) com registros da família.

@@ -7,6 +7,7 @@ const {
   lancarPorCupom,
   jaProcessada,
   looksLikeFinancialMessage,
+  tentarResolverConfirmacaoPendente,
 } = require('../services/lancamentoPorMensagem');
 const { tratarComando } = require('../services/comandosWhatsapp');
 const { responder, confirmarLancamentos, ehMensagemDoBot } = require('../services/respostaWhatsapp');
@@ -184,9 +185,21 @@ async function processarMensagemRecebida(req) {
 
   if (msg.messageType !== 'TEXT' || !msg.content) return;
 
+  // Antes de tratar como comando ou lançamento novo: pode ser a resposta a
+  // uma pergunta de subcategoria que a IA fez na mensagem anterior. Single-
+  // shot — se não bater com a pendência, ela é descartada e a mensagem segue
+  // o caminho normal, tratada como se fosse nova.
+  const confirmacao = await tentarResolverConfirmacaoPendente({
+    householdId, senderJid: msg.senderJid, texto: msg.content,
+  });
+  if (confirmacao.tratado) {
+    await responder(householdId, config, msg.remoteJid, confirmacao.resposta);
+    return;
+  }
+
   // Comandos respondem de verdade agora. Antes eram detectados só para serem
   // ignorados: quem digitava "resumo" não recebia nada.
-  const respostaDeComando = await tratarComando(msg.content, { householdId, remoteJid: msg.remoteJid });
+  const respostaDeComando = await tratarComando(msg.content, { householdId, remoteJid: msg.remoteJid, senderJid: msg.senderJid });
   if (respostaDeComando) {
     await responder(householdId, config, msg.remoteJid, respostaDeComando);
     return;
@@ -213,7 +226,7 @@ async function processarMensagemRecebida(req) {
     ? new Date(msg.timestamp * 1000).toISOString()
     : new Date().toISOString();
 
-  const { transacoes, criadas, erro, silencioso } = await lancarPorTexto({
+  const { transacoes, criadas, erro, silencioso, perguntaSubcategoria } = await lancarPorTexto({
     householdId,
     texto: msg.content,
     senderJid: msg.senderJid,
@@ -235,6 +248,12 @@ async function processarMensagemRecebida(req) {
 
   // Fecha o ciclo: até agora o usuário lançava e não sabia se tinha entrado.
   await confirmarLancamentos(householdId, config, msg.remoteJid, criadas);
+
+  // Segunda mensagem, só quando a IA não teve confiança pra escolher a
+  // subcategoria sozinha — o lançamento já está feito, isto só refina depois.
+  if (perguntaSubcategoria) {
+    await responder(householdId, config, msg.remoteJid, perguntaSubcategoria);
+  }
 }
 
 /**

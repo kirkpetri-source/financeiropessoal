@@ -5,6 +5,7 @@ const transactionSchema = z.object({
   description: z.string().min(1, 'Descrição obrigatória.').max(255),
   amount: z.number({ required_error: 'Valor obrigatório.' }).positive('Valor deve ser positivo.'),
   categoryId: z.string().min(1, 'Categoria obrigatória.'),
+  subcategoryId: z.string().optional().nullable(),
   paymentMethodId: z.string().min(1, 'Forma de pagamento obrigatória.'),
   date: z.string().min(1, 'Data obrigatória.'),
   notes: z.string().max(500).optional().nullable(),

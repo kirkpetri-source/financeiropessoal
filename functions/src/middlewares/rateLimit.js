@@ -12,6 +12,19 @@ const rateLimit = require('express-rate-limit');
 
 const respostaPadrao = { error: 'Muitas requisições. Tente novamente em instantes.' };
 
+/**
+ * O keyGenerator padrão do express-rate-limit valida `req.ip` e LANÇA
+ * (ERR_ERL_UNDEFINED_IP_ADDRESS) se vier undefined, em vez de só tratar como
+ * "sem IP". Em produção (atrás do Cloud Run) `req.ip` sempre existe; no
+ * emulador de Functions local, o objeto de requisição não expõe isso — e sem
+ * um keyGenerator próprio, TODA rota com rate limit (webhook, /auth/*,
+ * geral) derrubava com 401/500 antes mesmo de chegar no authMiddleware,
+ * inviabilizando qualquer teste local. Fallback simples, sem afetar produção.
+ */
+function chaveDeRequisicao(req) {
+  return req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'sem-ip-local';
+}
+
 function criarLimite({ janelaMs, maximo, nome }) {
   return rateLimit({
     windowMs: janelaMs,
@@ -19,8 +32,9 @@ function criarLimite({ janelaMs, maximo, nome }) {
     standardHeaders: true,
     legacyHeaders: false,
     message: respostaPadrao,
+    keyGenerator: chaveDeRequisicao,
     handler: (req, res) => {
-      console.warn(`[RateLimit:${nome}] Bloqueado IP ${req.ip} em ${req.method} ${req.originalUrl}`);
+      console.warn(`[RateLimit:${nome}] Bloqueado IP ${chaveDeRequisicao(req)} em ${req.method} ${req.originalUrl}`);
       res.status(429).json(respostaPadrao);
     },
   });

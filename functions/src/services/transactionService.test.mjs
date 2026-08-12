@@ -70,7 +70,72 @@ beforeEach(() => {
     'categories/cat-padrao': { isDefault: true, name: 'Padrão do sistema', color: '#999' },
     'categories/cat-de-outra-familia': { householdId: 'fam-2', name: 'Categoria da fam-2' },
     'paymentMethods/pm-de-outra-familia': { householdId: 'fam-2', name: 'Forma da fam-2' },
+    'categories/cat-lazer': { householdId: FAMILIA, name: 'Lazer', color: '#222' },
+    'subcategories/sub-padaria': { householdId: FAMILIA, name: 'Padaria', categoryId: 'cat-mercado' },
+    'subcategories/sub-cinema': { householdId: FAMILIA, name: 'Cinema', categoryId: 'cat-lazer' },
+    'subcategories/sub-de-outra-familia': { householdId: 'fam-2', name: 'Sub da fam-2', categoryId: 'cat-mercado' },
   };
+});
+
+describe('createTransaction/updateTransaction — subcategoria', () => {
+  it('cria com subcategoria válida da mesma categoria', async () => {
+    const dados = escopoDe(FAMILIA);
+    const t = await createTransaction(dados, {
+      type: 'EXPENSE', description: 'Pão', amount: 10, date: '2026-08-01',
+      categoryId: 'cat-mercado', subcategoryId: 'sub-padaria', paymentMethodId: 'pm-pix',
+    });
+    expect(t.subcategory.name).toBe('Padaria');
+  });
+
+  it('recusa subcategoria de outra categoria', async () => {
+    const dados = escopoDe(FAMILIA);
+    await expect(createTransaction(dados, {
+      type: 'EXPENSE', description: 'Pão', amount: 10, date: '2026-08-01',
+      categoryId: 'cat-lazer', subcategoryId: 'sub-padaria', paymentMethodId: 'pm-pix',
+    })).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('recusa subcategoria de outra família', async () => {
+    const dados = escopoDe(FAMILIA);
+    await expect(createTransaction(dados, {
+      type: 'EXPENSE', description: 'Pão', amount: 10, date: '2026-08-01',
+      categoryId: 'cat-mercado', subcategoryId: 'sub-de-outra-familia', paymentMethodId: 'pm-pix',
+    })).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('atualiza só a subcategoria, validando contra a categoria já gravada', async () => {
+    const dados = escopoDe(FAMILIA);
+    const criada = await createTransaction(dados, {
+      type: 'EXPENSE', description: 'Pão', amount: 10, date: '2026-08-01',
+      categoryId: 'cat-mercado', paymentMethodId: 'pm-pix',
+    });
+
+    const atualizada = await updateTransaction(dados, criada.id, { subcategoryId: 'sub-padaria' });
+    expect(atualizada.subcategory.name).toBe('Padaria');
+  });
+
+  it('recusa atualizar com subcategoria que não bate com a categoria já gravada', async () => {
+    const dados = escopoDe(FAMILIA);
+    const criada = await createTransaction(dados, {
+      type: 'EXPENSE', description: 'Pão', amount: 10, date: '2026-08-01',
+      categoryId: 'cat-mercado', paymentMethodId: 'pm-pix',
+    });
+
+    await expect(
+      updateTransaction(dados, criada.id, { subcategoryId: 'sub-cinema' })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('subcategoryId null limpa a subcategoria', async () => {
+    const dados = escopoDe(FAMILIA);
+    const criada = await createTransaction(dados, {
+      type: 'EXPENSE', description: 'Pão', amount: 10, date: '2026-08-01',
+      categoryId: 'cat-mercado', subcategoryId: 'sub-padaria', paymentMethodId: 'pm-pix',
+    });
+
+    const atualizada = await updateTransaction(dados, criada.id, { subcategoryId: null });
+    expect(atualizada.subcategory).toBeNull();
+  });
 });
 
 describe('createTransaction — checagem de posse', () => {

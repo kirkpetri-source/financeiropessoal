@@ -53,6 +53,13 @@ async function deleteCategory(dados, categoryId) {
     throw Object.assign(new Error('Categoria em uso em lançamentos.'), { statusCode: 409 });
   }
 
+  const comSubcategoria = await dados.consultar('subcategories')
+    .where('categoryId', '==', categoryId).limit(1).get();
+
+  if (!comSubcategoria.empty) {
+    throw Object.assign(new Error('Categoria tem subcategorias cadastradas.'), { statusCode: 409 });
+  }
+
   await dados.remover('categories', categoryId);
 }
 

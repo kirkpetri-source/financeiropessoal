@@ -1,9 +1,11 @@
 const { escopoDe } = require('../data/escopo');
 const { getMonthlySummary, listTransactions, deleteTransaction, updateTransaction } = require('./transactionService');
 const { listCategories } = require('./categoryService');
-const { bloqueioPorAssinatura } = require('./lancamentoPorMensagem');
+const { listSubcategories } = require('./subcategoryService');
+const { bloqueioPorAssinatura, telefoneEfetivo } = require('./lancamentoPorMensagem');
 const { format } = require('date-fns');
 const { gerarCodigoVinculo } = require('../utils/codigoVinculo');
+const { normalizar } = require('../utils/normalizarTexto');
 
 /**
  * Comandos que a família pode mandar no grupo.
@@ -14,14 +16,6 @@ const { gerarCodigoVinculo } = require('../utils/codigoVinculo');
 
 function moeda(valor) {
   return `R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function normalizar(texto) {
-  return String(texto || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '') // tira acento: 'ultimos' casa com 'ultimos'
-    .replace(/^\//, '');                              // aceita com ou sem barra
 }
 
 const AJUDA = [
@@ -45,6 +39,7 @@ const AJUDA = [
   '• *ultimos* — últimos lançamentos',
   '• *apagar ultimo* (ou *errado*, *apaga*, *cancela*) — desfaz o último lançamento',
   '• *categoria mercado* — muda a categoria do último lançamento',
+  '• *subcategoria padaria* — muda a subcategoria do último lançamento (ou *sem subcategoria* pra remover)',
   '• *categorias* — categorias mais usadas no mês',
   '• *ajuda* — esta mensagem',
 ].join('\n');
@@ -151,6 +146,69 @@ async function comandoMudarCategoria(householdId, nomeCategoria) {
   return `✅ Categoria de "${ultimo.description}" (${moeda(ultimo.amount)}) alterada para *${alvo.name}*.`;
 }
 
+const GATILHOS_LIMPAR_SUBCATEGORIA = ['sem subcategoria', 'remover subcategoria', 'nenhuma subcategoria'];
+
+/**
+ * Muda a subcategoria do lançamento mais recente. Mesmo padrão de
+ * comandoMudarCategoria: casa por nome exato (sem acento/maiúscula) contra as
+ * subcategorias já cadastradas para a categoria do lançamento, sem IA nem
+ * frase livre. "sem subcategoria" limpa em vez de recusar.
+ *
+ * Quando o nome digitado não bate com nenhuma opção, abre a MESMA pendência
+ * de confirmação que a IA usa (ver lancamentoPorMensagem.resolverOuPerguntarSubcategoria)
+ * — sem isso, a pessoa via a lista de opções, respondia com uma delas, e a
+ * resposta caía no vazio (achado testando de verdade pelo WhatsApp,
+ * 11/08/2026): "subcategoria carne" não achava, listava as opções, e
+ * responder "Açougue" em seguida não tinha pra onde ir.
+ */
+async function comandoMudarSubcategoria(householdId, nomeSubcategoria, senderJid) {
+  const bloqueio = await bloqueioPorAssinatura(householdId);
+  if (bloqueio) return bloqueio;
+
+  if (!nomeSubcategoria) {
+    return 'Diga o nome da subcategoria: *subcategoria padaria*, ou *sem subcategoria* para remover.';
+  }
+
+  const dados = escopoDe(householdId);
+  const mes = format(new Date(), 'yyyy-MM');
+  const lista = await listTransactions(dados, { month: mes });
+
+  if (!lista.length) return 'Não há lançamento neste mês para mudar a subcategoria.';
+
+  const ultimo = lista[0];
+
+  if (GATILHOS_LIMPAR_SUBCATEGORIA.includes(normalizar(nomeSubcategoria))) {
+    await updateTransaction(dados, ultimo.id, { subcategoryId: null });
+    return `✅ Subcategoria removida de "${ultimo.description}" (${moeda(ultimo.amount)}).`;
+  }
+
+  const subcategorias = await listSubcategories(dados, ultimo.categoryId);
+  const alvo = subcategorias.find((s) => normalizar(s.name) === normalizar(nomeSubcategoria));
+
+  if (!alvo) {
+    if (!subcategorias.length) {
+      return `A categoria de "${ultimo.description}" ainda não tem subcategorias cadastradas. Crie uma no painel.`;
+    }
+
+    const telefone = await telefoneEfetivo(senderJid, householdId);
+    if (telefone) {
+      await dados.criar('pendingSubcategoryConfirmations', {
+        phone: telefone,
+        transactionId: ultimo.id,
+        categoryId: ultimo.categoryId,
+        categoryName: ultimo.category?.name || '',
+        opcoes: subcategorias.map((s) => ({ id: s.id, name: s.name })),
+      });
+    }
+
+    return `Não encontrei a subcategoria "${nomeSubcategoria}" em *${ultimo.category?.name}*. `
+      + `Opções: ${subcategorias.map((s) => s.name).join(', ')}. Responda com o nome ou o número.`;
+  }
+
+  await updateTransaction(dados, ultimo.id, { subcategoryId: alvo.id });
+  return `✅ Subcategoria de "${ultimo.description}" (${moeda(ultimo.amount)}) alterada para *${alvo.name}*.`;
+}
+
 async function comandoCategorias(householdId) {
   const dados = escopoDe(householdId);
   const mes = format(new Date(), 'yyyy-MM');
@@ -211,7 +269,7 @@ async function comandoVincular(codigo, remoteJid) {
  * Interpreta e executa. Devolve null quando não é comando — aí a mensagem segue
  * para o caminho normal de lançamento.
  */
-async function tratarComando(texto, { householdId, remoteJid }) {
+async function tratarComando(texto, { householdId, remoteJid, senderJid }) {
   const limpo = normalizar(texto);
 
   if (limpo.startsWith('vincular')) {
@@ -238,6 +296,12 @@ async function tratarComando(texto, { householdId, remoteJid }) {
   ];
   if (GATILHOS_APAGAR.includes(limpo)) {
     return comandoApagarUltimo(householdId);
+  }
+  if (limpo.startsWith('subcategoria ') || limpo.startsWith('mudar subcategoria ') || limpo.startsWith('trocar subcategoria ')) {
+    const nomeSubcategoria = limpo
+      .replace(/^(mudar\s+|trocar\s+)?subcategoria\s+(para\s+)?/, '')
+      .trim();
+    return comandoMudarSubcategoria(householdId, nomeSubcategoria, senderJid);
   }
   if (limpo.startsWith('categoria ') || limpo.startsWith('mudar categoria ') || limpo.startsWith('trocar categoria ')) {
     const nomeCategoria = limpo

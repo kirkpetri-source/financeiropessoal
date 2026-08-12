@@ -149,4 +149,56 @@ async function parseWithAI(message, payers = []) {
   }
 }
 
-module.exports = { parseWithAI };
+const SUBCATEGORIA_INCERTO = 'INCERTO';
+
+/**
+ * Escolhe, entre as subcategorias já cadastradas para UMA categoria, qual
+ * combina com a descrição do lançamento. Chamada só quando a categoria
+ * resolvida (por regra ou por IA) já tem subcategoria cadastrada — famílias
+ * sem subcategoria nunca pagam esse custo extra.
+ *
+ * Devolve o nome exato de uma das `opcoes`, ou null quando a IA respondeu
+ * INCERTO (ou qualquer coisa que não bata) — nesse caso quem chamou decide
+ * perguntar ao usuário, nunca adivinha.
+ *
+ * @param {{descricao: string, categoriaNome: string, opcoes: string[]}} params
+ * @returns {Promise<string|null>}
+ */
+async function resolverSubcategoria({ descricao, categoriaNome, opcoes }) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !opcoes?.length) return null;
+
+  const prompt = `Uma pessoa registrou um gasto na categoria "${categoriaNome}": "${descricao}".\n`
+    + `Subcategorias existentes: ${JSON.stringify(opcoes)}.\n`
+    + `Responda SOMENTE com o nome EXATO de uma dessas subcategorias, ou a palavra ${SUBCATEGORIA_INCERTO} `
+    + 'se não for possível decidir com confiança. Nada além disso — sem pontuação, sem explicação.';
+
+  try {
+    const resp = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0 },
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      console.error(`[AI Parser] Subcategoria — Gemini retornou ${resp.status}: ${body.slice(0, 300)}`);
+      return null;
+    }
+
+    const data = await resp.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!texto || texto.toUpperCase() === SUBCATEGORIA_INCERTO) return null;
+
+    const bateu = opcoes.find((nome) => nome.toLowerCase() === texto.toLowerCase());
+    return bateu || null;
+  } catch (err) {
+    console.error('[AI Parser] Erro ao resolver subcategoria:', err.message);
+    return null;
+  }
+}
+
+module.exports = { parseWithAI, resolverSubcategoria };

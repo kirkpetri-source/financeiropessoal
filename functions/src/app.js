@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const authRoutes = require('./routes/auth');
 const transactionRoutes = require('./routes/transactions');
 const categoryRoutes = require('./routes/categories');
+const subcategoryRoutes = require('./routes/subcategories');
 const paymentMethodRoutes = require('./routes/paymentMethods');
 const whatsappRoutes = require('./routes/whatsapp');
 const householdRoutes = require('./routes/households');
@@ -25,7 +26,14 @@ const app = express();
 
 // Cloud Functions fica atrás de proxy — sem isso o rate limit enxerga um IP só
 // para todo mundo. O 1 restringe a confiança ao primeiro proxy da cadeia.
-app.set('trust proxy', 1);
+// Só em produção: o emulador local não tem proxy nenhum na frente, e confiar
+// nele mesmo assim faz o Express resolver req.ip como undefined (o
+// express-rate-limit então recusa toda requisição com
+// ERR_ERL_UNDEFINED_IP_ADDRESS — todo /auth/* e /subscription voltava 401
+// sem chegar no authMiddleware, achado testando o emulador local).
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 
 // Origens permitidas. ALLOWED_ORIGINS sobrescreve para outros ambientes:
 // ALLOWED_ORIGINS="https://app.exemplo.com,https://outro.com".
@@ -51,7 +59,11 @@ const origensPermitidas = process.env.ALLOWED_ORIGINS
 app.use(cors({
   origin: origensPermitidas,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  // X-Firebase-Appcheck: o frontend manda em toda chamada quando App Check
+  // está ativo (ver services/api.js) — sem liberar aqui, o preflight do
+  // navegador recusa a requisição antes mesmo dela sair, mesmo com
+  // APP_CHECK_ENFORCE desligado no backend.
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Firebase-Appcheck'],
 }));
 app.options('*', cors());
 
@@ -96,6 +108,7 @@ app.use(appCheckMiddleware);
 app.use('/auth', limiteAuth, authRoutes);
 app.use('/transactions', transactionRoutes);
 app.use('/categories', categoryRoutes);
+app.use('/subcategories', subcategoryRoutes);
 app.use('/payment-methods', paymentMethodRoutes);
 app.use('/households', householdRoutes);
 app.use('/subscription', assinaturaRoutes);

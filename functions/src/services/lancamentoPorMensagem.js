@@ -2,12 +2,14 @@ const { db } = require('../config/firebaseAdmin');
 const { escopoDe } = require('../data/escopo');
 const { parseFinancialMessage, looksLikeFinancialMessage } = require('../utils/financialParser');
 const { detectarParcelamento, montarParcelas } = require('../utils/parcelamento');
-const { parseWithAI } = require('./aiParserService');
+const { parseWithAI, resolverSubcategoria } = require('./aiParserService');
 const { verificarLimiteDeIA } = require('./limiteIAService');
 const { permitirMensagem, limite: limiteMensagens } = require('./limiteMensagensService');
-const { createTransaction } = require('./transactionService');
+const { createTransaction, updateTransaction } = require('./transactionService');
+const { listSubcategories } = require('./subcategoryService');
 const householdService = require('./householdService');
 const { situacaoDaAssinatura, mensagemDaSituacao } = require('../assinatura/estado');
+const { telefoneDe, montarPerguntaSubcategoria, resolverRespostaConfirmacao } = require('../utils/subcategoriaConfirmacao');
 
 const MENSAGEM_LIMITE_IA = 'Limite diário de lançamentos por IA atingido para esta família.\n\n'
   + 'Lançamentos no formato direto continuam funcionando sem limite:\n'
@@ -148,6 +150,111 @@ async function bloqueioPorAssinatura(householdId) {
 }
 
 /**
+ * Telefone de quem vai responder a pergunta de subcategoria.
+ *
+ * No modo individual (mensagem pra si mesmo), o WhatsApp reporta a própria
+ * mensagem como fromMe:true — extrairMensagem() então NUNCA preenche
+ * senderJid nesse modo (mesma trava documentada em acharHouseholdPorOrigem:
+ * "o robô roda no número do próprio cliente"). Sem este fallback, a pergunta
+ * de subcategoria caía sempre em "sem remetente identificável" e sumia em
+ * silêncio — achado testando de verdade pelo WhatsApp (modo individual,
+ * conta de teste liontech.sup@gmail.com, 11/08/2026): confirmava a categoria
+ * mas nunca perguntava a subcategoria ambígua. Em modo grupo isso nunca
+ * entra em jogo — o `participant` sempre vem preenchido.
+ */
+async function telefoneEfetivo(senderJid, householdId) {
+  const direto = telefoneDe(senderJid);
+  if (direto) return direto;
+
+  const doc = await db.collection('whatsappConfigs').doc(householdId).get();
+  return telefoneDe(doc.data()?.ownerJid);
+}
+
+/**
+ * Tenta descobrir a subcategoria de um lançamento recém-criado, só quando a
+ * categoria dele já tem alguma cadastrada — família sem subcategoria nunca
+ * paga o custo de mais uma chamada de IA.
+ *
+ * Confiante o bastante: aplica direto, sem gerar pergunta nenhuma (caminho
+ * feliz, silencioso). Incerto: cria uma pendência e devolve o texto da
+ * pergunta pro chamador mandar no WhatsApp — nunca adivinha.
+ *
+ * Estourar o teto diário de IA aqui não bloqueia nada: o lançamento já foi
+ * criado antes desta função ser chamada, só fica sem subcategoria.
+ */
+async function resolverOuPerguntarSubcategoria({ dados, householdId, transacao, categoryId, categoryName, senderJid }) {
+  const subcategorias = await listSubcategories(dados, categoryId);
+  if (!subcategorias.length) return null;
+
+  const permitido = await verificarLimiteDeIA(householdId);
+  if (!permitido) return null;
+
+  const nomeEscolhido = await resolverSubcategoria({
+    descricao: transacao.description,
+    categoriaNome: categoryName,
+    opcoes: subcategorias.map((s) => s.name),
+  });
+
+  if (nomeEscolhido) {
+    const escolhida = subcategorias.find((s) => s.name === nomeEscolhido);
+    if (escolhida) await updateTransaction(dados, transacao.id, { subcategoryId: escolhida.id });
+    return null;
+  }
+
+  const telefone = await telefoneEfetivo(senderJid, householdId);
+  if (!telefone) return null; // sem remetente identificável não tem pra quem perguntar
+
+  await dados.criar('pendingSubcategoryConfirmations', {
+    phone: telefone,
+    transactionId: transacao.id,
+    categoryId,
+    categoryName,
+    opcoes: subcategorias.map((s) => ({ id: s.id, name: s.name })),
+  });
+
+  return montarPerguntaSubcategoria(categoryName, subcategorias);
+}
+
+const EXPIRA_CONFIRMACAO_MS = 15 * 60 * 1000;
+
+/**
+ * Segunda metade do fluxo de pergunta: quando chega uma mensagem nova, olha
+ * primeiro se há uma pergunta de subcategoria esperando resposta desse
+ * remetente antes de tratar a mensagem como comando ou lançamento novo.
+ *
+ * Descarta a pendência sempre — bateu ou não bateu — porque é single-shot:
+ * uma mensagem que não é a resposta esperada precisa continuar livre para
+ * virar um lançamento novo, não ficar presa tentando casar contra uma
+ * pergunta velha pra sempre.
+ */
+async function tentarResolverConfirmacaoPendente({ householdId, senderJid, texto }) {
+  const telefone = await telefoneEfetivo(senderJid, householdId);
+  if (!telefone) return { tratado: false };
+
+  const dados = escopoDe(householdId);
+  const snap = await dados.consultar('pendingSubcategoryConfirmations')
+    .where('phone', '==', telefone).limit(1).get();
+  if (snap.empty) return { tratado: false };
+
+  const pendencia = { id: snap.docs[0].id, ...snap.docs[0].data() };
+
+  const criadoEm = pendencia.createdAt?.toDate?.();
+  const expirada = !criadoEm || (Date.now() - criadoEm.getTime() > EXPIRA_CONFIRMACAO_MS);
+  if (expirada) {
+    await dados.remover('pendingSubcategoryConfirmations', pendencia.id);
+    return { tratado: false };
+  }
+
+  const resultado = resolverRespostaConfirmacao(pendencia.opcoes, texto);
+
+  await dados.remover('pendingSubcategoryConfirmations', pendencia.id);
+  if (!resultado) return { tratado: false };
+
+  await updateTransaction(dados, pendencia.transactionId, { subcategoryId: resultado.subcategoryId });
+  return { tratado: true, resposta: resultado.resposta };
+}
+
+/**
  * Interpreta o texto e cria os lançamentos.
  * @returns {Promise<{transacoes: string[], erro: string|null}>}
  */
@@ -204,6 +311,10 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
   // As transações completas (com categoria já resolvida) sobem junto: a
   // confirmação no WhatsApp precisa do nome da categoria, não só do ID.
   const criadas = [];
+  // Só a primeira pergunta do lote sai — mandar uma por lançamento numa
+  // mensagem com vários gastos seria ruído, e o usuário só consegue
+  // responder uma pendência de cada vez (ver tentarResolverConfirmacaoPendente).
+  let perguntaSubcategoria = null;
 
   for (const item of interpretados) {
     const [categoryId, paymentMethodId] = await Promise.all([
@@ -264,13 +375,19 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
     });
     ids.push(transacao.id);
     criadas.push(transacao);
+
+    if (!perguntaSubcategoria) {
+      perguntaSubcategoria = await resolverOuPerguntarSubcategoria({
+        dados, householdId, transacao, categoryId, categoryName: item.categoryName, senderJid,
+      });
+    }
   }
 
   if (!ids.length) {
     return { transacoes: [], criadas: [], erro: 'Categoria ou forma de pagamento não encontrada.' };
   }
 
-  return { transacoes: ids, criadas, erro: null };
+  return { transacoes: ids, criadas, erro: null, perguntaSubcategoria };
 }
 
 /**
@@ -334,4 +451,6 @@ module.exports = {
   jaProcessada,
   resolverPagador,
   looksLikeFinancialMessage,
+  tentarResolverConfirmacaoPendente,
+  telefoneEfetivo,
 };

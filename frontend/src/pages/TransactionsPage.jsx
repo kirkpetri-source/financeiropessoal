@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, Filter, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 import { useTransactions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
+import { useSubcategories } from '../hooks/useSubcategories';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { useHousehold } from '../hooks/useHousehold';
 import Modal from '../components/ui/Modal';
@@ -32,13 +33,14 @@ export default function TransactionsPage() {
 
   const { transactions, loading, fetchTransactions, createTransaction, updateTransaction, deleteTransaction } = useTransactions();
   const { categories, fetchCategories } = useCategories();
+  const { subcategories, fetchSubcategories } = useSubcategories();
   const { paymentMethods, fetchPaymentMethods } = usePaymentMethods();
   const { nomesDosMembros: payers, buscarHousehold } = useHousehold();
 
   const months = monthsList(12);
 
   useEffect(() => { fetchTransactions(filters); }, [filters]);
-  useEffect(() => { fetchCategories(); fetchPaymentMethods(); buscarHousehold(); }, []);
+  useEffect(() => { fetchCategories(); fetchSubcategories(); fetchPaymentMethods(); buscarHousehold(); }, []);
 
   function openCreate() { setEditingTransaction(null); setModalOpen(true); }
   function openEdit(t) { setEditingTransaction(t); setModalOpen(true); }
@@ -206,7 +208,10 @@ export default function TransactionsPage() {
                           <span className="text-sm font-medium text-ink max-w-xs truncate">{t.description}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted">{t.category?.name}</td>
+                      <td className="px-4 py-3 text-sm text-muted">
+                        {t.category?.name}
+                        {t.subcategory && <span className="text-faint"> · {t.subcategory.name}</span>}
+                      </td>
                       <td className="px-4 py-3 text-sm text-muted">{t.paymentMethod?.name}</td>
                       {payers.length > 0 && (
                         <td className="px-4 py-3">
@@ -253,7 +258,7 @@ export default function TransactionsPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-ink truncate">{t.description}</p>
                         <p className="text-xs text-faint">
-                          {t.category?.name} · {formatDate(t.date)} · {t.paymentMethod?.name}
+                          {t.category?.name}{t.subcategory && ` (${t.subcategory.name})`} · {formatDate(t.date)} · {t.paymentMethod?.name}
                           {t.paidBy && <span className="ml-1 text-brand-500 font-medium">· {t.paidBy}</span>}
                         </p>
                       </div>
@@ -283,6 +288,7 @@ export default function TransactionsPage() {
       >
         <TransactionForm
           categories={categories}
+          subcategories={subcategories}
           paymentMethods={paymentMethods}
           payers={payers}
           onSubmit={handleSubmit}

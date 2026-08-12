@@ -11,6 +11,7 @@ import {
 import MonthlyReport from '../components/reports/MonthlyReport';
 import { useTransactions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
+import { useSubcategories } from '../hooks/useSubcategories';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { useHousehold } from '../hooks/useHousehold';
 import { useMonthlyTrend } from '../hooks/useMonthlyTrend';
@@ -64,6 +65,7 @@ export default function DashboardPage() {
 
   const { summary, fetchSummary, createTransaction } = useTransactions();
   const { categories,     fetchCategories }     = useCategories();
+  const { subcategories,  fetchSubcategories }  = useSubcategories();
   const { paymentMethods, fetchPaymentMethods } = usePaymentMethods();
   const { nomesDosMembros, buscarHousehold }    = useHousehold();
   const { trend, fetchTrend }                   = useMonthlyTrend();
@@ -76,11 +78,12 @@ export default function DashboardPage() {
   useEffect(() => { fetchTrend(selectedMonth, filterPayer || null); }, [selectedMonth, filterPayer, fetchTrend]);
   useEffect(() => {
     fetchCategories();
+    fetchSubcategories();
     fetchPaymentMethods();
     buscarHousehold();
     fetchResumoOrcamento(currentMonth());
     fetchContasProximas();
-  }, [fetchCategories, fetchPaymentMethods, buscarHousehold]);
+  }, [fetchCategories, fetchSubcategories, fetchPaymentMethods, buscarHousehold]);
 
   const orcamentosEstourados = resumoOrcamento.filter((r) => r.estourado);
 
@@ -553,6 +556,7 @@ export default function DashboardPage() {
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Novo Lançamento">
         <TransactionForm
           categories={categories}
+          subcategories={subcategories}
           paymentMethods={paymentMethods}
           payers={nomesDosMembros}
           onSubmit={handleCreateTransaction}
