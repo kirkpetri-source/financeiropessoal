@@ -201,8 +201,9 @@ async function comandoMudarSubcategoria(householdId, nomeSubcategoria, senderJid
       });
     }
 
-    return `Não encontrei a subcategoria "${nomeSubcategoria}" em *${ultimo.category?.name}*. `
-      + `Opções: ${subcategorias.map((s) => s.name).join(', ')}. Responda com o nome ou o número.`;
+    const opcoesNumeradas = subcategorias.map((s, i) => `${i + 1}) ${s.name}`).join('\n');
+    return `Não encontrei a subcategoria "${nomeSubcategoria}" em *${ultimo.category?.name}*.\n\n`
+      + `${opcoesNumeradas}\n\nResponda com o número, o nome, ou *pular*.`;
   }
 
   await updateTransaction(dados, ultimo.id, { subcategoryId: alvo.id });
