@@ -26,7 +26,7 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 320 testes (vitest)
+npm test                 # 346 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed              # só categorias e formas de pagamento padrão
@@ -36,6 +36,7 @@ node tools/diagnostico-assinatura.js          # quem seria bloqueado hoje
 node tools/testar-credencial-mp.js            # valida token do MP, sem imprimir
 node tools/testar-assinatura-ponta-a-ponta.js <id>   # cria e sincroniza
 node tools/testar-canal-ponta-a-ponta.js <id> --manter
+node tools/testar-subcategoria-ponta-a-ponta.js      # CRUD + lançamento com subcategoria, família descartável
 node tools/marcar-conta-interna.js <id> --confirmar  # cortesia vitalícia
 node tools/apagar-familia.js <id> --confirmar        # limpa conta de teste
 node tools/criar-login-operador.js --confirmar       # cria/reseta a senha do painel gestor (/plataforma)
@@ -149,6 +150,16 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     o site real no navegador (`agent-browser`, sessão nova) antes de dar por
     resolvido — foi assim que o rollout do App Check em 10/08/2026 quebrou o
     login em produção duas vezes seguidas antes de alguém notar.
+14. **Antes de qualquer `firebase deploy` de functions, conferir
+    `grep APP_CHECK_ENFORCE functions/.env.financeiropessoal-29b32` está
+    `true`.** Esse arquivo é o mesmo lido pelo emulador local E empacotado
+    no deploy real — editar pra `false` pra testar local (necessário, ver
+    armadilha abaixo) e esquecer de reverter antes de deployar desliga o
+    App Check em PRODUÇÃO. Aconteceu de verdade em 11/08/2026: alguns
+    minutos com a exigência desligada, corrigido assim que percebido, sem
+    dano (log de acesso conferido, só tráfego do próprio dono da conta).
+    Depois de reverter, confirmar com `curl` na API de produção que voltou
+    a pedir "Verificação do aplicativo ausente." antes de seguir.
 
 ## Armadilhas já pagas (não repetir)
 
@@ -295,6 +306,45 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   (`avisoWhatsapp`) quando a instância já estava desconectada — vale também
   para um CLIENTE de verdade que cancela e tenta assinar de novo com o mesmo
   WhatsApp depois.
+- **O emulador de Functions local só existe com Node 22 pinado
+  (`engines.node` do `package.json`); esta máquina só tem Node 24 global,
+  e o emulador roda nele mesmo assim ("Using node@24 from host").** Isso
+  quebra especificamente `admin.firestore.FieldValue` — toda escrita que
+  passa por `dados.criar()`/`dados.atualizar()` (carimba `createdAt`/
+  `updatedAt`) derruba com `TypeError: Cannot read properties of undefined
+  (reading 'serverTimestamp')`. Um script `node tools/algo.js` direto, fora
+  do emulador, não tem esse problema (mesma versão do Node, mas sem o
+  wrapper do Functions Framework por perto) — foi assim que
+  `testar-subcategoria-ponta-a-ponta.js` funcionou perfeitamente contra
+  produção enquanto o mesmo POST pelo painel local (emulador) dava 500.
+  Leitura (GET) funciona normal local; é só escrita que quebra. Produção de
+  verdade roda Node 22 (confirmado no log do `firebase deploy`: "Node.js 22
+  (2nd Gen)"), então isso NUNCA acontece lá — é limitação só deste
+  ambiente local, não bug de código. Solução de verdade: instalar Node 22
+  (nvm-windows) só pra rodar o emulador.
+- **`APP_CHECK_ENFORCE=false` passado como variável de ambiente no shell
+  (`APP_CHECK_ENFORCE=false firebase emulators:start ...`) NÃO tem efeito
+  — o Firebase recarrega `.env.financeiropessoal-29b32` por cima e
+  sobrescreve.** Pra testar local sem App Check (obrigatório: reCAPTCHA só
+  valida em `revelacash.com.br`, nunca em `localhost`), o único jeito é
+  editar o valor DENTRO do arquivo e reiniciar o emulador do zero (só
+  editar não basta — precisa matar e subir de novo, o valor é lido na
+  inicialização do processo). Reverter depois é regra 14 acima.
+- **No modo individual do WhatsApp (mensagem pra si mesmo), o campo
+  `senderJid` NUNCA vem preenchido.** `extrairMensagem()` só usa
+  `remoteJid` quando `fromMe` é falso (`senderJid: data.key?.participant
+  || (fromMe ? null : remoteJid) || null`), e no chat "Mensagens para mim"
+  toda mensagem — inclusive as que a própria pessoa manda pra si — chega
+  com `fromMe: true` (é a mesma trava documentada como "TRAVA DO MODO
+  INDIVIDUAL" em `acharHouseholdPorOrigem`). Qualquer feature nova que
+  precise saber "quem mandou" pra endereçar uma resposta (ex.: pra quem
+  perguntar) quebra em silêncio nesse modo se depender só de `senderJid`
+  — precisa de um fallback pro dono do canal
+  (`whatsappConfigs.ownerJid`, `lancamentoPorMensagem.telefoneEfetivo`).
+  Achado testando de verdade (11/08/2026, conta liontech.sup@gmail.com,
+  modo individual): a pergunta de subcategoria confirmava o lançamento mas
+  nunca perguntava nada — sem erro nenhum no log, só silêncio. Em modo
+  grupo isso nunca acontece, `participant` sempre vem.
 
 ## Modelo de dados
 
@@ -308,8 +358,14 @@ households/{id}/billingEvents/{id}  id do provedor como id do doc = idempotênci
 users/{uid}.householdId             atalho da família ativa (NÃO é autorização —
                                     quem manda é o doc em members/)
 transactions, whatsappLogs          têm householdId, sempre escopadas
+  .subcategoryId                    transactions: opcional, valida contra categoryId
 categories, paymentMethods          mistas: isDefault=true são globais
   .isCreditCard/.closingDay/.dueDay paymentMethods: só quando é cartão de crédito
+subcategories                       householdId + categoryId, sempre da família
+                                    (sem versão padrão/global, diferente de categories)
+pendingSubcategoryConfirmations     householdId + phone, efêmera (single-shot, expira
+                                    em 15min) — "IA perguntou a subcategoria, esperando
+                                    resposta"; ver lancamentoPorMensagem.js
 budgets                             householdId + categoryId, limite mensal fixo
 recurringBills                      householdId, dueDay, lastGeneratedMonth
 creditCardInvoices                  householdId + paymentMethodId + referenceCycle,
@@ -331,6 +387,31 @@ o telefone é a chave de atribuição. Login só serve para abrir o painel.
 O painel GESTOR (`/plataforma`) é outra coisa: login próprio
 (`kirkdouglas_19`, ver regra 11), sem household, sem relação com nenhuma
 família — não confundir com o login de membro acima.
+
+## Estado (11/08/2026)
+
+**Subcategorias — no ar, em produção, front e back publicados.**
+Categoria ganhou um nível: família pode criar subcategorias (ex.: dentro de
+"Mercado" → Padaria, Açougue, Hortifruti). Opt-in de verdade — sem nenhuma
+subcategoria cadastrada, nada muda pra ninguém (sem custo de IA extra, sem
+pergunta no WhatsApp, sem campo a mais no formulário). Painel: gestão em
+Categorias (expandir → criar/editar/apagar) + campo opcional no formulário
+de lançamento. WhatsApp: comando manual `subcategoria <nome>` (espelha
+`categoria <nome>`) e resolução automática pela IA — quando a categoria
+resolvida já tem subcategoria cadastrada, tenta identificar pela descrição;
+se confiante aplica direto e sem gerar mensagem; se incerta, pergunta
+(numerada) e aplica na resposta seguinte. Testado ao vivo pelo WhatsApp com
+conta de teste dedicada (nunca na família Kirk real) antes de publicar.
+Guia em PDF pra mandar aos usuários em
+`C:\Users\Predator\Documents\RevelaCash\guias-usuario\`.
+
+Dois bugs achados testando de verdade, corrigidos e já em produção: modo
+individual sem `senderJid` (pergunta nunca chegava) e mensagem do comando
+manual sem numerar as opções apesar de dizer "responda com o número" — ver
+"Armadilhas já pagas". Um incidente também aconteceu e foi corrigido na
+hora: um deploy carregou `APP_CHECK_ENFORCE=false` (deixado assim pra
+testar local) e desligou a exigência em produção por alguns minutos —
+revertido, log de acesso conferido sem sinal de abuso. Ver regra 14.
 
 ## Estado (10/08/2026)
 

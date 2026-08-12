@@ -1,6 +1,189 @@
-# Estado do projeto — 10/08/2026 (auditoria de segurança + escalada + App Check no ar)
+# Estado do projeto — 11/08/2026 (feature de subcategorias no ar)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
+
+## Sessão de 11/08/2026 — subcategorias (painel + WhatsApp), testadas ao vivo e publicadas
+
+Pedido do Kirk: categoria ganhar um segundo nível — subcategorias criadas
+pela própria família (ex.: dentro de "Mercado": Padaria, Açougue,
+Hortifruti), utilizáveis no painel e pelo WhatsApp. Ao ser perguntado sobre
+o escopo do WhatsApp, o Kirk foi explícito: "a IA deve entender a
+subcategoria para não errar o lançamento... se ela não entender talvez ela
+possa perguntar para que o usuário confirme" — isso definiu o design: nunca
+bloqueia o lançamento, tenta identificar sozinha, pergunta quando incerta.
+
+### Bloco 1 — implementação (plano formal, `EnterPlanMode`)
+
+Escopo definido e aprovado antes de codar: subcategoria é sempre da
+família (sem versão padrão/global), orçamento/contas fixas continuam só por
+categoria-mãe (fora de escopo), parser por regra continua resolvendo só a
+categoria-mãe (subcategoria é sempre um passo extra), compra parcelada não
+passa pela resolução automática em v1.
+
+**Backend**: `subcategoryService.js` (CRUD, sempre validando posse contra a
+categoria-mãe via `dados.buscarDoc`), `transactionService` ganha
+`subcategoryId` opcional (validado: precisa pertencer à `categoryId` da
+transação), `categoryService.deleteCategory` passa a recusar apagar
+categoria com subcategoria pendurada. As três coleções novas
+(`subcategories`, `pendingSubcategoryConfirmations`) entraram em
+`escopo.js` (`COLECOES_ESCOPADAS`) e em `lgpdService`
+(exportar/apagar família) — mesma lacuna já documentada no projeto pra
+coleção nova esquecida ali.
+
+**WhatsApp — comando manual**: `subcategoria <nome>` espelha o já existente
+`categoria <nome>` (muda a subcategoria do último lançamento, casa por nome
+exato, `sem subcategoria` limpa).
+
+**WhatsApp — resolução automática pela IA**: quando a categoria resolvida
+(por regra ou por IA) já tem subcategoria cadastrada, uma chamada extra ao
+Gemini (`aiParserService.resolverSubcategoria`) tenta escolher pela
+descrição. Confiante: aplica direto, sem gerar mensagem — caminho feliz e
+silencioso. Incerta: cria uma pendência (`pendingSubcategoryConfirmations`,
+single-shot, expira em 15min) e manda uma segunda mensagem perguntando,
+numerada. A resposta seguinte (`tentarResolverConfirmacaoPendente`,
+checado ANTES de tratar como comando ou lançamento novo) resolve por
+número, nome, ou "pular" — e se não bater com nada, descarta a pendência e
+segue tratando a mensagem como nova (nunca trava o usuário numa pergunta
+velha). Estourar o teto diário de IA nessa chamada extra nunca bloqueia o
+lançamento em si, só fica sem subcategoria.
+
+Lógica pura de casamento (`resolverRespostaConfirmacao`,
+`montarPerguntaSubcategoria`, `telefoneDe`) extraída pra
+`utils/subcategoriaConfirmacao.js` — módulo-folha, testável sem Firestore,
+mesmo motivo de `respostaTexto.js` existir separado de
+`respostaWhatsapp.js`. Foi necessário: `lancamentoPorMensagem.js` importa
+`firebaseAdmin` no topo, e sob teste isso dispara a trava anti-produção
+(regra 2) — sem extrair, essa lógica não tinha como ser testada.
+
+**Frontend**: gestão de subcategoria em Categorias (expandir categoria →
+criar/editar/apagar) e campo opcional no formulário de lançamento
+(reseta ao trocar de categoria — via `onChange` do campo categoria, não
+`useEffect`, pra não disparar também quando o modo edição faz `reset()`
+dos dois campos juntos).
+
+**Achado na exploração, corrigido junto**: `CategoriesPage.jsx` checava
+`disabled={!cat.userId}` nos botões de editar/apagar — campo que nunca
+existe no backend atual (categorias padrão têm `userId: null` só no seed;
+custom nem têm o campo). Ou seja, **nenhuma categoria podia ser editada
+pelo painel**, bug pré-existente sem relação com a tarefa, corrigido pra
+`!cat.isDefault` (o campo que o backend realmente usa).
+
+346 testes (336 existentes + 20 novos), suíte inteira verde, incluindo o
+teste de dependência circular (a extração pro módulo-folha evitou um ciclo
+`comandosWhatsapp` ↔ `lancamentoPorMensagem`).
+
+### Bloco 2 — verificação antes de produção: emulador local, dois bugs de ambiente achados e um corrigido de verdade
+
+Tentativa de testar no navegador local (emulador de Functions + Firestore
+de produção real, mesmo padrão de sessões anteriores) esbarrou em dois
+problemas do AMBIENTE, não do código:
+
+1. **`express-rate-limit` derrubava toda rota com rate limit** —
+   `ERR_ERL_UNDEFINED_IP_ADDRESS`, porque o emulador local não expõe
+   `req.ip` do jeito que a lib exige. **Corrigido de verdade** (não é
+   workaround): `middlewares/rateLimit.js` ganhou `keyGenerator` próprio
+   com fallback. Zero efeito em produção, onde `req.ip` sempre existe
+   (atrás do Cloud Run) — foi pra produção também, é melhoria genuína.
+2. **Node 22 vs Node 24** — o emulador local roda no Node global da
+   máquina (24), não no pinado no `package.json` (22), e isso quebra
+   `admin.firestore.FieldValue` em qualquer escrita local
+   (`TypeError: Cannot read properties of undefined (reading
+   'serverTimestamp')`). Não é bug de código — confirmado rodando o mesmo
+   código via script direto (`node tools/algo.js`, sem o emulador por
+   perto) contra produção, funcionando perfeitamente. Sem solução de
+   código; documentado como limitação do ambiente local (ver "Armadilhas
+   já pagas" do `CLAUDE.md`).
+
+Diante disso, o caminho escolhido foi: **deploy do backend em produção**
+(`firebase deploy --only functions:api`) + teste ponta a ponta direto
+contra o Firestore real via script (`tools/testar-subcategoria-ponta-a-
+ponta.js`, família descartável criada e apagada) — passou tudo (CRUD,
+lançamento com subcategoria enriquecida, as duas travas de integridade).
+`diagnostico-assinatura.js` confirmou as 10 famílias reais intactas antes
+do deploy.
+
+**Acesso local pro Kirk acompanhar visualmente**: emulador de Functions +
+frontend local, ambos apontando pro Firestore de produção real (só
+GET/leitura funciona local, por causa do bug do Node acima) —
+`APP_CHECK_ENFORCE` precisou ser editado DENTRO do
+`.env.financeiropessoal-29b32` (passar por variável de ambiente no shell
+não funciona, o Firebase recarrega o arquivo por cima) pra passar pelo
+App Check sem reCAPTCHA configurado em `localhost`.
+
+### Bloco 3 — teste ao vivo pelo WhatsApp, dois bugs reais achados
+
+Kirk testou pelo WhatsApp com uma conta de teste dedicada
+(`liontech.sup@gmail.com`, nome fictício "Vinicius Alvaro",
+householdId `bgo6KJKTgCqC1HN2Jqzh`) — **nunca na família Kirk real**, por
+pedido dele. Subcategorias de teste (Padaria, Açougue, Hortifruti sob
+Mercado) criadas por script nessa conta.
+
+Resultado: os matches diretos e confiantes da IA (pão→Padaria,
+carne→Açougue, alface/tomate→Hortifruti) e o comando manual funcionaram de
+primeira. Mas os casos ambíguos ("gastei 30 no mercado", sozinho) ficavam
+**sem subcategoria e sem pergunta nenhuma** — sem erro nenhum no log.
+
+**Bug real 1 — modo individual sem remetente.** No chat "Mensagens para
+mim" (modo individual), o WhatsApp reporta TODA mensagem como
+`fromMe: true` — inclusive as da própria pessoa. `extrairMensagem()` só
+preenche `senderJid` quando `fromMe` é falso (mesma trava documentada como
+"TRAVA DO MODO INDIVIDUAL"), então `senderJid` nunca vinha, e o código
+desistia de perguntar por "remetente não identificável" antes mesmo de
+tentar. Corrigido: `lancamentoPorMensagem.telefoneEfetivo()` cai pro dono
+do canal (`whatsappConfigs.ownerJid`) quando `senderJid` não vier — usado
+tanto pra criar a pendência quanto pra resolver a resposta. Em modo grupo
+isso nunca acontece.
+
+**Bug real 2 — comando manual sem estado de resposta.** Ao digitar
+`subcategoria carne` (nome que não existe), a resposta listava as opções
+("Açougue, Hortifruti, Padaria") mas não guardava pendência nenhuma — a
+resposta seguinte do Kirk ("Açougue") caía no vazio. Corrigido:
+`comandoMudarSubcategoria` agora abre a MESMA pendência de confirmação que
+a IA usa quando não encontra o nome digitado, então a resposta seguinte já
+aplica.
+
+Deploy de cada correção feito na hora, testado de novo pelo Kirk, confirmado
+funcionando (incluindo "pular" limpando a subcategoria).
+
+**Bug real 3 (achado depois, revisando com o Kirk) — mensagem inconsistente.**
+A resposta de "não encontrei a subcategoria X" dizia "responda com o número
+ou o nome" mas listava as opções separadas por vírgula, sem numerar —
+diferente da pergunta automática da IA, que numera. Corrigido: as duas
+agora usam o mesmo formato numerado. Deploy feito, confirmado com `curl`
+que o App Check continuava ligado depois.
+
+### Incidente — App Check desligado em produção por alguns minutos
+
+Ao preparar o acesso local pro Kirk, `APP_CHECK_ENFORCE` foi editado pra
+`false` no `.env.financeiropessoal-29b32` (necessário pra testar local).
+Um dos deploys de correção do Bloco 3 foi feito **sem reverter esse
+valor primeiro** — `firebase deploy` empacota esse arquivo junto, então
+App Check ficou desligado em produção de verdade por alguns minutos, até
+ser percebido e corrigido (revertido + redeployado + confirmado com
+`curl`). Log de acesso da API nesse intervalo revisado: só tráfego do
+próprio Kirk (mesmo IP, padrão de uso normal — dashboard, categorias,
+lançamentos), nenhum sinal de terceiro. Sem dano, mas o erro foi real —
+ver regra 14 do `CLAUDE.md`, criada por causa disso.
+
+### Publicação
+
+Backend deployado várias vezes ao longo da sessão (uma por correção).
+Frontend: **`git push` liberado pelo Kirk só depois de tudo testado** —
+dois commits (um de documentação da sessão de WhatsApp Cloud API que
+tinha ficado pendente, outro da feature de subcategoria inteira), publicado
+em `revelacash.com.br` via integração automática Vercel↔GitHub, confirmado
+com `curl` + `agent-browser` (console limpo) depois do deploy. Terceira
+correção (mensagem numerada) publicada em commit separado.
+
+### Material pro cliente
+
+PDF de 2 páginas explicando a feature pros usuários finais — o que é,
+como criar pelo painel, como usar no lançamento, como funciona pelo
+WhatsApp (com exemplo real de conversa) e um FAQ curto. No padrão visual
+do RevelaCash (logo, roxo `#512b8d`, Outfit). Gerado como HTML e exportado
+via `agent-browser pdf`. Salvo em
+`C:\Users\Predator\Documents\RevelaCash\guias-usuario\RevelaCash - Como
+usar subcategorias.pdf`.
 
 ## Sessão de 10/08/2026 (continuação) — pareamento, painel gestor, marketing e caminho pro WhatsApp oficial
 
