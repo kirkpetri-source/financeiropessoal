@@ -3,13 +3,18 @@ const { z } = require('zod');
 const { db } = require('../config/firebaseAdmin');
 const authMiddleware = require('../middlewares/auth');
 const { apenasAdmin } = require('../middlewares/admin');
-const { resumirFamilias } = require('../assinatura/metricas');
+const { resumirFamilias, serieTemporal } = require('../assinatura/metricas');
 const { situacaoDaAssinatura } = require('../assinatura/estado');
+const { SEGMENTOS, filtrarPorSegmento, contarSegmentos } = require('../assinatura/segmentacao');
 const householdService = require('../services/householdService');
 const assinaturaService = require('../services/assinaturaService');
 const adminAuditService = require('../services/adminAuditService');
+const adminCrmService = require('../services/adminCrmService');
+const adminMensagensService = require('../services/adminMensagensService');
+const whatsappLogService = require('../services/whatsappLogService');
 const lgpdService = require('../services/lgpdService');
 const validate = require('../middlewares/validate');
+const { escopoDe } = require('../data/escopo');
 
 const router = express.Router();
 
@@ -46,6 +51,27 @@ router.get('/metricas', async (req, res, next) => {
       geradoEm: new Date().toISOString(),
       ...resumirFamilias(familias, new Date(), janela),
     });
+  } catch (err) { next(err); }
+});
+
+/**
+ * Série diária (crescimento, cancelamentos, MRR projetado) para os gráficos
+ * do dashboard — ver o comentário de `serieTemporal` sobre ser uma projeção,
+ * não um snapshot histórico real.
+ */
+router.get('/metricas/serie', async (req, res, next) => {
+  try {
+    const dias = Math.min(Math.max(Number(req.query.dias) || 90, 7), 365);
+    const familias = await carregarFamilias();
+    res.json({ dias, serie: serieTemporal(familias, new Date(), dias) });
+  } catch (err) { next(err); }
+});
+
+/** Quantas famílias caem em cada segmento — a UI mostra isso antes de mandar um broadcast. */
+router.get('/segmentos', async (req, res, next) => {
+  try {
+    const familias = await carregarFamilias();
+    res.json({ segmentos: contarSegmentos(familias, new Date()) });
   } catch (err) { next(err); }
 });
 
@@ -124,6 +150,131 @@ router.get('/familias/:id', async (req, res, next) => {
       billingEvents: eventos,
       auditoria,
     });
+  } catch (err) { next(err); }
+});
+
+/** Notas do CRM sobre a família — "ligou reclamando de X", "vai cancelar se Y". */
+router.get('/familias/:id/notas', async (req, res, next) => {
+  try {
+    res.json({ notas: await adminCrmService.listarNotas(req.params.id) });
+  } catch (err) { next(err); }
+});
+
+const notaSchema = z.object({ texto: z.string().min(1).max(2000) });
+
+router.post('/familias/:id/notas', validate(notaSchema), async (req, res, next) => {
+  try {
+    const nota = await adminCrmService.adicionarNota(req.params.id, {
+      texto: req.body.texto, criadoPor: quemFezIsso(req),
+    });
+    res.status(201).json(nota);
+  } catch (err) { next(err); }
+});
+
+router.delete('/familias/:id/notas/:notaId', async (req, res, next) => {
+  try {
+    res.json(await adminCrmService.apagarNota(req.params.id, req.params.notaId));
+  } catch (err) { next(err); }
+});
+
+/**
+ * Histórico de mensagens do WhatsApp da família (o mesmo log que já existe
+ * para o próprio cliente ver no painel dele) — reaproveita
+ * `whatsappLogService.listLogs`, só entrando pelo escopo certo (o operador
+ * não tem `req.dados` porque não passa por `resolverHousehold`).
+ */
+router.get('/familias/:id/mensagens', async (req, res, next) => {
+  try {
+    const dados = escopoDe(req.params.id);
+    res.json(await whatsappLogService.listLogs(dados, { limit: req.query.limit || 100 }));
+  } catch (err) { next(err); }
+});
+
+/** Envio avulso de mensagem pra UMA família — mesma trilha do broadcast, registrado com 1 destinatário. */
+const mensagemAvulsaSchema = z.object({ texto: z.string().min(1).max(4000) });
+router.post('/familias/:id/enviar-mensagem', validate(mensagemAvulsaSchema), async (req, res, next) => {
+  try {
+    const resultado = await adminMensagensService.enviarParaFamilia({
+      householdId: req.params.id, texto: req.body.texto, criadoPor: quemFezIsso(req),
+    });
+    res.json(resultado);
+  } catch (err) { next(err); }
+});
+
+/** Templates reutilizáveis (avisos, novidades, dicas, atualizações). */
+router.get('/mensagens/templates', async (req, res, next) => {
+  try {
+    res.json({ templates: await adminMensagensService.listarTemplates() });
+  } catch (err) { next(err); }
+});
+
+const templateSchema = z.object({
+  titulo: z.string().min(1).max(120),
+  tipo: z.enum(['aviso', 'novidade', 'dica', 'atualizacao']),
+  texto: z.string().min(1).max(4000),
+});
+
+router.post('/mensagens/templates', validate(templateSchema), async (req, res, next) => {
+  try {
+    const template = await adminMensagensService.salvarTemplate({ ...req.body, criadoPor: quemFezIsso(req) });
+    res.status(201).json(template);
+  } catch (err) { next(err); }
+});
+
+router.put('/mensagens/templates/:id', validate(templateSchema), async (req, res, next) => {
+  try {
+    res.json(await adminMensagensService.salvarTemplate({ id: req.params.id, ...req.body }));
+  } catch (err) { next(err); }
+});
+
+router.delete('/mensagens/templates/:id', async (req, res, next) => {
+  try {
+    res.json(await adminMensagensService.apagarTemplate(req.params.id));
+  } catch (err) { next(err); }
+});
+
+/**
+ * Broadcast — segmento de famílias (ou lista explícita de IDs) recebe a
+ * mesma mensagem pelo WhatsApp. `segmento` e `householdIds` são mutuamente
+ * exclusivos: `householdIds` vence quando os dois vierem, pra permitir
+ * "reenviar só pra quem falhou" a partir do resultado de um broadcast
+ * anterior sem precisar recalcular o segmento.
+ */
+const broadcastSchema = z.object({
+  texto: z.string().min(1).max(4000),
+  tipo: z.enum(['aviso', 'novidade', 'dica', 'atualizacao']).default('aviso'),
+  assunto: z.string().max(120).optional().nullable(),
+  segmento: z.enum(SEGMENTOS.map((s) => s.chave)).optional(),
+  householdIds: z.array(z.string().min(1)).max(500).optional(),
+}).refine((v) => v.segmento || (v.householdIds && v.householdIds.length > 0), {
+  message: 'Informe um segmento ou uma lista de famílias.',
+});
+
+router.post('/mensagens/broadcast', validate(broadcastSchema), async (req, res, next) => {
+  try {
+    const { texto, tipo, assunto, segmento, householdIds } = req.body;
+    const todasFamilias = await carregarFamilias();
+
+    const alvo = householdIds?.length
+      ? todasFamilias.filter((f) => householdIds.includes(f.id))
+      : filtrarPorSegmento(todasFamilias, segmento, new Date());
+
+    const resultado = await adminMensagensService.enviarBroadcast({
+      familias: alvo,
+      texto,
+      tipo,
+      assunto: assunto || null,
+      segmento: householdIds?.length ? null : segmento,
+      criadoPor: quemFezIsso(req),
+    });
+
+    res.status(201).json(resultado);
+  } catch (err) { next(err); }
+});
+
+router.get('/mensagens/historico', async (req, res, next) => {
+  try {
+    res.json({ broadcasts: await adminMensagensService.listarBroadcasts(Number(req.query.limit) || 30) });
   } catch (err) { next(err); }
 });
 

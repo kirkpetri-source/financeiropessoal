@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resumirFamilias, PLANO_INTERNO } from './metricas.js';
+import { resumirFamilias, serieTemporal, PLANO_INTERNO } from './metricas.js';
 import { STATUS } from './estado.js';
 
 const AGORA = new Date('2026-08-06T12:00:00Z');
@@ -201,5 +201,63 @@ describe('robustez dos dados', () => {
     const r = resumirFamilias([{ subscription: { status: 'inventado', priceCents: 999999 } }], AGORA);
     expect(r.mrrCentavos).toBe(0);
     expect(r.ativas).toBe(0);
+  });
+});
+
+describe('serieTemporal', () => {
+  it('devolve um dia por bucket, do mais antigo ao mais recente, terminando hoje', () => {
+    const serie = serieTemporal([], AGORA, 5);
+    expect(serie).toHaveLength(5);
+    expect(serie[4].data).toBe('2026-08-06');
+    expect(serie[0].data).toBe('2026-08-02');
+  });
+
+  it('conta a nova família só no dia em que ela nasceu', () => {
+    const serie = serieTemporal([
+      { createdAt: emDias(-2) },
+    ], AGORA, 5);
+
+    const diaDoCadastro = serie.find((d) => d.data === '2026-08-04');
+    expect(diaDoCadastro.novasFamilias).toBe(1);
+    expect(serie.filter((d) => d.novasFamilias > 0)).toHaveLength(1);
+  });
+
+  it('totalFamilias é cumulativo (conta a família já no dia em que ela nasceu)', () => {
+    const serie = serieTemporal([
+      { createdAt: emDias(-4) },
+      { createdAt: emDias(-2) },
+    ], AGORA, 5);
+
+    expect(serie.map((d) => d.totalFamilias)).toEqual([1, 1, 2, 2, 2]);
+  });
+
+  it('família paga conta como ativa a partir do dia do activatedAt, com o preço contratado', () => {
+    const serie = serieTemporal([
+      pagante({ activatedAt: emDias(-3), currentPeriodEnd: undefined, priceCents: 2490 }),
+    ], AGORA, 5);
+
+    expect(serie.map((d) => d.pagantesAtivos)).toEqual([0, 1, 1, 1, 1]);
+    expect(serie[4].mrrCentavos).toBe(2490);
+  });
+
+  it('família cancelada some do MRR projetado a partir do dia do cancelamento', () => {
+    const serie = serieTemporal([
+      pagante({ activatedAt: emDias(-4), canceledAt: emDias(-1), currentPeriodEnd: undefined }),
+    ], AGORA, 5);
+
+    expect(serie.map((d) => d.pagantesAtivos)).toEqual([1, 1, 1, 0, 0]);
+  });
+
+  it('cortesia (plano interno) não entra na projeção de MRR', () => {
+    const serie = serieTemporal([
+      { createdAt: emDias(-2), subscription: { status: STATUS.ATIVA, plan: PLANO_INTERNO, activatedAt: emDias(-2), priceCents: 2490 } },
+    ], AGORA, 5);
+
+    expect(serie.every((d) => d.mrrCentavos === 0)).toBe(true);
+  });
+
+  it('sem famílias, série fica zerada e não quebra', () => {
+    const serie = serieTemporal([], AGORA, 3);
+    expect(serie.every((d) => d.novasFamilias === 0 && d.mrrCentavos === 0)).toBe(true);
   });
 });

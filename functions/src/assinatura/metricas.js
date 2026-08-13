@@ -113,4 +113,66 @@ function resumirFamilias(familias, agora = new Date(), janelaDias = JANELA_PADRA
   };
 }
 
-module.exports = { resumirFamilias, JANELA_PADRAO_DIAS, PLANO_INTERNO };
+function truncarDia(data) {
+  const d = new Date(data.getTime());
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/**
+ * Série diária de crescimento/MRR para os gráficos do dashboard do operador.
+ *
+ * O Firestore não guarda um snapshot histórico do negócio — só o estado ATUAL
+ * de cada família (createdAt, subscription.activatedAt/canceledAt). Por isso
+ * "MRR em cada dia passado" aqui é uma PROJEÇÃO, não um fato registrado: para
+ * cada família paga (não-cortesia) com `activatedAt`, ela conta como ativa em
+ * todo dia entre `activatedAt` e `canceledAt` (ou até hoje, se nunca
+ * cancelou), usando o preço contratado ATUAL. Família que mudou de status sem
+ * cancelar (ex.: ficou `past_due` e nunca voltou) continua contando como ativa
+ * na projeção — é a limitação aceita de não ter snapshot diário de verdade.
+ * Serve para ver a tendência, não para fechamento contábil.
+ */
+function serieTemporal(familias, agora = new Date(), dias = JANELA_PADRAO_DIAS) {
+  const hoje = truncarDia(agora);
+  const inicio = new Date(hoje.getTime() - (Math.max(1, dias) - 1) * DIA_EM_MS);
+
+  const criadas = familias
+    .map((f) => paraData(f.createdAt))
+    .filter(Boolean);
+
+  const canceladasEm = familias
+    .map((f) => paraData(f.subscription?.canceledAt))
+    .filter(Boolean);
+
+  const pagantes = familias
+    .filter((f) => f.subscription && f.subscription.plan !== PLANO_INTERNO)
+    .map((f) => ({
+      inicio: paraData(f.subscription.activatedAt),
+      fim: paraData(f.subscription.canceledAt),
+      precoCentavos: f.subscription.priceCents ?? PRECO_MENSAL_CENTAVOS,
+    }))
+    .filter((p) => p.inicio);
+
+  const serie = [];
+  for (let i = 0; i < dias; i++) {
+    const diaAtual = new Date(inicio.getTime() + i * DIA_EM_MS);
+    const fimDoDia = new Date(diaAtual.getTime() + DIA_EM_MS);
+
+    const ativosNoDia = pagantes.filter((p) => p.inicio < fimDoDia && (!p.fim || p.fim >= fimDoDia));
+    const mrrCentavos = ativosNoDia.reduce((soma, p) => soma + p.precoCentavos, 0);
+
+    serie.push({
+      data: diaAtual.toISOString().slice(0, 10),
+      novasFamilias: criadas.filter((d) => d >= diaAtual && d < fimDoDia).length,
+      cancelamentos: canceladasEm.filter((d) => d >= diaAtual && d < fimDoDia).length,
+      totalFamilias: criadas.filter((d) => d < fimDoDia).length,
+      pagantesAtivos: ativosNoDia.length,
+      mrrCentavos,
+      mrr: mrrCentavos / 100,
+    });
+  }
+
+  return serie;
+}
+
+module.exports = { resumirFamilias, serieTemporal, JANELA_PADRAO_DIAS, PLANO_INTERNO };
