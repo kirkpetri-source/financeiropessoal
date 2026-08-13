@@ -201,4 +201,95 @@ async function resolverSubcategoria({ descricao, categoriaNome, opcoes }) {
   }
 }
 
-module.exports = { parseWithAI, resolverSubcategoria };
+/**
+ * Categoriza descrições de EXTRATO BANCÁRIO em lote — uma chamada para até
+ * ~80 descrições distintas.
+ *
+ * É um prompt separado de `parseWithAI` porque o material é diferente:
+ * mensagem de WhatsApp é uma frase que a pessoa escreveu ("gastei 30 no
+ * mercado"), enquanto extrato traz o nome do estabelecimento como a
+ * maquininha registrou ("PAG*REST DONA MARIA LTDA"). Aqui não há valor nem
+ * tipo para extrair — só classificar um nome.
+ *
+ * Regra de ouro deste prompt: **na dúvida, responder "Outros"**. Um palpite
+ * errado entra silenciosamente no orçamento da família e distorce o gráfico
+ * do mês; um "Outros" honesto aparece na tela pedindo revisão. Errar para o
+ * lado de admitir ignorância é o comportamento certo aqui.
+ *
+ * @param {string[]} descricoes  descrições já limpas do ruído bancário
+ * @returns {Promise<Object>} mapa descrição -> categoria (só o que a IA soube)
+ */
+async function categorizarDescricoesEmLote(descricoes) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !descricoes?.length) return {};
+
+  const prompt = `Você classifica lançamentos de EXTRATO BANCÁRIO brasileiro em categorias.
+
+Cada item é a descrição de uma transação como o banco registrou — normalmente o nome de um estabelecimento, empresa ou pessoa.
+
+Categorias permitidas (use EXATAMENTE estes nomes):
+${VALID_CATEGORIES.join(', ')}
+
+REGRAS:
+- Responda SOMENTE um objeto JSON: {"descrição exata recebida": "Categoria"}
+- Use a descrição EXATAMENTE como veio, sem alterar, como chave.
+- Classifique pelo RAMO do estabelecimento: supermercado/hortifruti/atacado = Mercado; restaurante/lanchonete/padaria/delivery = Alimentação; posto/combustível = Combustível; drogaria/farmácia = Farmácia; consultório/laboratório/plano de saúde = Saúde; escola/faculdade/curso = Educação; streaming/aplicativo por assinatura = Assinaturas; loja de roupa/eletrônico/papelaria/pet = Outros.
+- **Nome de PESSOA FÍSICA (transferência, Pix entre pessoas) SEMPRE "Outros"** — é impossível saber se é salário, reembolso ou empréstimo, e adivinhar corrompe o orçamento de quem confia no sistema.
+- Na menor dúvida sobre o ramo, responda "Outros". É melhor deixar em branco que classificar errado.
+- Não invente categoria fora da lista. Não explique. Não use markdown.
+
+Itens:
+${JSON.stringify(descricoes)}`;
+
+  try {
+    const resp = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      console.error(`[AI Parser] Lote de extrato — Gemini retornou ${resp.status}: ${body.slice(0, 300)}`);
+      return {};
+    }
+
+    const data = await resp.json();
+    const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!texto) return {};
+
+    let bruto;
+    try {
+      bruto = JSON.parse(texto);
+    } catch {
+      const match = texto.match(/\{[\s\S]*\}/);
+      if (!match) return {};
+      bruto = JSON.parse(match[0]);
+    }
+
+    // Só passa adiante o que a IA respondeu para uma descrição que REALMENTE
+    // enviamos e com uma categoria que existe. Modelo alucina chave e
+    // categoria, e um nome de categoria inventado quebraria a resolução do
+    // id lá na frente.
+    const enviadas = new Set(descricoes);
+    const mapa = {};
+
+    for (const [descricao, categoria] of Object.entries(bruto || {})) {
+      if (!enviadas.has(descricao)) continue;
+      const valida = VALID_CATEGORIES.find((c) => c.toLowerCase() === String(categoria).toLowerCase());
+      // 'Outros' é a ausência de resposta: não vale gravar como se fosse
+      // uma classificação, senão a linha some da revisão do usuário.
+      if (valida && valida !== 'Outros') mapa[descricao] = valida;
+    }
+
+    return mapa;
+  } catch (err) {
+    console.error('[AI Parser] Erro ao categorizar lote de extrato:', err.message);
+    return {};
+  }
+}
+
+module.exports = { parseWithAI, resolverSubcategoria, categorizarDescricoesEmLote };

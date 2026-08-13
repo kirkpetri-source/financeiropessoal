@@ -98,12 +98,15 @@ function chaveDeAprendizado(descricao) {
   let texto = String(descricao || '');
   for (const rotulo of ROTULOS_DE_MEIO) texto = texto.replace(rotulo, ' ');
 
-  return texto
-    .replace(/^[\s-]+|[\s-]+$/g, '')
+  // `limparDescricao` já tira o ruído que MUDA a cada transação (NSU,
+  // autorização, data). O que sobrar de número faz parte do nome e precisa
+  // ser preservado: "Loja 25" e "Loja 40" são estabelecimentos diferentes, e
+  // fundir os dois faria a escolha do usuário num deles vazar para o outro.
+  return limparDescricao(texto)
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z\s]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
