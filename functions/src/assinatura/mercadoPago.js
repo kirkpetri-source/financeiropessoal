@@ -127,7 +127,14 @@ function criarClienteMercadoPago({ accessToken, fetchImpl = globalThis.fetch } =
      * `external_reference` carrega o householdId — é o que amarra o webhook do
      * Mercado Pago à família certa sem depender de e-mail.
      */
-    async criarAssinatura({ householdId, email, urlDeRetorno, precoCentavos = PRECO_MENSAL_CENTAVOS, motivo = 'Financeiro Familiar' }) {
+    async criarAssinatura({
+      householdId, email, urlDeRetorno, precoCentavos = PRECO_MENSAL_CENTAVOS,
+      // Descrição específica de propósito: o suporte do Mercado Pago (13/08/2026)
+      // apontou "reason" genérico como um dos fatores que alimentam o antifraude
+      // de cc_rejected_high_risk em aplicação nova. "Financeiro Familiar" sozinho
+      // não diz o que é cobrado nem quem cobra.
+      motivo = 'RevelaCash - assinatura mensal do controle financeiro familiar',
+    }) {
       if (!householdId) throw Object.assign(new Error('householdId obrigatório.'), { statusCode: 400 });
       if (!email) throw Object.assign(new Error('E-mail do pagador obrigatório.'), { statusCode: 400 });
 

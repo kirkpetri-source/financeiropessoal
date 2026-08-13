@@ -95,6 +95,7 @@ function fakeCliente(respostas = {}) {
     },
     async buscarAssinatura(id) {
       chamadas.push(['buscarAssinatura', id]);
+      if (respostas.buscarAssinatura instanceof Error) throw respostas.buscarAssinatura;
       return respostas.buscarAssinatura || {};
     },
     async buscarPagamentoAutorizado(id) {
@@ -197,6 +198,52 @@ describe('checkout', () => {
     await servicoCom({}).iniciarCheckout('fam-1', { email: 'a@b.c', urlDeRetorno: 'x' });
     expect(armazem.docs['households/fam-1/billingEvents/checkout-pre-1']).toMatchObject({
       tipo: 'checkout_criado', externalId: 'pre-1',
+    });
+  });
+
+  // Mercado Pago (suporte, 13/08/2026): clique repetido em "Assinar" criando
+  // um preapproval novo a cada vez, no mesmo contexto, é um dos gatilhos de
+  // cc_rejected_high_risk numa aplicação nova. Estes testes protegem que um
+  // checkout pendente ainda vivo é reaproveitado em vez de multiplicado.
+  describe('reaproveitamento de checkout pendente', () => {
+    beforeEach(() => {
+      armazem.docs['households/fam-1'].subscription = {
+        status: STATUS.PENDENTE,
+        provider: 'mercadopago',
+        externalId: 'pre-antigo',
+        checkoutUrl: 'https://mp/pagar-antigo',
+      };
+    });
+
+    it('devolve o link antigo sem criar outro preapproval se o provedor ainda diz pending', async () => {
+      const clienteFactory = fakeCliente({ buscarAssinatura: { statusDoProvedor: 'pending' } });
+      const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: clienteFactory });
+
+      const r = await svc.iniciarCheckout('fam-1', { email: 'a@b.c', urlDeRetorno: 'x' });
+
+      expect(r).toEqual({ linkDePagamento: 'https://mp/pagar-antigo', externalId: 'pre-antigo' });
+      const chamadas = clienteFactory().chamadas.map(([nome]) => nome);
+      expect(chamadas).toContain('buscarAssinatura');
+      expect(chamadas).not.toContain('criarAssinatura');
+    });
+
+    it('cria um preapproval novo se o antigo já não está mais pending no provedor', async () => {
+      const clienteFactory = fakeCliente({ buscarAssinatura: { statusDoProvedor: 'cancelled' } });
+      const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: clienteFactory });
+
+      const r = await svc.iniciarCheckout('fam-1', { email: 'a@b.c', urlDeRetorno: 'x' });
+
+      expect(r.externalId).toBe('pre-1');
+      expect(clienteFactory().chamadas.map(([nome]) => nome)).toContain('criarAssinatura');
+    });
+
+    it('cria um preapproval novo se não conseguir confirmar o status no provedor (falha aberta, não trava o cliente)', async () => {
+      const clienteFactory = fakeCliente({ buscarAssinatura: new Error('timeout') });
+      const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: clienteFactory });
+
+      const r = await svc.iniciarCheckout('fam-1', { email: 'a@b.c', urlDeRetorno: 'x' });
+
+      expect(r.externalId).toBe('pre-1');
     });
   });
 });

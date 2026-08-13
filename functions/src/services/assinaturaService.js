@@ -77,13 +77,33 @@ function criarServicoDeAssinatura({ db, admin, cliente }) {
    */
   async function iniciarCheckout(householdId, { email, urlDeRetorno }) {
     const household = await buscarHousehold(householdId);
-    const situacao = situacaoDaAssinatura(household.subscription, new Date());
+    const assinaturaAtual = household.subscription;
+    const situacao = situacaoDaAssinatura(assinaturaAtual, new Date());
 
-    if (household.subscription?.status === STATUS.ATIVA && !situacao.emCarencia) {
+    if (assinaturaAtual?.status === STATUS.ATIVA && !situacao.emCarencia) {
       throw Object.assign(
         new Error('Esta família já tem assinatura ativa.'),
         { statusCode: 409, codigo: 'JA_ASSINANTE' }
       );
+    }
+
+    // Reaproveita um checkout pendente ainda vivo em vez de criar outro
+    // preapproval a cada clique em "Assinar". O suporte do Mercado Pago
+    // (13/08/2026) apontou "várias tentativas seguidas com o mesmo contexto"
+    // logo após a criação da assinatura como um dos gatilhos de
+    // cc_rejected_high_risk numa aplicação nova — reabrir a mesma tela de
+    // checkout sem querer (F5, duplo clique, voltar e tentar de novo) estava
+    // gerando um preapproval novo por vez. Confirma no PROVEDOR, não só no
+    // Firestore, porque o cliente pode ter cancelado do lado de lá.
+    if (assinaturaAtual?.provider === 'mercadopago' && assinaturaAtual?.externalId
+      && assinaturaAtual?.status === STATUS.PENDENTE && assinaturaAtual?.checkoutUrl) {
+      const aindaPendente = await cliente().buscarAssinatura(assinaturaAtual.externalId)
+        .then((r) => r.statusDoProvedor === 'pending')
+        .catch(() => false);
+
+      if (aindaPendente) {
+        return { linkDePagamento: assinaturaAtual.checkoutUrl, externalId: assinaturaAtual.externalId };
+      }
     }
 
     const resultado = await cliente().criarAssinatura({
