@@ -189,9 +189,38 @@ export default function AssinaturaPage() {
           </button>
         )}
 
+        {/*
+          O checkout do Mercado Pago é hospedado por eles: não dá para mudar o
+          layout nem as mensagens de erro de lá. O campo de e-mail, em
+          particular, é obrigatório e trava o botão em silêncio quando fica
+          vazio — quem não sabe disso acha que o pagamento quebrou. Explicar o
+          caminho ANTES de mandar a pessoa para lá é o que está ao nosso
+          alcance para essa etapa não virar abandono de carrinho.
+        */}
+        {assinatura?.podeGerir && assinatura?.status !== 'active' && (
+          <div className="bg-surface-alt rounded-xl px-3 py-3 space-y-2">
+            <p className="text-xs font-medium text-ink">No Mercado Pago, você vai:</p>
+            <ol className="space-y-1.5">
+              {[
+                'Escolher "Cartão de crédito" — não precisa ter conta no Mercado Pago',
+                'Preencher os dados do cartão e o CPF do titular',
+                'Informar seu e-mail (obrigatório: sem ele o botão de confirmar não avança)',
+              ].map((passo, i) => (
+                <li key={passo} className="flex gap-2 text-xs text-muted">
+                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-brand-100 text-brand-700 font-medium flex items-center justify-center text-[10px]">
+                    {i + 1}
+                  </span>
+                  {passo}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
         <p className="text-xs text-faint">
-          Pagamento processado pelo Mercado Pago. Cancele quando quiser — o acesso
-          continua até o fim do período já pago. Ao assinar você concorda com os{' '}
+          Pagamento processado pelo Mercado Pago, com renovação mensal automática
+          no mesmo cartão. Cancele quando quiser — o acesso continua até o fim do
+          período já pago. Ao assinar você concorda com os{' '}
           <Link to="/termos" className="underline">termos de uso</Link> e a{' '}
           <Link to="/privacidade" className="underline">política de privacidade</Link>.
         </p>
