@@ -5,7 +5,10 @@ import {
   criarClienteMercadoPago,
   traduzirStatus,
   centavosParaReais,
+  encurtarMotivo,
   TOLERANCIA_ASSINATURA_MS,
+  LIMITE_DO_REASON,
+  MOTIVO_PADRAO,
 } from './mercadoPago.js';
 import { STATUS } from './estado.js';
 
@@ -152,6 +155,42 @@ describe('cliente', () => {
     await expect(cliente.criarAssinatura({ email: 'a@b.c' })).rejects.toMatchObject({ statusCode: 400 });
     await expect(cliente.criarAssinatura({ householdId: 'fam-1' })).rejects.toMatchObject({ statusCode: 400 });
     expect(fetchImpl.chamadas).toHaveLength(0);
+  });
+
+  // O Mercado Pago recusa `reason` com mais de 60 caracteres — limite não
+  // documentado, que derrubou o checkout em produção em 13/08/2026.
+  describe('limite de 60 caracteres do reason', () => {
+    it('o motivo padrão cabe no limite', () => {
+      expect(MOTIVO_PADRAO.length).toBeLessThanOrEqual(LIMITE_DO_REASON);
+    });
+
+    it('encurta motivo comprido em vez de deixar a API recusar', () => {
+      const comprido = 'RevelaCash - assinatura mensal do controle financeiro familiar completo';
+      expect(comprido.length).toBeGreaterThan(LIMITE_DO_REASON);
+      expect(encurtarMotivo(comprido).length).toBeLessThanOrEqual(LIMITE_DO_REASON);
+    });
+
+    it('mantém intacto o motivo que já cabe', () => {
+      expect(encurtarMotivo('RevelaCash - mensalidade')).toBe('RevelaCash - mensalidade');
+    });
+
+    it('motivo vazio cai no padrão, nunca em string vazia', () => {
+      expect(encurtarMotivo('')).toBe(MOTIVO_PADRAO);
+      expect(encurtarMotivo(null)).toBe(MOTIVO_PADRAO);
+    });
+
+    it('o reason que sai no corpo do preapproval respeita o limite', async () => {
+      const fetchImpl = fakeFetch([{ corpo: { id: 'pre-1', init_point: 'https://mp/pagar', status: 'pending' } }]);
+      const cliente = criarClienteMercadoPago({ accessToken: 'token', fetchImpl });
+
+      await cliente.criarAssinatura({
+        householdId: 'fam-1',
+        email: 'a@b.c',
+        motivo: 'x'.repeat(200),
+      });
+
+      expect(fetchImpl.chamadas[0].corpo.reason.length).toBeLessThanOrEqual(LIMITE_DO_REASON);
+    });
   });
 
   it('busca assinatura e normaliza os campos que importam', async () => {

@@ -40,6 +40,29 @@ function centavosParaReais(centavos) {
 }
 
 /**
+ * O `reason` do preapproval é o que o cliente vê na fatura do cartão.
+ *
+ * Descrição específica de propósito: o suporte do Mercado Pago (13/08/2026)
+ * apontou `reason` genérico como um dos fatores que alimentam o antifraude
+ * (`cc_rejected_high_risk`) numa aplicação nova — "Financeiro Familiar"
+ * sozinho não diz o que é cobrado nem quem cobra.
+ *
+ * O limite de 60 caracteres é do Mercado Pago e NÃO está documentado na
+ * página de assinaturas: só aparece como `400 reason has more than 60
+ * characters` na hora de criar. Custou o checkout fora do ar em produção
+ * (13/08/2026) com uma descrição de 62 caracteres. Por isso o texto é
+ * truncado aqui em vez de confiar em quem chama: derrubar o pagamento do
+ * cliente por causa de um texto comprido é o pior desfecho possível.
+ */
+const LIMITE_DO_REASON = 60;
+const MOTIVO_PADRAO = 'RevelaCash - assinatura mensal do controle financeiro';
+
+function encurtarMotivo(motivo) {
+  const limpo = String(motivo || MOTIVO_PADRAO).trim();
+  return limpo.length <= LIMITE_DO_REASON ? limpo : limpo.slice(0, LIMITE_DO_REASON).trim();
+}
+
+/**
  * Confere a assinatura HMAC do webhook.
  *
  * O Mercado Pago manda `x-signature: ts=<epoch>,v1=<hmac>` e `x-request-id`.
@@ -129,17 +152,15 @@ function criarClienteMercadoPago({ accessToken, fetchImpl = globalThis.fetch } =
      */
     async criarAssinatura({
       householdId, email, urlDeRetorno, precoCentavos = PRECO_MENSAL_CENTAVOS,
-      // Descrição específica de propósito: o suporte do Mercado Pago (13/08/2026)
-      // apontou "reason" genérico como um dos fatores que alimentam o antifraude
-      // de cc_rejected_high_risk em aplicação nova. "Financeiro Familiar" sozinho
-      // não diz o que é cobrado nem quem cobra.
-      motivo = 'RevelaCash - assinatura mensal do controle financeiro familiar',
+      motivo = MOTIVO_PADRAO,
     }) {
       if (!householdId) throw Object.assign(new Error('householdId obrigatório.'), { statusCode: 400 });
       if (!email) throw Object.assign(new Error('E-mail do pagador obrigatório.'), { statusCode: 400 });
 
       const dados = await chamar('POST', '/preapproval', {
-        reason: motivo,
+        // Truncado, não recusado: um `reason` comprido não pode ser o motivo
+        // de um cliente não conseguir pagar. Ver LIMITE_DO_REASON.
+        reason: encurtarMotivo(motivo),
         external_reference: householdId,
         payer_email: email,
         back_url: urlDeRetorno,
@@ -225,6 +246,9 @@ module.exports = {
   BASE,
   TOLERANCIA_ASSINATURA_MS,
   MAPA_DE_STATUS,
+  LIMITE_DO_REASON,
+  MOTIVO_PADRAO,
+  encurtarMotivo,
   traduzirStatus,
   centavosParaReais,
   assinaturaDoWebhookConfere,
