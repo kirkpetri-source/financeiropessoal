@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { categorizar, limparDescricao, pareceTransferencia, CONFIANCA } from './categorizador.js';
+import { categorizar, limparDescricao, chaveDeAprendizado, pareceTransferencia, CONFIANCA } from './categorizador.js';
 
 /**
  * O que estes testes protegem, além do óbvio: que a IA seja chamada UMA vez
@@ -116,6 +116,71 @@ describe('camada 2 — IA em lote', () => {
     const resolverComIA = vi.fn(async () => ({ "OUTRA COISA": 'Mercado' }));
     const r = await categorizar([transacao("KALUNGA PAPELARIA")], { resolverComIA });
     expect(r[0].categoriaSugerida).toBe('Outros');
+  });
+});
+
+/**
+ * Esta camada nasceu de um extrato REAL: 87% das linhas eram
+ * "Transferência recebida pelo Pix - <nome>", que nenhuma regra e nenhuma IA
+ * consegue categorizar — só quem recebeu sabe se aquele Pix é salário,
+ * reembolso ou empréstimo devolvido. Memória resolve o que inteligência não
+ * resolve.
+ */
+describe('camada 0 — memória da própria família', () => {
+  it('a mesma contraparte de Pix, já classificada antes, não é perguntada de novo', async () => {
+    const historico = { 'joao da silva': 'Serviços' };
+    const resolverComIA = vi.fn(async () => ({}));
+
+    const r = await categorizar(
+      [transacao('Transferência recebida pelo Pix - João da Silva', { tipo: 'INCOME' })],
+      { historico, resolverComIA },
+    );
+
+    expect(r[0]).toMatchObject({ categoriaSugerida: 'Serviços', confianca: CONFIANCA.HISTORICO });
+    expect(resolverComIA).not.toHaveBeenCalled();
+  });
+
+  it('memória vence a regra — a escolha da família vale mais que a palavra-chave', async () => {
+    const r = await categorizar(
+      [transacao('Compra no débito - Supermercado Bom Preco')],
+      { historico: { 'supermercado bom preco': 'Educação' } },
+    );
+    expect(r[0]).toMatchObject({ categoriaSugerida: 'Educação', confianca: CONFIANCA.HISTORICO });
+  });
+
+  it('sem memória do nome, segue o fluxo normal', async () => {
+    const r = await categorizar(
+      [transacao('Transferência recebida pelo Pix - Outra Pessoa', { tipo: 'INCOME' })],
+      { historico: { 'joao da silva': 'Serviços' } },
+    );
+    expect(r[0].confianca).not.toBe(CONFIANCA.HISTORICO);
+  });
+
+  it('aceita Map além de objeto', async () => {
+    const r = await categorizar(
+      [transacao('Transferência recebida pelo Pix - João da Silva', { tipo: 'INCOME' })],
+      { historico: new Map([['joao da silva', 'Renda Extra']]) },
+    );
+    expect(r[0].categoriaSugerida).toBe('Renda Extra');
+  });
+});
+
+describe('chave de aprendizado', () => {
+  it('junta as várias formas de Pix do mesmo nome numa memória só', () => {
+    const esperada = 'joao da silva';
+    expect(chaveDeAprendizado('Transferência recebida pelo Pix - João da Silva')).toBe(esperada);
+    expect(chaveDeAprendizado('Transferência enviada pelo Pix - João da Silva')).toBe(esperada);
+    expect(chaveDeAprendizado('Transferência Recebida - João da Silva')).toBe(esperada);
+    expect(chaveDeAprendizado('Pix enviado - João da Silva')).toBe(esperada);
+  });
+
+  it('separa contrapartes diferentes', () => {
+    expect(chaveDeAprendizado('Pix recebido - Maria'))
+      .not.toBe(chaveDeAprendizado('Pix recebido - Joana'));
+  });
+
+  it('funciona para estabelecimento, não só para pessoa', () => {
+    expect(chaveDeAprendizado('Compra no débito - Padaria Central')).toBe('padaria central');
   });
 });
 

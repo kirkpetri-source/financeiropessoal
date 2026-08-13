@@ -65,26 +65,87 @@ function pareceTransferencia(descricao) {
 }
 
 const CONFIANCA = {
-  REGRA: 'regra',       // palavra-chave bateu — alta confiança
-  IA: 'ia',             // palpite do modelo — vale revisar
-  PADRAO: 'padrao',     // ninguém soube: caiu em Outros
+  HISTORICO: 'historico', // a própria família já classificou isso antes
+  REGRA: 'regra',         // palavra-chave bateu — alta confiança
+  IA: 'ia',               // palpite do modelo — vale revisar
+  PADRAO: 'padrao',       // ninguém soube: caiu em Outros
 };
 
 /**
- * Categoriza a lista inteira.
+ * Chave de aprendizado: o que identifica "o mesmo tipo de lançamento" para
+ * fins de lembrar a escolha do usuário.
+ *
+ * Nasceu de um extrato real: 87% das linhas eram "Transferência recebida
+ * pelo Pix - <nome de pessoa>". Isso não tem categoria dedutível por regra
+ * nem por IA — um Pix do mesmo nome pode ser salário, reembolso ou empréstimo
+ * devolvido, e só quem recebeu sabe. O que FUNCIONA nesse caso é memória: se
+ * a pessoa já disse uma vez que Pix do "João" é Serviços, o sistema não
+ * pergunta de novo.
+ *
+ * A chave preserva o nome (é ele que identifica a contraparte) e descarta o
+ * rótulo do meio de pagamento, para "Pix recebido - João" e "Transferência
+ * Recebida - João" caírem na mesma memória.
+ */
+const ROTULOS_DE_MEIO = [
+  /transfer[êe]ncia\s+(recebida|enviada)(\s+pelo\s+pix)?(\s+via\s+open\s+banking)?/i,
+  /pagamento\s+(recebido|efetuado)/i,
+  /pagamento\s+de\s+boleto(\s+efetuado)?/i,
+  /compra\s+no\s+d[ée]bito/i,
+  /pix\s+(enviado|recebido)/i,
+];
+
+function chaveDeAprendizado(descricao) {
+  let texto = String(descricao || '');
+  for (const rotulo of ROTULOS_DE_MEIO) texto = texto.replace(rotulo, ' ');
+
+  return texto
+    .replace(/^[\s-]+|[\s-]+$/g, '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Categoriza a lista inteira, em camadas do mais confiável para o mais
+ * incerto: memória da família > regra > IA > Outros.
  *
  * @param {Array} transacoes  saída do leitor de extrato
- * @param {{resolverComIA?: Function}} opcoes  IA injetada (null desliga a camada 2)
+ * @param {object} opcoes
+ * @param {Function|null} opcoes.resolverComIA  IA injetada (null desliga a camada de IA)
+ * @param {Map|object} opcoes.historico  chaveDeAprendizado -> nome da categoria,
+ *        montado a partir do que a família já classificou antes
  * @returns {Promise<Array>} mesma lista, com `categoriaSugerida`, `confianca` e `descricaoLimpa`
  */
-async function categorizar(transacoes, { resolverComIA = null } = {}) {
+async function categorizar(transacoes, { resolverComIA = null, historico = null } = {}) {
+  const memoria = historico instanceof Map ? historico : new Map(Object.entries(historico || {}));
+
   const comRegra = transacoes.map((t) => {
     const descricaoLimpa = limparDescricao(t.descricao);
+    const chave = chaveDeAprendizado(t.descricao);
+
+    // Memória primeiro: uma escolha que a própria família já fez vale mais
+    // que qualquer palpite de regra ou de modelo.
+    const daMemoria = chave ? memoria.get(chave) : null;
+    if (daMemoria) {
+      return {
+        ...t,
+        descricaoLimpa,
+        chaveDeAprendizado: chave,
+        ehTransferencia: pareceTransferencia(t.descricao),
+        categoriaSugerida: daMemoria,
+        confianca: CONFIANCA.HISTORICO,
+      };
+    }
+
     const categoria = suggestCategory(descricaoLimpa, t.tipo);
 
     return {
       ...t,
       descricaoLimpa,
+      chaveDeAprendizado: chave,
       ehTransferencia: pareceTransferencia(t.descricao),
       // suggestCategory devolve 'Outros' quando não reconhece: isso não é
       // uma categorização de verdade, é a ausência dela.
@@ -130,6 +191,7 @@ function finalizar(t) {
 module.exports = {
   categorizar,
   limparDescricao,
+  chaveDeAprendizado,
   pareceTransferencia,
   CONFIANCA,
   LOTE_MAXIMO,
