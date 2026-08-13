@@ -87,38 +87,37 @@ function criarServicoDeAssinatura({ db, admin, cliente }) {
       );
     }
 
-    // Reaproveita um checkout pendente ainda vivo em vez de criar outro
-    // preapproval a cada clique em "Assinar". O suporte do Mercado Pago
+    // Reaproveita o plano que a família já tem em vez de criar outro a cada
+    // clique em "Assinar". Duas razões: o link do plano não expira (é o mesmo
+    // para sempre, o cliente pode voltar depois), e o suporte do Mercado Pago
     // (13/08/2026) apontou "várias tentativas seguidas com o mesmo contexto"
-    // logo após a criação da assinatura como um dos gatilhos de
-    // cc_rejected_high_risk numa aplicação nova — reabrir a mesma tela de
-    // checkout sem querer (F5, duplo clique, voltar e tentar de novo) estava
-    // gerando um preapproval novo por vez. Confirma no PROVEDOR, não só no
-    // Firestore, porque o cliente pode ter cancelado do lado de lá.
-    if (assinaturaAtual?.provider === 'mercadopago' && assinaturaAtual?.externalId
-      && assinaturaAtual?.status === STATUS.PENDENTE && assinaturaAtual?.checkoutUrl) {
-      const aindaPendente = await cliente().buscarAssinatura(assinaturaAtual.externalId)
-        .then((r) => r.statusDoProvedor === 'pending')
+    // como um dos gatilhos de cc_rejected_high_risk. Confirma no PROVEDOR, não
+    // só no Firestore, porque o plano pode ter sido cancelado do lado de lá.
+    if (assinaturaAtual?.planId && assinaturaAtual?.checkoutUrl) {
+      const planoVivo = await cliente().buscarPlano(assinaturaAtual.planId)
+        .then((p) => p.status === 'active')
         .catch(() => false);
 
-      if (aindaPendente) {
-        return { linkDePagamento: assinaturaAtual.checkoutUrl, externalId: assinaturaAtual.externalId };
+      if (planoVivo) {
+        return { linkDePagamento: assinaturaAtual.checkoutUrl, planId: assinaturaAtual.planId };
       }
     }
 
-    const resultado = await cliente().criarAssinatura({
+    // Plano, e não preapproval com payer_email: é o que deixa o cliente pagar
+    // com cartão SEM ter conta no Mercado Pago. Ver o comentário longo em
+    // `mercadoPago.criarPlano`.
+    const resultado = await cliente().criarPlano({
       householdId,
-      email,
       urlDeRetorno,
       precoCentavos: PRECO_MENSAL_CENTAVOS,
     });
 
     const atualizacao = {
       'subscription.provider': 'mercadopago',
-      'subscription.externalId': resultado.id,
+      'subscription.planId': resultado.id,
       'subscription.priceCents': PRECO_MENSAL_CENTAVOS,
       'subscription.checkoutUrl': resultado.linkDePagamento,
-      'subscription.payerEmail': email,
+      'subscription.payerEmail': email || null,
       'subscription.updatedAt': agora(),
       updatedAt: agora(),
     };
@@ -134,11 +133,29 @@ function criarServicoDeAssinatura({ db, admin, cliente }) {
 
     await registrarEvento(householdId, `checkout-${resultado.id}`, {
       tipo: 'checkout_criado',
-      externalId: resultado.id,
+      planId: resultado.id,
       valorCentavos: PRECO_MENSAL_CENTAVOS,
     });
 
-    return { linkDePagamento: resultado.linkDePagamento, externalId: resultado.id };
+    return { linkDePagamento: resultado.linkDePagamento, planId: resultado.id };
+  }
+
+  /**
+   * Acha a família dona de um plano de assinatura.
+   *
+   * `where` sozinho, sem orderBy: é uma busca por igualdade num campo único
+   * (cada plano pertence a uma família só), então não precisa de índice
+   * composto — a mesma decisão documentada em adminAuditService.
+   */
+  async function acharFamiliaPorPlano(planId) {
+    if (!planId) return null;
+
+    const snap = await db.collection(COLECAO)
+      .where('subscription.planId', '==', planId)
+      .limit(1)
+      .get();
+
+    return snap.empty ? null : snap.docs[0].id;
   }
 
   /**
@@ -148,9 +165,17 @@ function criarServicoDeAssinatura({ db, admin, cliente }) {
   async function sincronizarDoProvedor(preapprovalId) {
     const remota = await cliente().buscarAssinatura(preapprovalId);
 
-    const householdId = remota.householdId;
+    // Duas formas de achar a família, nesta ordem:
+    //   1. external_reference do preapproval — vale para quem assinou pelo
+    //      fluxo antigo (preapproval criado por nós, com payer_email);
+    //   2. o plano que originou a assinatura — é o caminho de quem assina
+    //      pelo link do plano, onde o preapproval nasce do lado do Mercado
+    //      Pago e pode chegar sem external_reference próprio. Cada família
+    //      tem um plano exclusivo, então a busca é determinística.
+    const householdId = remota.householdId || await acharFamiliaPorPlano(remota.planId);
+
     if (!householdId) {
-      console.warn(`[Assinatura] preapproval ${preapprovalId} sem external_reference — ignorado.`);
+      console.warn(`[Assinatura] preapproval ${preapprovalId} sem external_reference nem plano conhecido — ignorado.`);
       return { ignorado: true, motivo: 'SEM_EXTERNAL_REFERENCE' };
     }
 

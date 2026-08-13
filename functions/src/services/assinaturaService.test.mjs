@@ -28,10 +28,28 @@ function aplicarCaminhos(alvo, dados) {
   }
 }
 
+/** Lê `subscription.planId` no documento, no formato de caminho do Firestore. */
+function valorNoCaminho(doc, caminho) {
+  return caminho.split('.').reduce((no, parte) => (no == null ? undefined : no[parte]), doc);
+}
+
 function fakeDb() {
   return {
     collection(nome) {
       return {
+        // Busca por igualdade usada por acharFamiliaPorPlano.
+        where(campo, _op, valor) {
+          const encontrados = Object.entries(armazem.docs)
+            .filter(([chave]) => chave.startsWith(`${nome}/`) && !chave.slice(nome.length + 1).includes('/'))
+            .filter(([, dados]) => valorNoCaminho(dados, campo) === valor)
+            .map(([chave, dados]) => ({ id: chave.split('/').pop(), data: () => dados }));
+
+          const consulta = {
+            limit(n) { return { async get() { return { empty: !encontrados.length, docs: encontrados.slice(0, n) }; } }; },
+            async get() { return { empty: !encontrados.length, docs: encontrados }; },
+          };
+          return consulta;
+        },
         doc(id) {
           const chave = `${nome}/${id}`;
           return {
@@ -93,6 +111,17 @@ function fakeCliente(respostas = {}) {
       return respostas.criarAssinatura
         || { id: 'pre-1', linkDePagamento: 'https://mp/pagar', status: STATUS.PENDENTE };
     },
+    async criarPlano(args) {
+      chamadas.push(['criarPlano', args]);
+      if (respostas.criarPlano instanceof Error) throw respostas.criarPlano;
+      return respostas.criarPlano
+        || { id: 'plano-1', linkDePagamento: 'https://mp/assinar-plano', status: 'active' };
+    },
+    async buscarPlano(id) {
+      chamadas.push(['buscarPlano', id]);
+      if (respostas.buscarPlano instanceof Error) throw respostas.buscarPlano;
+      return respostas.buscarPlano || {};
+    },
     async buscarAssinatura(id) {
       chamadas.push(['buscarAssinatura', id]);
       if (respostas.buscarAssinatura instanceof Error) throw respostas.buscarAssinatura;
@@ -152,16 +181,36 @@ describe('situação da família', () => {
 });
 
 describe('checkout', () => {
-  it('guarda o id do provedor e devolve o link de pagamento', async () => {
-    const svc = servicoCom({});
+  // O checkout usa PLANO (preapproval_plan), não preapproval com payer_email:
+  // é o que deixa o cliente pagar com cartão sem ter conta no Mercado Pago.
+  // Ver o comentário em mercadoPago.criarPlano.
+  it('cria um plano por família e devolve o link público de assinatura', async () => {
+    const clienteFactory = fakeCliente({});
+    const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: clienteFactory });
     const r = await svc.iniciarCheckout('fam-1', { email: 'kirk@exemplo.com', urlDeRetorno: 'https://app/x' });
 
-    expect(r.linkDePagamento).toBe('https://mp/pagar');
+    expect(r.linkDePagamento).toBe('https://mp/assinar-plano');
+    expect(r.planId).toBe('plano-1');
 
     const sub = armazem.docs['households/fam-1'].subscription;
     expect(sub.provider).toBe('mercadopago');
-    expect(sub.externalId).toBe('pre-1');
+    expect(sub.planId).toBe('plano-1');
     expect(sub.payerEmail).toBe('kirk@exemplo.com');
+
+    // O householdId vai no external_reference do plano — é o que amarra a
+    // assinatura de volta à família quando o webhook chega.
+    const [, args] = clienteFactory().chamadas.find(([nome]) => nome === 'criarPlano');
+    expect(args.householdId).toBe('fam-1');
+  });
+
+  it('não manda payer_email para o provedor — quem paga não precisa de conta Mercado Pago', async () => {
+    const clienteFactory = fakeCliente({});
+    const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: clienteFactory });
+    await svc.iniciarCheckout('fam-1', { email: 'kirk@exemplo.com', urlDeRetorno: 'https://app/x' });
+
+    const [, args] = clienteFactory().chamadas.find(([nome]) => nome === 'criarPlano');
+    expect(args.email).toBeUndefined();
+    expect(clienteFactory().chamadas.map(([n]) => n)).not.toContain('criarAssinatura');
   });
 
   it('não apaga o trial de quem assina no meio do teste', async () => {
@@ -196,54 +245,55 @@ describe('checkout', () => {
 
   it('registra o checkout no histórico de cobrança', async () => {
     await servicoCom({}).iniciarCheckout('fam-1', { email: 'a@b.c', urlDeRetorno: 'x' });
-    expect(armazem.docs['households/fam-1/billingEvents/checkout-pre-1']).toMatchObject({
-      tipo: 'checkout_criado', externalId: 'pre-1',
+    expect(armazem.docs['households/fam-1/billingEvents/checkout-plano-1']).toMatchObject({
+      tipo: 'checkout_criado', planId: 'plano-1',
     });
   });
 
   // Mercado Pago (suporte, 13/08/2026): clique repetido em "Assinar" criando
-  // um preapproval novo a cada vez, no mesmo contexto, é um dos gatilhos de
-  // cc_rejected_high_risk numa aplicação nova. Estes testes protegem que um
-  // checkout pendente ainda vivo é reaproveitado em vez de multiplicado.
-  describe('reaproveitamento de checkout pendente', () => {
+  // cobrança nova a cada vez, no mesmo contexto, é um dos gatilhos de
+  // cc_rejected_high_risk numa aplicação nova. O link do plano também não
+  // expira, então reaproveitar é o comportamento certo dos dois pontos de
+  // vista.
+  describe('reaproveitamento do plano da família', () => {
     beforeEach(() => {
       armazem.docs['households/fam-1'].subscription = {
         status: STATUS.PENDENTE,
         provider: 'mercadopago',
-        externalId: 'pre-antigo',
-        checkoutUrl: 'https://mp/pagar-antigo',
+        planId: 'plano-antigo',
+        checkoutUrl: 'https://mp/assinar-plano-antigo',
       };
     });
 
-    it('devolve o link antigo sem criar outro preapproval se o provedor ainda diz pending', async () => {
-      const clienteFactory = fakeCliente({ buscarAssinatura: { statusDoProvedor: 'pending' } });
+    it('devolve o link antigo sem criar outro plano se o provedor ainda diz active', async () => {
+      const clienteFactory = fakeCliente({ buscarPlano: { status: 'active' } });
       const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: clienteFactory });
 
       const r = await svc.iniciarCheckout('fam-1', { email: 'a@b.c', urlDeRetorno: 'x' });
 
-      expect(r).toEqual({ linkDePagamento: 'https://mp/pagar-antigo', externalId: 'pre-antigo' });
+      expect(r).toEqual({ linkDePagamento: 'https://mp/assinar-plano-antigo', planId: 'plano-antigo' });
       const chamadas = clienteFactory().chamadas.map(([nome]) => nome);
-      expect(chamadas).toContain('buscarAssinatura');
-      expect(chamadas).not.toContain('criarAssinatura');
+      expect(chamadas).toContain('buscarPlano');
+      expect(chamadas).not.toContain('criarPlano');
     });
 
-    it('cria um preapproval novo se o antigo já não está mais pending no provedor', async () => {
-      const clienteFactory = fakeCliente({ buscarAssinatura: { statusDoProvedor: 'cancelled' } });
+    it('cria um plano novo se o antigo já não está mais ativo no provedor', async () => {
+      const clienteFactory = fakeCliente({ buscarPlano: { status: 'cancelled' } });
       const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: clienteFactory });
 
       const r = await svc.iniciarCheckout('fam-1', { email: 'a@b.c', urlDeRetorno: 'x' });
 
-      expect(r.externalId).toBe('pre-1');
-      expect(clienteFactory().chamadas.map(([nome]) => nome)).toContain('criarAssinatura');
+      expect(r.planId).toBe('plano-1');
+      expect(clienteFactory().chamadas.map(([nome]) => nome)).toContain('criarPlano');
     });
 
-    it('cria um preapproval novo se não conseguir confirmar o status no provedor (falha aberta, não trava o cliente)', async () => {
-      const clienteFactory = fakeCliente({ buscarAssinatura: new Error('timeout') });
+    it('cria um plano novo se não conseguir confirmar o status no provedor (falha aberta, não trava o cliente)', async () => {
+      const clienteFactory = fakeCliente({ buscarPlano: new Error('timeout') });
       const svc = criarServicoDeAssinatura({ db: fakeDb(), admin: fakeAdmin, cliente: clienteFactory });
 
       const r = await svc.iniciarCheckout('fam-1', { email: 'a@b.c', urlDeRetorno: 'x' });
 
-      expect(r.externalId).toBe('pre-1');
+      expect(r.planId).toBe('plano-1');
     });
   });
 });
@@ -280,8 +330,44 @@ describe('sincronização com o provedor', () => {
     expect(armazem.docs['households/fam-1'].subscription.activatedAt).toBe('<ativou-em-junho>');
   });
 
-  it('ignora preapproval sem external_reference', async () => {
+  it('ignora preapproval sem external_reference nem plano conhecido', async () => {
     const svc = servicoCom({ buscarAssinatura: { id: 'pre-x', householdId: null, status: STATUS.ATIVA } });
+    expect(await svc.sincronizarDoProvedor('pre-x')).toMatchObject({ ignorado: true, motivo: 'SEM_EXTERNAL_REFERENCE' });
+  });
+
+  // Quem assina pelo LINK DO PLANO tem o preapproval criado do lado do
+  // Mercado Pago, e ele pode chegar sem external_reference próprio. Sem este
+  // caminho, o cliente pagaria e nunca seria ativado — o pior defeito
+  // possível numa cobrança.
+  it('acha a família pelo plano quando o preapproval vem sem external_reference', async () => {
+    armazem.docs['households/fam-1'].subscription = {
+      status: STATUS.PENDENTE,
+      provider: 'mercadopago',
+      planId: 'plano-da-fam-1',
+    };
+
+    const svc = servicoCom({
+      buscarAssinatura: {
+        id: 'pre-nascido-do-plano',
+        householdId: null,
+        planId: 'plano-da-fam-1',
+        status: STATUS.ATIVA,
+        statusDoProvedor: 'authorized',
+      },
+    });
+
+    const r = await svc.sincronizarDoProvedor('pre-nascido-do-plano');
+
+    expect(r).toMatchObject({ householdId: 'fam-1', status: STATUS.ATIVA, ignorado: false });
+    const sub = armazem.docs['households/fam-1'].subscription;
+    expect(sub.status).toBe(STATUS.ATIVA);
+    expect(sub.externalId).toBe('pre-nascido-do-plano');
+  });
+
+  it('plano desconhecido não ativa ninguém por engano', async () => {
+    const svc = servicoCom({
+      buscarAssinatura: { id: 'pre-x', householdId: null, planId: 'plano-de-ninguem', status: STATUS.ATIVA },
+    });
     expect(await svc.sincronizarDoProvedor('pre-x')).toMatchObject({ ignorado: true, motivo: 'SEM_EXTERNAL_REFERENCE' });
   });
 

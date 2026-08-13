@@ -181,11 +181,65 @@ function criarClienteMercadoPago({ accessToken, fetchImpl = globalThis.fetch } =
       };
     },
 
+    /**
+     * Cria um PLANO de assinatura e devolve o link público de checkout.
+     *
+     * É o caminho que permite ao cliente pagar SEM TER CONTA no Mercado Pago
+     * — a tela do plano oferece "Sem conta Mercado Pago → Cartão de crédito"
+     * e pede só os dados do cartão. O fluxo antigo (`criarAssinatura`, que
+     * manda `payer_email`) obriga a pessoa a entrar com a conta Mercado Pago
+     * daquele e-mail exato, e trava com "e-mail não confere" para quem
+     * cadastrou no RevelaCash um e-mail diferente do da conta dela — ou para
+     * quem simplesmente não tem conta. Verificado no checkout real em
+     * 13/08/2026.
+     *
+     * Um plano POR FAMÍLIA, com o householdId em `external_reference`: é o que
+     * amarra a assinatura de volta à família certa quando o webhook chega.
+     */
+    async criarPlano({ householdId, urlDeRetorno, precoCentavos = PRECO_MENSAL_CENTAVOS, motivo = MOTIVO_PADRAO }) {
+      if (!householdId) throw Object.assign(new Error('householdId obrigatório.'), { statusCode: 400 });
+
+      const dados = await chamar('POST', '/preapproval_plan', {
+        reason: encurtarMotivo(motivo),
+        external_reference: householdId,
+        back_url: urlDeRetorno,
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: 'months',
+          transaction_amount: centavosParaReais(precoCentavos),
+          currency_id: 'BRL',
+        },
+      }, { idempotencyKey: `plano-${householdId}-${Date.now()}` });
+
+      return {
+        id: dados?.id || null,
+        linkDePagamento: dados?.init_point || null,
+        status: dados?.status || null,
+        bruto: dados,
+      };
+    },
+
+    async buscarPlano(planId) {
+      const dados = await chamar('GET', `/preapproval_plan/${encodeURIComponent(planId)}`);
+      return {
+        id: dados?.id || null,
+        householdId: dados?.external_reference || null,
+        status: dados?.status || null,
+        linkDePagamento: dados?.init_point || null,
+        bruto: dados,
+      };
+    },
+
     async buscarAssinatura(preapprovalId) {
       const dados = await chamar('GET', `/preapproval/${encodeURIComponent(preapprovalId)}`);
       return {
         id: dados?.id || null,
         householdId: dados?.external_reference || null,
+        // Assinatura nascida de um plano carrega o id dele. É o segundo
+        // caminho para achar a família quando o preapproval vem sem
+        // external_reference próprio (o cliente assinou pelo link do plano,
+        // não por um preapproval que nós criamos com os dados dele).
+        planId: dados?.preapproval_plan_id || null,
         status: traduzirStatus(dados?.status),
         statusDoProvedor: dados?.status || null,
         proximoPagamento: dados?.next_payment_date || null,
