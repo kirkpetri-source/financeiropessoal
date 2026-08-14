@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   situacaoDaAssinatura,
   assinaturaAtiva,
+  ehAssinantePagante,
   mensagemDaSituacao,
   paraData,
   STATUS,
@@ -262,5 +263,54 @@ describe('mensagemDaSituacao', () => {
     for (const motivo of Object.values(MOTIVOS)) {
       expect(mensagemDaSituacao({ motivo, diasRestantes: 5, podeLancar: false })).toBeTruthy();
     }
+  });
+});
+
+/**
+ * Portão da importação de extrato: a única funcionalidade que o teste grátis
+ * não abre. Dois motivos, e os dois viram teste aqui — custo real (IA em lote
+ * + escrita em massa num plano de preço fixo) e o buraco de negócio de alguém
+ * tirar o relatório completo da própria vida financeira dentro do trial e
+ * sair sem nunca pagar.
+ */
+describe('ehAssinantePagante', () => {
+  it('pagante em dia entra', () => {
+    const s = situacaoDaAssinatura({ status: STATUS.ATIVA, currentPeriodEnd: emDias(15) }, AGORA);
+    expect(ehAssinantePagante(s)).toBe(true);
+  });
+
+  it('quem está no teste grátis NÃO entra, mesmo podendo lançar', () => {
+    const s = situacaoDaAssinatura({ status: STATUS.TRIAL, trialEndsAt: emDias(5) }, AGORA);
+    expect(s.podeLancar).toBe(true);
+    expect(ehAssinantePagante(s)).toBe(false);
+  });
+
+  it('quem está em carência entra — já é cliente pagante, só atrasou', () => {
+    const s = situacaoDaAssinatura({ status: STATUS.ATIVA, currentPeriodEnd: emDias(-2) }, AGORA);
+    expect(s.emCarencia).toBe(true);
+    expect(ehAssinantePagante(s)).toBe(true);
+  });
+
+  it('quem cancelou mas ainda tem período pago entra', () => {
+    const s = situacaoDaAssinatura({ status: STATUS.CANCELADA, currentPeriodEnd: emDias(10) }, AGORA);
+    expect(ehAssinantePagante(s)).toBe(true);
+  });
+
+  it('trial vencido não entra', () => {
+    const s = situacaoDaAssinatura({ status: STATUS.TRIAL, trialEndsAt: emDias(-1) }, AGORA);
+    expect(ehAssinantePagante(s)).toBe(false);
+  });
+
+  it('quem nunca assinou não entra', () => {
+    expect(ehAssinantePagante(situacaoDaAssinatura(null, AGORA))).toBe(false);
+    expect(ehAssinantePagante(undefined)).toBe(false);
+  });
+
+  it('bloqueio do operador não entra, mesmo com assinatura ativa', () => {
+    const s = situacaoDaAssinatura(
+      { status: STATUS.ATIVA, currentPeriodEnd: emDias(15), adminOverride: { blocked: true } },
+      AGORA,
+    );
+    expect(ehAssinantePagante(s)).toBe(false);
   });
 });

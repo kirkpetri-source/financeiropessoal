@@ -1,7 +1,7 @@
 const { db } = require('../config/firebaseAdmin');
 const { escopoDe } = require('../data/escopo');
 const householdService = require('../services/householdService');
-const { situacaoDaAssinatura, mensagemDaSituacao } = require('../assinatura/estado');
+const { situacaoDaAssinatura, mensagemDaSituacao, ehAssinantePagante } = require('../assinatura/estado');
 
 /**
  * Resolve a família do usuário autenticado e prepara o escopo de dados.
@@ -107,4 +107,48 @@ function exigirAssinatura(req, res, next) {
   });
 }
 
-module.exports = { resolverHousehold, exigir, exigirAssinatura };
+/**
+ * Exige assinatura PAGA — trial não passa.
+ *
+ * Diferente de `exigirAssinatura`, que libera quem está no teste grátis. Vale
+ * só para funcionalidade cara de operar, hoje a importação de extrato:
+ *
+ *   - custa IA de verdade (categorização em lote) e escrita em massa no
+ *     Firestore, num produto de assinatura fixa (R$ 24,90) onde o custo não
+ *     é repassado por uso;
+ *   - sem isso, dava para assinar o teste grátis, importar anos de extrato,
+ *     tirar o relatório completo da própria vida financeira e sair antes de
+ *     pagar — usando a parte mais cara do sistema sem nunca virar cliente.
+ *
+ * A regra é `podeLancar && !emTrial`, e ela cobre os casos certos sozinha:
+ * pagante em dia entra; quem está em carência ou cancelou mas ainda tem
+ * período pago entra (já pagou); cortesia interna entra (status ativa, sem
+ * trial); trial vigente e trial vencido ficam de fora.
+ *
+ * Continua valendo a regra 6 do projeto: isto bloqueia uma FUNCIONALIDADE de
+ * escrita, nunca a leitura. Quem está no teste segue vendo, consultando e
+ * exportando tudo que é dele.
+ */
+function exigirAssinaturaPaga(req, res, next) {
+  if (req.household?.deletion) {
+    return res.status(423).json({
+      error: 'Esta conta está com exclusão agendada. Cancele a exclusão para voltar a usar.',
+      codigo: 'EXCLUSAO_AGENDADA',
+    });
+  }
+
+  const situacao = req.assinatura || {};
+
+  if (ehAssinantePagante(situacao)) return next();
+
+  return res.status(402).json({
+    error: situacao.emTrial
+      ? 'A importação de extrato está disponível para assinantes. Assine para trazer seu histórico financeiro.'
+      : mensagemDaSituacao(situacao),
+    codigo: situacao.emTrial ? 'RECURSO_DE_ASSINANTE' : 'ASSINATURA_INATIVA',
+    motivo: situacao.motivo || 'SEM_ASSINATURA',
+    emTrial: !!situacao.emTrial,
+  });
+}
+
+module.exports = { resolverHousehold, exigir, exigirAssinatura, exigirAssinaturaPaga };

@@ -207,6 +207,27 @@ function assinaturaAtiva(household, agora = new Date()) {
 }
 
 /**
+ * Quem é ASSINANTE PAGANTE — trial não conta.
+ *
+ * Separado de `podeLancar` porque existe funcionalidade que o teste grátis
+ * não abre: hoje a importação de extrato, que custa IA em lote e escrita em
+ * massa num plano de preço fixo, e que sem esta trava permitiria tirar o
+ * relatório completo da própria vida financeira dentro do teste e sair sem
+ * pagar.
+ *
+ * Fica aqui, e não no middleware, porque é regra de negócio pura — e porque
+ * `middlewares/household.js` carrega o Firestore no topo, o que impede testar
+ * a regra sem encostar em banco (a trava do projeto barra, e com razão).
+ *
+ * Quem passa: pagante em dia, quem está em carência (já pagou, só atrasou a
+ * confirmação), quem cancelou mas ainda tem período pago, e cortesia interna.
+ * Quem não passa: trial vigente, trial vencido e quem nunca assinou.
+ */
+function ehAssinantePagante(situacao) {
+  return !!situacao?.podeLancar && !situacao?.emTrial;
+}
+
+/**
  * Texto curto para o cliente. Fica aqui, e não no frontend, porque o WhatsApp
  * também precisa avisar — e a mensagem tem que ser a mesma nos dois canais.
  */
@@ -250,5 +271,6 @@ module.exports = {
   paraData,
   situacaoDaAssinatura,
   assinaturaAtiva,
+  ehAssinantePagante,
   mensagemDaSituacao,
 };
