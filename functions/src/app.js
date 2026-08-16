@@ -15,6 +15,7 @@ const adminRoutes = require('./routes/admin');
 const budgetRoutes = require('./routes/budgets');
 const recurringBillRoutes = require('./routes/recurringBills');
 const creditCardInvoiceRoutes = require('./routes/creditCardInvoices');
+const importacaoRoutes = require('./routes/importacao');
 const { handleEvolutionWebhook } = require('./webhooks/evolutionWebhook');
 const { handleMercadoPagoWebhook, handleMercadoPagoPing } = require('./webhooks/mercadoPagoWebhook');
 const errorHandler = require('./middlewares/errorHandler');
@@ -67,6 +68,12 @@ app.use(cors({
 }));
 app.options('*', cors());
 
+// Extrato bancário é o único corpo grande do sistema: um OFX de um ano passa
+// de 1mb com folga. Limite próprio, montado ANTES do global e só neste caminho
+// — body-parser marca o corpo como já lido, então o parser geral abaixo passa
+// direto. Assim o teto de todas as outras rotas continua exatamente onde está.
+app.use('/importacao', express.json({ limit: '4mb' }));
+
 // O payload do Evolution carrega metadados da mensagem, não mídia — 1mb sobra.
 app.use(express.json({ limit: '1mb' }));
 
@@ -116,6 +123,7 @@ app.use('/lgpd', lgpdRoutes);
 app.use('/budgets', budgetRoutes);
 app.use('/recurring-bills', recurringBillRoutes);
 app.use('/faturas', creditCardInvoiceRoutes);
+app.use('/importacao', importacaoRoutes);
 // Painel do operador — login próprio (usuário/senha, ver
 // tools/criar-login-operador.js), separado da conta pessoal de qualquer
 // família. A proteção de verdade continua sendo o middleware apenasAdmin

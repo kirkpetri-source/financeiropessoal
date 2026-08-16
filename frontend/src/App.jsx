@@ -12,6 +12,7 @@ import CategoriesPage from './pages/CategoriesPage';
 import BudgetsPage from './pages/BudgetsPage';
 import RecurringBillsPage from './pages/RecurringBillsPage';
 import InvoicesPage from './pages/InvoicesPage';
+import ImportarExtratoPage from './pages/ImportarExtratoPage';
 import SettingsPage from './pages/SettingsPage';
 import WhatsappLogsPage from './pages/WhatsappLogsPage';
 import AssinaturaPage from './pages/AssinaturaPage';
@@ -48,6 +49,7 @@ export default function App() {
                 <Route path="/orcamento" element={<BudgetsPage />} />
                 <Route path="/contas-recorrentes" element={<RecurringBillsPage />} />
                 <Route path="/faturas" element={<InvoicesPage />} />
+                <Route path="/importar" element={<ImportarExtratoPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/whatsapp-logs" element={<WhatsappLogsPage />} />
                 <Route path="/assinatura" element={<AssinaturaPage />} />

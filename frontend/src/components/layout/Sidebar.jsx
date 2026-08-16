@@ -9,6 +9,7 @@ import {
   PiggyBank,
   CalendarClock,
   Wallet,
+  Upload,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { to: '/orcamento', icon: PiggyBank, label: 'Orçamento' },
   { to: '/contas-recorrentes', icon: CalendarClock, label: 'Contas Fixas' },
   { to: '/faturas', icon: Wallet, label: 'Faturas' },
+  { to: '/importar', icon: Upload, label: 'Importar extrato' },
   { to: '/whatsapp-logs', icon: MessageSquare, label: 'WhatsApp' },
   { to: '/assinatura', icon: CreditCard, label: 'Assinatura' },
   { to: '/settings', icon: Settings, label: 'Configurações' },

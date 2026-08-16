@@ -141,13 +141,25 @@ function exigirAssinaturaPaga(req, res, next) {
 
   if (ehAssinantePagante(situacao)) return next();
 
+  // 403 e não 402 para quem está em trial VÁLIDO: o frontend trata 402 como
+  // "assinatura inativa" e dispara o alerta global (ver EVENTO_ASSINATURA_INATIVA
+  // em services/api.js). Quem está no teste em dia não pode ver esse alarme só
+  // por esbarrar num recurso de assinante — a conta dele está em ordem, o
+  // recurso é que não faz parte do teste.
+  if (situacao.emTrial) {
+    return res.status(403).json({
+      error: 'A importação de extrato está disponível para assinantes. Assine para trazer seu histórico financeiro.',
+      codigo: 'RECURSO_DE_ASSINANTE',
+      motivo: situacao.motivo || 'EM_TRIAL',
+      emTrial: true,
+    });
+  }
+
   return res.status(402).json({
-    error: situacao.emTrial
-      ? 'A importação de extrato está disponível para assinantes. Assine para trazer seu histórico financeiro.'
-      : mensagemDaSituacao(situacao),
-    codigo: situacao.emTrial ? 'RECURSO_DE_ASSINANTE' : 'ASSINATURA_INATIVA',
+    error: mensagemDaSituacao(situacao),
+    codigo: 'ASSINATURA_INATIVA',
     motivo: situacao.motivo || 'SEM_ASSINATURA',
-    emTrial: !!situacao.emTrial,
+    emTrial: false,
   });
 }
 

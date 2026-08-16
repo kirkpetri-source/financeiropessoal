@@ -26,6 +26,10 @@ const COLECOES_ESCOPADAS = new Set([
   'creditCardInvoices',
   'subcategories',
   'pendingSubcategoryConfirmations',
+  // Importação de extrato: o lote (para poder desfazer) e a memória de
+  // contraparte -> categoria que a família ensina ao classificar.
+  'importBatches',
+  'importMemoria',
 ]);
 
 // Coleções que misturam registros globais (isDefault) com registros da família.
@@ -129,6 +133,42 @@ function criarEscopo(db, admin) {
         });
         const doc = await ref.get();
         return { id: doc.id, ...doc.data() };
+      },
+
+      /**
+       * Cria com ID escolhido por quem chama, e NÃO sobrescreve se o ID já
+       * existir. É o que dá idempotência de verdade a uma escrita.
+       *
+       * Existe para a importação de extrato: o ID do lançamento importado é
+       * derivado da impressão digital da linha do banco, então reimportar o
+       * mesmo arquivo — de propósito, por engano, ou por dois cliques no botão
+       * — encontra o documento já lá e não duplica. A trava fica no Firestore,
+       * e não numa conferência da aplicação, porque conferência tem janela de
+       * corrida entre o "já existe?" e o "grava"; `create()` não tem.
+       *
+       * Duplicata aqui é caminho esperado, não erro: devolve `criado: false`
+       * em vez de lançar, para o chamador conseguir contar quantas linhas
+       * foram puladas.
+       */
+      async criarComId(colecao, id, dados) {
+        validarColecao(colecao);
+        if (!id) throw new ErroDeEscopo('ID obrigatório em criarComId.');
+
+        try {
+          await db.collection(colecao).doc(id).create({
+            ...dados,
+            [CAMPO]: householdId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return { id, criado: true };
+        } catch (err) {
+          // 6 = ALREADY_EXISTS no gRPC do Firestore.
+          if (err.code === 6 || /already exists/i.test(err.message || '')) {
+            return { id, criado: false, motivo: 'JA_EXISTE' };
+          }
+          throw err;
+        }
       },
 
       /**
