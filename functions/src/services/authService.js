@@ -51,6 +51,7 @@ async function createOrUpdateProfile(userId, data) {
     // require local: householdService escreve em users/, e importar no topo
     // criaria dependência circular entre os dois services.
     const householdService = require('./householdService');
+    const telefone = normalizarCelular(data.telefone);
     await householdService.criarHousehold({
       nome: data.name ? `Família ${String(data.name).split(' ')[0]}` : 'Minha família',
       ownerId: userId,
@@ -58,8 +59,18 @@ async function createOrUpdateProfile(userId, data) {
       ownerEmail: data.email,
       // Telefone pedido já no cadastro. Sem ele, o dono entrava sem número e
       // os gastos dele ficavam sem atribuição até alguém perceber e editar.
-      ownerTelefone: normalizarCelular(data.telefone),
+      ownerTelefone: telefone,
     });
+
+    // Aviso ao operador, no WhatsApp dele. Fica AQUI, e não dentro de
+    // criarHousehold, porque só este caminho é cadastro de cliente de verdade —
+    // família criada por script de teste ou migração não deve virar alerta.
+    //
+    // Com await de propósito: o Cloud Run congela a CPU assim que a resposta
+    // HTTP sai, então disparar sem esperar perderia o envio no meio. A função
+    // nunca lança — falha de WhatsApp não pode derrubar um cadastro.
+    const { notificarCadastro } = require('./notificacaoOperadorService');
+    await notificarCadastro({ nome: data.name, telefone });
   }
 
   return getProfile(userId);
