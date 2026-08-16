@@ -1019,6 +1019,9 @@ abaixo; isto é só o índice do que ainda não está feito.
       redeploy)
 
 **Decisão em aberto — qual a próxima frente de trabalho:**
+0. **Kirk testar a importação de extrato com o arquivo real do banco dele**
+   — os testes sintéticos passaram todos (17/17 contra produção + tela
+   verificada), mas formato de banco real é onde aparece a surpresa
 1. Ampliar o parser (casos que ainda caem na IA por engano)
 2. Convite de membro com login próprio (hoje um 2º login vira outra família)
 3. Tutorial de primeiro uso (Kirk pediu pra deixar por último; o tour
@@ -1276,6 +1279,18 @@ Commit `c0fc8fe`.
   para as correções (modelo do Gemini, botões do painel) e o que ainda não
   foi verificado (mídia contra o servidor real de WhatsApp)
 
+**Importação de extrato bancário** (no ar desde 16/08/2026)
+- `/importar` no painel: sobe OFX/CSV do banco, confere na tela, importa em
+  lote. Só mês já fechado; duplicidade impossível por construção (ID do
+  lançamento = impressão digital da linha do banco); dá para desfazer o lote
+  inteiro. Exige assinatura paga. Detalhe na sessão de 16/08/2026
+- **Ainda não exercitado com extrato real de banco** — só com arquivos
+  sintéticos (que passaram 17/17 contra produção). É o teste que falta
+
+**Aviso de cadastro novo no WhatsApp do operador** (no ar desde 16/08/2026)
+- Cada cadastro manda nome + telefone para a auto-conversa do Kirk, pelo
+  canal da família dele. `NOTIFICACAO_CADASTRO_HOUSEHOLD_ID` liga/desliga
+
 **Painel gestor / portal do operador** (no ar desde 08/08/2026, refeito na parte 5)
 - `/plataforma` — login próprio (usuário `kirkdouglas_19`, ver
   `tools/criar-login-operador.js`), sem relação com nenhuma conta de
@@ -1465,7 +1480,12 @@ Resolvidos nesta sessão (não repetir): telefone do Johnny conferido (campo
   exercitado contra a API real**. Tratar como não verificado
 - Bundle do frontend em ~1,35 MB (cresceu com Firebase App Check/reCAPTCHA),
   sem code splitting
-- Zero testes no frontend (backend tem 320)
+- Zero testes no frontend (backend tem 539)
+- Importação de extrato: duas compras idênticas no mesmo dia, valor e lugar,
+  num CSV **sem ID do banco**, geram a mesma impressão digital — a segunda é
+  tratada como já importada e não entra. Em OFX não acontece (o `FITID`
+  distingue). Escolha consciente: errar avisando demais é melhor que
+  duplicar em silêncio
 - `/admin/metricas` lê todos os households a cada chamada. Serve de sobra para
   dezenas ou centenas de famílias; passa a doer nos milhares
 - Uma instância Evolution por família consome recursos da VPS. Dezenas de

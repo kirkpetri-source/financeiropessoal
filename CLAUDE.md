@@ -26,7 +26,7 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 346 testes (vitest)
+npm test                 # 539 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed              # só categorias e formas de pagamento padrão
@@ -37,6 +37,8 @@ node tools/testar-credencial-mp.js            # valida token do MP, sem imprimir
 node tools/testar-assinatura-ponta-a-ponta.js <id>   # cria e sincroniza
 node tools/testar-canal-ponta-a-ponta.js <id> --manter
 node tools/testar-subcategoria-ponta-a-ponta.js      # CRUD + lançamento com subcategoria, família descartável
+node tools/testar-importacao-ponta-a-ponta.js        # extrato: janela retroativa + trava de duplicidade, família descartável
+node tools/testar-notificacao-cadastro.js            # simula o aviso de cadastro novo; --enviar manda de verdade
 node tools/marcar-conta-interna.js <id> --confirmar  # cortesia vitalícia
 node tools/apagar-familia.js <id> --confirmar        # limpa conta de teste
 node tools/criar-login-operador.js --confirmar       # cria/reseta a senha do painel gestor (/plataforma)
@@ -160,6 +162,24 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     dano (log de acesso conferido, só tráfego do próprio dono da conta).
     Depois de reverter, confirmar com `curl` na API de produção que voltou
     a pedir "Verificação do aplicativo ausente." antes de seguir.
+15. **Importação de extrato só aceita mês JÁ FECHADO, e a trava de
+    duplicidade mora no Firestore, não no código.** As duas coisas juntas
+    são o contrato da feature (pedido explícito do Kirk em 16/08/2026):
+    o mês corrente é onde os lançamentos por WhatsApp estão entrando, então
+    ele nem é oferecido (`importacao/janela.js`, fuso fixo
+    `America/Sao_Paulo` — o Cloud Run roda em UTC e abriria o mês três horas
+    cedo); e o lançamento importado tem como ID a impressão digital da linha
+    do banco, gravado com `escopo.criarComId` (`create()`, que o Firestore
+    recusa se o ID existir). Conferência em código teria janela de corrida
+    entre o "já existe?" e o "grava" — `create()` não tem. Qualquer mudança
+    aqui precisa manter as duas barreiras; a terceira (casar valor+data
+    contra o que já existe) é só sugestão de tela, nunca trava.
+16. **Recurso caro de operar exige assinatura PAGA, não trial**
+    (`exigirAssinaturaPaga`, hoje só a importação de extrato). E o corpo da
+    recusa para quem está em trial válido é **403 `RECURSO_DE_ASSINANTE`**,
+    nunca 402: o frontend trata 402 como "assinatura inativa" e dispara o
+    alerta global (`EVENTO_ASSINATURA_INATIVA` em `services/api.js`) — quem
+    está com o teste em dia veria alarme falso.
 
 ## Armadilhas já pagas (não repetir)
 
@@ -186,7 +206,12 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
 - **Celular sem o 9 vira destino inexistente e o gasto fica sem dono.** Validar
   com `src/utils/telefoneBR.js` — DDD da lista, 9 obrigatório, 11 dígitos.
 - **`git push` para `main` já é deploy de produção do frontend** (integração
-  automática Vercel↔GitHub). Ver detalhe em "Git — push liberado".
+  automática Vercel↔GitHub). Ver detalhe em "Git — push liberado". **O
+  deploy demora alguns minutos para aparecer em `vercel ls`** — em
+  16/08/2026 isso levou à conclusão errada de que a integração estava
+  desligada e a um `vercel deploy --prod` manual desnecessário (os dois
+  deploys entraram, sem prejuízo). Esperar e conferir de novo antes de
+  deployar à mão.
 - **`firebase deploy` trava em "Cannot determine backend specification.
   Timeout after 10000" no Windows.** Não é erro de código — o antivírus
   escaneando os módulos durante a descoberta do backend passa dos 10s
@@ -359,6 +384,13 @@ users/{uid}.householdId             atalho da família ativa (NÃO é autorizaç
                                     quem manda é o doc em members/)
 transactions, whatsappLogs          têm householdId, sempre escopadas
   .subcategoryId                    transactions: opcional, valida contra categoryId
+  .digital/.importId                transactions: só nas importadas (origin: 'IMPORT').
+                                    `digital` é a impressão da linha do banco e vira
+                                    parte do ID do doc — é o que trava duplicata
+importBatches                       householdId, um doc por importação de extrato:
+                                    rascunho (linhas lidas) → confirmado → desfeito
+importMemoria                       householdId como id do doc; mapa contraparte →
+                                    categoria que a família ensinou importando
 categories, paymentMethods          mistas: isDefault=true são globais
   .isCreditCard/.closingDay/.dueDay paymentMethods: só quando é cartão de crédito
 subcategories                       householdId + categoryId, sempre da família
@@ -387,6 +419,23 @@ o telefone é a chave de atribuição. Login só serve para abrir o painel.
 O painel GESTOR (`/plataforma`) é outra coisa: login próprio
 (`kirkdouglas_19`, ver regra 11), sem household, sem relação com nenhuma
 família — não confundir com o login de membro acima.
+
+## Estado (16/08/2026)
+
+**Importação de extrato bancário — no ar, front e back publicados.**
+Cliente sobe o OFX/CSV que o banco exporta, confere na tela e importa em
+lote. Só mês já fechado (regra 15). Duplicidade é impossível por
+construção: o ID do lançamento importado é a impressão digital da linha do
+banco. Dá para desfazer o lote inteiro. Exige assinatura paga (regra 16).
+Verificado com script contra o Firestore real (17/17) e na tela em produção
+com conta de teste descartável — incluindo reimportar o mesmo arquivo, que
+não duplica nada. **Falta o Kirk testar com o extrato real do banco dele.**
+
+**Aviso de cadastro novo no WhatsApp do operador.** Cada cadastro manda
+nome + telefone para a auto-conversa do Kirk
+(`notificacaoOperadorService.js`), pelo canal da própria família dele.
+Desligado por padrão: só existe com `NOTIFICACAO_CADASTRO_HOUSEHOLD_ID` no
+`.env`. Nunca derruba o cadastro se o WhatsApp falhar.
 
 ## Estado (11/08/2026)
 
@@ -455,7 +504,11 @@ Passo a passo completo e checkpoint atualizado em **`ESTADO.md`**, seção
 dali na próxima sessão.
 
 Próximo passo em aberto, o Kirk decide:
-1. Terminar a migração pro WhatsApp oficial (em andamento, ver acima)
+0. **Kirk testar a importação com o extrato real do banco dele** — único
+   teste que falta na feature de 16/08 (os sintéticos passaram todos)
+1. Terminar a migração pro WhatsApp oficial (em andamento, ver acima;
+   os 30 dias corridos contam desde 12/08/2026, então a OBA pode ser
+   pedida a partir de ~11/09/2026)
 2. Ampliar o parser (`Lanche 38,00 crédito` cai na IA por decisão consciente)
 3. Convite de membro com login próprio (hoje um segundo login vira outra família)
 4. Tutorial de primeiro uso (ele pediu pra deixar por último)
