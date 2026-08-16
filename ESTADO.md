@@ -1,6 +1,118 @@
-# Estado do projeto — 11/08/2026 (feature de subcategorias no ar)
+# Estado do projeto — 16/08/2026 (importação de extrato no ar)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
+
+## Sessão de 16/08/2026 — aviso de cadastro no WhatsApp e importação de extrato concluída
+
+### Bloco 1 — aviso de cadastro novo no WhatsApp do operador
+
+Pedido do Kirk: ser avisado no WhatsApp a cada cadastro novo, sem precisar
+olhar painel. `notificacaoOperadorService.js` reusa a trilha de envio do bot
+(`respostaWhatsapp.responder`), o que traz de graça a assinatura invisível
+anti-loop — sem ela a mensagem cairia na auto-conversa e voltaria pelo
+webhook como tentativa de lançamento.
+
+Decisões que valem lembrar:
+- **Destino é o `ownerJid` (auto-conversa), nunca o grupo**, mesmo com a
+  família do Kirk em modo grupo. Cadastro de cliente no grupo da família
+  seria vazamento de assunto de negócio para quem não tem nada com isso.
+- **Ancorado em `authService.createOrUpdateProfile`**, não em
+  `criarHousehold`: só cadastro de cliente de verdade notifica. Script de
+  teste e migração criam família sem gerar alerta falso.
+- **`await` de propósito** — o Cloud Run congela a CPU quando a resposta HTTP
+  sai; disparar sem esperar perderia o envio no meio.
+- **Desligado por padrão**: sem `NOTIFICACAO_CADASTRO_HOUSEHOLD_ID` no
+  ambiente não notifica nem consulta o Firestore. Configurado com a família
+  do Kirk (`4LadYn1k9d5vCVU9K9V7`).
+- Conteúdo: **só nome e telefone** (decisão explícita dele — e-mail do
+  cliente não vai para o WhatsApp).
+
+Testado ao vivo: envio direto (`tools/testar-notificacao-cadastro.js
+--enviar`) e cadastro completo pelo código real, com a família de teste
+apagada em seguida. 13 testes novos.
+
+### Bloco 2 — importação de extrato bancário: fechada e publicada
+
+O núcleo de leitura (OFX/CSV, categorizador, agrupador, análise de risco por
+mês) tinha sido escrito em 13/08 mas estava **incompleto e sem uso possível**:
+não havia rota, tela, persistência nem trava de duplicidade — e nunca tinha
+sido publicado. Fechado nesta sessão, com duas exigências do Kirk:
+importação **só retroativa** e **impossível gerar lançamento duplicado**.
+
+**Duas barreiras contra duplicidade, uma de produto e uma de banco:**
+
+1. **Janela retroativa** (`importacao/janela.js`): só mês **já fechado**
+   entra. O mês corrente — onde os lançamentos por WhatsApp estão
+   acontecendo — nem chega a ser oferecido, o que elimina a sobreposição na
+   origem em vez de tentar detectá-la depois. Fuso fixo em
+   `America/Sao_Paulo`: o Cloud Run roda em UTC e abriria o mês três horas
+   cedo, enquanto ele ainda corre para o usuário. Conferida duas vezes, na
+   análise e de novo na gravação (um rascunho pode atravessar a virada).
+2. **ID determinístico**: o lançamento importado tem como ID a impressão
+   digital da linha do banco (`FITID` quando existe, senão hash de
+   data+valor+descrição normalizada). Gravar duas vezes é impossível —
+   `escopo.criarComId` usa `create()`, que o Firestore recusa se o ID já
+   existir. A trava fica no BANCO, não numa conferência da aplicação, que
+   teria janela de corrida entre o "já existe?" e o "grava".
+
+Terceira camada, informativa: linha que casa em valor e data com lançamento
+que já existe (o que veio pelo WhatsApp não tem digital) aparece marcada e
+**desmarcada** na tela. Não trava, porque casamento por valor+data é palpite
+— mas deixa o caminho preguiçoso sendo o seguro.
+
+**Tudo aditivo, nada mexido no que já rodava**: rota nova (`/importacao`),
+página nova (`/importar`), coleções novas (`importBatches`, `importMemoria`,
+já em `escopo.js` e no `lgpdService`), campos novos só nos lançamentos
+importados (`digital`, `importId`, `origin: 'IMPORT'`). `transactionService`,
+parser, webhook e telas existentes não foram tocados. O único ajuste em
+código compartilhado: parser de corpo de 4mb montado **apenas** em
+`/importacao` (extrato passa de 1mb), sem mudar o teto das outras rotas.
+
+Desfazer: todo lançamento leva o `importId` do lote; desfazer apaga só o que
+aquele lote criou — lançamento manual ou de WhatsApp nunca é tocado.
+
+Portão de assinante: a importação exige assinatura **paga**
+(`exigirAssinaturaPaga`) — custa IA em lote e escrita em massa num plano de
+preço fixo. Ajuste feito aqui: trial recebe **403 `RECURSO_DE_ASSINANTE`** em
+vez de 402, porque o frontend trata 402 como "assinatura inativa" e dispara
+alerta global — alarme falso para quem está com o teste em dia.
+
+**Verificação:** 539 testes (28 novos). Teste ponta a ponta contra o
+Firestore real (`tools/testar-importacao-ponta-a-ponta.js`, família
+descartável criada e apagada): 17/17 — reimportação do mesmo arquivo sem
+duplicar, extrato sobreposto trazendo só a linha nova, desfazer preservando
+lançamento de outra origem. Depois, **teste visual em produção**
+(`revelacash.com.br`, conta de teste marcada como interna, `agent-browser`
+headed por causa do reCAPTCHA): upload → preview → importar 8 → reimportar o
+mesmo arquivo (0 marcados, tudo "Já importado") → desfazer → 0 lançamentos
+restantes. Console limpo. Conta de teste apagada; 10 famílias reais intactas.
+
+**Achado corrigido no teste visual**: `limparDescricao` deixava sobra de
+rótulo — "TRANSFERENCIA RECEBIDA PELO PIX - MARIA SOUZA" virava
+"- MARIA SOUZA" na descrição gravada, e "COMPRA NO DEBITO" não era
+reconhecido (só "COMPRA DEBITO"). Corrigido com 3 testes.
+
+**Sobre o deploy do frontend**: o `git push` disparou o deploy automático do
+Vercel, mas ele **demorou alguns minutos para aparecer em `vercel ls`** — o
+que na hora pareceu integração desligada e levou a um `vercel deploy --prod`
+manual. Os dois deploys entraram, sem prejuízo. Antes de concluir que a
+integração não funcionou, esperar e conferir de novo.
+
+## Sessão de 13/08/2026 — CRM do operador, checkout sem conta no MP, núcleo do extrato
+
+Registrado em retrospecto (a sessão não documentou a si mesma). Commits
+`07e0ea2`..`b59e9bf`:
+
+- **Painel do operador virou CRM**: dashboard, lista de clientes e central de
+  comunicação (`adminCrmService.js`, `adminMensagensService.js`, templates e
+  broadcast por segmento, reusando a trilha de envio do bot).
+- **Checkout sem exigir conta no Mercado Pago**, redução de gatilhos de
+  antifraude (`cc_rejected_high_risk`), limite de 60 caracteres do `reason`, e
+  explicação dos passos antes de mandar o cliente para o MP.
+- **CSP**: liberado `apis.google.com` (Firebase Auth) e fontes do
+  `vercel.live`.
+- **Núcleo de leitura de extrato** (OFX/CSV, categorizador com memória da
+  família, agrupador, análise de risco por mês) — a parte fechada em 16/08.
 
 ## Sessão de 11/08/2026 — subcategorias (painel + WhatsApp), testadas ao vivo e publicadas
 
@@ -331,14 +443,30 @@ individual funciona por Cloud API nesse meio tempo. A Evolution API
 continua sendo o canal ativo dos clientes reais até a migração de fato
 acontecer; nada foi trocado ainda.
 
+**Atualização — 12/08/2026: número registrado, `status: CONNECTED`.**
+O `status` do número ficou em "Pendente" por dois dias porque faltava o
+passo de registro (`POST /{phone-number-id}/register`, obrigatório antes de
+qualquer número aceitar mensagem pela Cloud API — não resolve sozinho só
+esperando). Rodado direto contra a API real (não passou pelo
+`cloudApiProvider.js` ainda, é uma chamada isolada): `POST
+/1229153730286556/register` com `pin` de 2 etapas escolhido pelo Kirk
+(guardado só na cabeça dele, não em arquivo — é o PIN de recuperação do
+número). Resposta `{"success": true}`, confirmado em seguida por `GET
+/1229153730286556?fields=status,...`: `status: CONNECTED`. `name_status`
+continua `PENDING_REVIEW` (aprovação do nome de exibição "revelacash",
+revisão passiva da Meta, não bloqueia uso) e `quality_rating: UNKNOWN`
+(normal até trocar mensagem de verdade). **Os 30 dias corridos pra pedir a
+OBA começam a contar a partir de hoje, 12/08/2026.**
+
 **Falta (retomar exatamente daqui):**
 1. Testar `cloudApiProvider.js` (o código do adapter em `src/canais/`,
    ainda não exercitado) contra a API real usando o token
    (`WHATSAPP_CLOUD_API_TOKEN`), o Phone Number ID (`1229153730286556`) e
-   o WABA ID (`1517576109683204`) — a chamada de `curl` acima confirmou a
-   credencial, mas não passou pelo código do projeto; tratar como não
-   verificado até isso acontecer
+   o WABA ID (`1517576109683204`) — o registro e as chamadas de teste até
+   agora foram feitos por fora, direto na API; tratar o código do adapter
+   como não verificado até passar por um teste ponta a ponta de verdade
 2. Deixar rodando 30 dias corridos na Cloud API antes de poder pedir a OBA
+   (contando desde 12/08/2026)
 3. Depois dos 30 dias: WhatsApp Manager → Phone numbers → Profile →
    Official Business Account → Submit Request (gratuito)
 4. Groups API libera sozinha com a OBA aprovada

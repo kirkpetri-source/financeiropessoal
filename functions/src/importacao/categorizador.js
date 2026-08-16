@@ -35,9 +35,13 @@ const LOTE_MAXIMO = 80;
  * enterrado em código de máquina.
  */
 const RUIDO = [
-  /\bPAG\*/gi, /\bPAGTO\b/gi, /\bCOMPRA\s+(CARTAO|DEBITO|CREDITO)\b/gi,
+  /\bPAG\*/gi, /\bPAGTO\b/gi, /\bCOMPRA\s+(NO\s+|COM\s+)?(CART[AÃ]O|D[EÉ]BITO|CR[EÉ]DITO)\b/gi,
   /\bNSU\s*\d+/gi, /\bAUT\s*\d+/gi, /\bDOC\s*\d+/gi, /\bTED\b/gi,
-  /\bPIX\s+(ENVIADO|RECEBIDO)\b/gi, /\bTRANSFERENCIA\s+(ENVIADA|RECEBIDA)\b/gi,
+  /\bPIX\s+(ENVIADO|RECEBIDO)\b/gi, /\bTRANSFER[EÊ]NCIA\s+(ENVIADA|RECEBIDA)\b/gi,
+  // Sobras do rótulo de meio de pagamento. "TRANSFERENCIA RECEBIDA PELO PIX -
+  // MARIA SOUZA" perdia só o começo e virava "PELO PIX - MARIA SOUZA" na
+  // descrição gravada — visto num teste real na tela.
+  /\bPELO\s+PIX\b/gi, /\bVIA\s+OPEN\s+BANKING\b/gi,
   /\bCART[AÃ]O\s+FINAL\s*\d+/gi, /\b\d{2}\/\d{2}(\/\d{2,4})?\b/g,
   /\s{2,}/g,
 ];
@@ -45,7 +49,15 @@ const RUIDO = [
 function limparDescricao(bruta) {
   let texto = String(bruta || '');
   for (const padrao of RUIDO) texto = texto.replace(padrao, ' ');
-  return texto.replace(/\s+/g, ' ').trim() || String(bruta || '').trim();
+
+  return texto
+    .replace(/\s+/g, ' ')
+    // Separador que sobrou depois de tirar o rótulo do meio de pagamento:
+    // "TRANSFERENCIA RECEBIDA PELO PIX - MARIA SOUZA" não pode virar
+    // "- MARIA SOUZA" na descrição do lançamento.
+    .replace(/^[\s\-–—:|/*]+/, '')
+    .replace(/[\s\-–—:|/*]+$/, '')
+    .trim() || String(bruta || '').trim();
 }
 
 /**

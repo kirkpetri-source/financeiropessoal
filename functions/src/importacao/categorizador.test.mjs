@@ -30,6 +30,23 @@ describe('limpeza da descrição do banco', () => {
   });
 });
 
+describe('sobras de rótulo do banco (achado testando na tela)', () => {
+  it('não deixa o separador solto quando o rótulo do meio some', () => {
+    // Antes desta correção a descrição gravada virava "- MARIA SOUZA".
+    expect(limparDescricao('TRANSFERENCIA RECEBIDA PELO PIX - MARIA SOUZA')).toBe('MARIA SOUZA');
+    expect(limparDescricao('PIX RECEBIDO - ANA')).toBe('ANA');
+  });
+
+  it('reconhece "compra no débito", não só "compra débito"', () => {
+    expect(limparDescricao('COMPRA NO DEBITO - PADARIA CENTRAL')).toBe('PADARIA CENTRAL');
+    expect(limparDescricao('COMPRA CARTAO SUPERMERCADO X')).toBe('SUPERMERCADO X');
+  });
+
+  it('não come a descrição inteira quando não sobra nome nenhum', () => {
+    expect(limparDescricao('PIX RECEBIDO')).toBe('PIX RECEBIDO');
+  });
+});
+
 describe('transferência entre contas próprias', () => {
   it('reconhece aplicação, resgate e rendimento', () => {
     expect(pareceTransferencia('APLICACAO CDB')).toBe(true);
