@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "financeiropessoal-29b32"
+    "default": "financeiropessoal-29b32",
+    "prod": "financeiropessoal-29b32",
+    "staging": "revelacash-staging"
   }
 }
