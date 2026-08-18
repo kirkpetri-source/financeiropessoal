@@ -14,7 +14,35 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const PROJETO = 'financeiropessoal-29b32';
+/**
+ * Alvo: produção por padrão, staging só quando pedido explicitamente.
+ *
+ * Antes o projeto era uma constante fixa, então TODO script de tools/ falava
+ * com produção — inclusive os de teste. Com um ambiente de staging existindo,
+ * isso vira uma armadilha real: alguém roda um script achando que está no
+ * ambiente de brincar e escreve no banco dos clientes pagantes.
+ *
+ * O padrão continua sendo produção de propósito. Nenhum comando que já existia
+ * muda de comportamento; para ir ao staging é preciso dizer:
+ *
+ *   ALVO=staging node tools/algum-script.js        (bash)
+ *   $env:ALVO="staging"; node tools/algum-script.js (PowerShell)
+ */
+const PROJETOS = {
+  producao: 'financeiropessoal-29b32',
+  staging: 'revelacash-staging',
+};
+
+const ALVO = String(process.env.ALVO || 'producao').toLowerCase();
+
+if (!PROJETOS[ALVO]) {
+  throw new Error(
+    `ALVO="${process.env.ALVO}" não existe. Use "producao" ou "staging".`
+  );
+}
+
+const PROJETO = PROJETOS[ALVO];
+const EH_STAGING = ALVO === 'staging';
 
 function carregarArquivoEnv() {
   const caminho = path.join(__dirname, '..', `.env.${PROJETO}`);
@@ -66,6 +94,15 @@ function carregarSegredo(nome) {
  * @returns {{ok: boolean, faltando: string[]}}
  */
 function carregar(segredos = []) {
+  // Sempre dizer em qual banco o script vai mexer. O custo é uma linha no
+  // terminal; o custo de NÃO avisar é alguém achando que está no staging
+  // enquanto escreve no banco de cliente pagante.
+  if (EH_STAGING) {
+    console.log(`\n  [STAGING] ${PROJETO} — ambiente de teste, sem cliente real.\n`);
+  } else {
+    console.log(`\n  [PRODUÇÃO] ${PROJETO} — DADOS REAIS DE CLIENTES.\n`);
+  }
+
   carregarArquivoEnv();
 
   const faltando = [];
@@ -76,4 +113,4 @@ function carregar(segredos = []) {
   return { ok: faltando.length === 0, faltando };
 }
 
-module.exports = { carregar, PROJETO };
+module.exports = { carregar, PROJETO, ALVO, EH_STAGING, PROJETOS };

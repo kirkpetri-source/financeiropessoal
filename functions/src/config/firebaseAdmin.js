@@ -18,12 +18,37 @@ if (process.env.VITEST && !process.env.FIRESTORE_EMULATOR_HOST) {
   );
 }
 
+// Qual credencial local usar. Só importa fora do Firebase Functions (onde as
+// credenciais vêm do próprio ambiente).
+//
+// Sem ALVO, é a chave de produção — exatamente como sempre foi, para nenhum
+// comando existente mudar de comportamento. Com ALVO=staging, é a chave do
+// projeto de staging, e a FALTA dela é erro fatal: cair de volta em produção
+// em silêncio seria a pior falha possível deste arquivo.
+function credencialLocal() {
+  const fs = require('fs');
+  const path = require('path');
+
+  const ehStaging = String(process.env.ALVO || '').toLowerCase() === 'staging';
+  const arquivo = ehStaging ? 'serviceAccountKey.staging.json' : 'serviceAccountKey.json';
+  const caminho = path.join(__dirname, '..', '..', arquivo);
+
+  if (ehStaging && !fs.existsSync(caminho)) {
+    throw new Error(
+      `ALVO=staging pedido, mas ${arquivo} não existe em functions/.\n` +
+      'Sem essa chave o script cairia no Firestore de PRODUÇÃO. Baixe a chave ' +
+      'de conta de serviço do projeto revelacash-staging e salve com esse nome.'
+    );
+  }
+
+  return require(caminho);
+}
+
 if (!admin.apps.length) {
   // Em produção (Firebase Functions) usa credenciais automáticas do ambiente
   // Em desenvolvimento usa o arquivo de chave local
   if (process.env.NODE_ENV !== 'production') {
-    const serviceAccount = require('../../serviceAccountKey.json');
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    admin.initializeApp({ credential: admin.credential.cert(credencialLocal()) });
   } else {
     admin.initializeApp();
   }
