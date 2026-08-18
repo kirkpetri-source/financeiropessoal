@@ -88,7 +88,50 @@ function criarChatSessionService({ agora = () => new Date() } = {}) {
     if (existente) await dados.remover('chatSessions', id);
   }
 
-  return { historico, registrarTroca, limpar };
+  /**
+   * Ação de escrita esperando o "sim" do cliente.
+   *
+   * Mora AQUI, no servidor, e não na memória do modelo, porque é isto que
+   * impede a assistente de executar uma alteração que ela não propôs antes:
+   * sem pendência gravada, a confirmação não tem o que executar. Fica no mesmo
+   * documento da conversa por já ser um por família + pessoa, e por expirar
+   * junto com ela.
+   */
+  async function definirAcaoPendente(dados, interlocutor, acao) {
+    const id = idDaSessao(dados.householdId, interlocutor);
+    const existente = await dados.buscarDoc('chatSessions', id);
+
+    if (existente) {
+      await dados.atualizar('chatSessions', id, { acaoPendente: acao });
+    } else {
+      await dados.criarComId('chatSessions', id, {
+        interlocutor: String(interlocutor || ''),
+        mensagens: [],
+        acaoPendente: acao,
+        expiraEm: new Date(agora().getTime() + HORAS_DE_VALIDADE * 3600 * 1000),
+      });
+    }
+  }
+
+  async function lerAcaoPendente(dados, interlocutor) {
+    const doc = await dados.buscarDoc('chatSessions', idDaSessao(dados.householdId, interlocutor));
+    return doc?.acaoPendente || null;
+  }
+
+  async function limparAcaoPendente(dados, interlocutor) {
+    const id = idDaSessao(dados.householdId, interlocutor);
+    const existente = await dados.buscarDoc('chatSessions', id);
+    if (existente) await dados.atualizar('chatSessions', id, { acaoPendente: null });
+  }
+
+  return {
+    historico,
+    registrarTroca,
+    limpar,
+    definirAcaoPendente,
+    lerAcaoPendente,
+    limparAcaoPendente,
+  };
 }
 
 module.exports = {

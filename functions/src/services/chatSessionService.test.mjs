@@ -168,4 +168,59 @@ describe('chatSessionService', () => {
       expect(await svc.historico(dados, esquisito)).toHaveLength(2);
     });
   });
+
+  // A ação pendente mora aqui, no servidor, e não na memória do modelo: é o
+  // que impede a assistente de executar uma alteração que ela não propôs.
+  describe('ação pendente de escrita', () => {
+    const ACAO = { tipo: 'ALTERAR', transactionId: 't1', alteracao: { categoryId: 'cat-lazer' } };
+
+    it('começa sem nada pendente', async () => {
+      expect(await svc.lerAcaoPendente(escopoDe(FAMILIA), KIRK)).toBeNull();
+    });
+
+    it('guarda e devolve a proposta', async () => {
+      const dados = escopoDe(FAMILIA);
+      await svc.definirAcaoPendente(dados, KIRK, ACAO);
+
+      expect(await svc.lerAcaoPendente(dados, KIRK)).toMatchObject(ACAO);
+    });
+
+    it('funciona mesmo sem conversa anterior', async () => {
+      // Primeira coisa que a pessoa faz é pedir uma alteração: não há sessão
+      // criada ainda, e isso não pode falhar.
+      const dados = escopoDe(FAMILIA);
+      await svc.definirAcaoPendente(dados, 'alguem-novo', ACAO);
+
+      expect(await svc.lerAcaoPendente(dados, 'alguem-novo')).toMatchObject(ACAO);
+    });
+
+    it('limpar remove a proposta', async () => {
+      const dados = escopoDe(FAMILIA);
+      await svc.definirAcaoPendente(dados, KIRK, ACAO);
+      await svc.limparAcaoPendente(dados, KIRK);
+
+      expect(await svc.lerAcaoPendente(dados, KIRK)).toBeNull();
+    });
+
+    it('a proposta de uma pessoa não vaza para outra da mesma família', async () => {
+      const dados = escopoDe(FAMILIA);
+      await svc.definirAcaoPendente(dados, KIRK, ACAO);
+
+      expect(await svc.lerAcaoPendente(dados, RAQUEL)).toBeNull();
+    });
+
+    it('a proposta não vaza entre famílias', async () => {
+      await svc.definirAcaoPendente(escopoDe(FAMILIA), KIRK, ACAO);
+      expect(await svc.lerAcaoPendente(escopoDe('fam-2'), KIRK)).toBeNull();
+    });
+
+    it('não atropela o histórico já gravado', async () => {
+      const dados = escopoDe(FAMILIA);
+      await svc.registrarTroca(dados, KIRK, { pergunta: 'p', resposta: 'r' });
+      await svc.definirAcaoPendente(dados, KIRK, ACAO);
+
+      expect(await svc.historico(dados, KIRK)).toHaveLength(2);
+      expect(await svc.lerAcaoPendente(dados, KIRK)).toMatchObject(ACAO);
+    });
+  });
 });

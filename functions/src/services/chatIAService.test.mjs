@@ -124,12 +124,51 @@ describe('filtro por papel', () => {
     }
   });
 
-  it('sem permissões declaradas, só as ferramentas livres aparecem', () => {
+  // Um `viewer` não pode lançar pelo painel (exigir('lancar') nas rotas). Sem
+  // este filtro ele conseguiria a mesma coisa pedindo à assistente — escalada
+  // de privilégio pela porta de trás.
+  it('quem não pode lançar não recebe NENHUMA ferramenta de escrita', () => {
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo: vi.fn(), sessoes: sessoesFalsas });
+    const nomes = ia.ferramentasPara({ lancar: false }).map((f) => f.name);
+
+    for (const escrita of [
+      'registrarLancamento', 'prepararAlteracao', 'prepararExclusao',
+      'confirmarAcaoPendente', 'cancelarAcaoPendente',
+    ]) {
+      expect(nomes).not.toContain(escrita);
+    }
+
+    // Mas continua enxergando tudo — leitura nunca é bloqueada.
+    expect(nomes).toContain('resumoDoMes');
+    expect(nomes).toContain('gastoPorSubcategoria');
+  });
+
+  it('quem pode lançar recebe leitura e escrita', () => {
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo: vi.fn(), sessoes: sessoesFalsas });
+    const nomes = ia.ferramentasPara({ lancar: true }).map((f) => f.name);
+
+    expect(nomes).toContain('resumoDoMes');
+    expect(nomes).toContain('registrarLancamento');
+    expect(nomes.length).toBe(FERRAMENTAS.length);
+  });
+
+  it('sem permissão nenhuma declarada, o padrão é NÃO liberar escrita', () => {
     const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo: vi.fn(), sessoes: sessoesFalsas });
     const nomes = ia.ferramentasPara().map((f) => f.name);
 
+    expect(nomes).not.toContain('registrarLancamento');
     expect(nomes).toContain('resumoDoMes');
-    expect(nomes.length).toBe(FERRAMENTAS.length);
+  });
+
+  it('toda ferramenta de escrita declara a permissão que exige', () => {
+    const escritas = ['registrarLancamento', 'prepararAlteracao', 'prepararExclusao',
+      'confirmarAcaoPendente', 'cancelarAcaoPendente'];
+
+    for (const nome of escritas) {
+      const f = FERRAMENTAS.find((x) => x.name === nome);
+      expect(f, `${nome} não está no catálogo`).toBeTruthy();
+      expect(f.exigePermissao, `${nome} sem exigePermissao`).toBe('lancar');
+    }
   });
 });
 
