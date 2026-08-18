@@ -20,10 +20,14 @@ Exemplos que precisam funcionar:
 | Mensagem | O que acontece |
 |---|---|
 | "quanto gastei com mercado esse mês?" | consulta e responde com o valor real |
+| **"quanto gastei em futebol esse mês?"** | **entende que é subcategoria de Lazer, sem a pessoa dizer a categoria** |
 | "como posso diminuir minhas despesas?" | analisa 3-6 meses e sugere onde cortar |
 | "Nina, gastei 84 de gasolina, registra pra mim" | cria o lançamento pelo fluxo normal |
 | "Nina, quais são as subcategorias de Casa?" | lista as subcategorias da família |
 | "Nina, muda essa categoria para Lazer" | confirma e só então altera |
+
+A linha em negrito é requisito explícito: **o cliente pode perguntar por
+subcategoria sozinha, sem nomear a categoria-mãe.** Ver seção 3.1.1.
 
 ### Posição competitiva
 
@@ -79,13 +83,48 @@ escopado por família.
 | Ferramenta | Parâmetros | Devolve |
 |---|---|---|
 | `resumoDoMes` | `mes` | receitas, despesas, saldo, por pessoa |
-| `gastoPorCategoria` | `mes`, `categoria?` | total, fatia, subcategorias |
-| `compararPeriodos` | `mesA`, `mesB` | variação por categoria |
-| `listarLancamentos` | `mes`, `categoria?`, `limite` | lançamentos detalhados |
+| `gastoPorCategoria` | `mes`, `categoria?` | total, fatia, quebra por subcategoria |
+| `gastoPorSubcategoria` | `mes`, `subcategoria` | total da subcategoria, **sem exigir a categoria-mãe** |
+| `compararPeriodos` | `mesA`, `mesB` | variação por categoria e subcategoria |
+| `listarLancamentos` | `mes`, `categoria?`, `subcategoria?`, `limite` | lançamentos detalhados |
 | `contasFixasEOrcamento` | — | recorrentes, orçamento, consumo |
 | `retratoFinanceiro` | `meses` (3 a 6) | base das perguntas de conselho |
 | `listarCategorias` | `tipo?` | categorias da família |
-| `listarSubcategorias` | `categoria` | subcategorias da categoria |
+| `listarSubcategorias` | `categoria?` | subcategorias (todas, se sem filtro) |
+
+#### 3.1.1 Subcategoria consultável sozinha
+
+**Requisito explícito do Kirk.** O cliente precisa poder perguntar
+"quanto gastei em futebol esse mês?" sem dizer que futebol fica dentro de
+Lazer. Ele pensa na subcategoria, não na árvore.
+
+Estado atual do sistema, verificado no código:
+
+- `getMonthlySummary` agrega **só por categoria** (`expenseByCategory`).
+  **Não existe agregação por subcategoria em lugar nenhum** do sistema
+- `enriquecer()` já resolve e devolve `subcategory` em cada lançamento — o dado
+  está disponível, só nunca foi somado
+- `listSubcategories(dados)` sem `categoryId` já lista todas da família
+
+Solução, em duas partes:
+
+**1. Vocabulário da família no contexto inicial.** A árvore de categorias com
+suas subcategorias entra no começo da conversa (é pequena — dezenas de itens,
+~200 a 400 tokens). A IA passa a saber, antes de qualquer ferramenta, que
+"futebol" é subcategoria de Lazer nessa família. Resolve o caso sem chamada
+extra e sem adivinhação.
+
+**2. `gastoPorSubcategoria` agrega por conta própria.** Parte de
+`listTransactions` e soma por `subcategoryId`. **Não altera
+`getMonthlySummary`** — essa função alimenta o dashboard em produção e não
+deve ser tocada por esta feature. A agregação nova vive só no serviço novo.
+
+**Ambiguidade de nome repetido.** Duas subcategorias com o mesmo nome em
+categorias diferentes (Lazer > Futebol e Educação > Futebol, a escolinha do
+filho) são um caso real. Comportamento: **responder as duas, discriminadas**
+("R$ 180 em Lazer > Futebol e R$ 300 em Educação > Futebol"), nunca somar em
+silêncio nem escolher uma. O mesmo vale quando o termo é nome de categoria e de
+subcategoria ao mesmo tempo.
 
 **Escrita** (as três que já existem, nunca acesso cru):
 
@@ -192,6 +231,27 @@ informa que, para lançar direto, basta mandar sem o nome.
 - **Casamento tolerante** no reconhecimento: normaliza acento e pontuação,
   aceita diferença de uma letra (a transcrição de áudio erra nome próprio —
   "Nina" vira "Nyna", "Mina")
+
+### 4.4 Quem está perguntando — identidade e memória
+
+Duas lacunas que só aparecem no **modo grupo**, onde até 8 pessoas usam o mesmo
+canal.
+
+**"Quanto EU gastei" precisa saber quem é "eu".** Numa família em grupo, a
+mesma pergunta tem resposta diferente dependendo de quem perguntou. A
+identificação usa `lancamentoPorMensagem.telefoneEfetivo()` — que já resolve o
+caso do modo individual, onde `senderJid` nunca vem preenchido (armadilha
+documentada do projeto).
+
+Regra: a Nina sabe quem está falando e filtra por pagador quando a pergunta é
+pessoal ("eu", "meu"). Pergunta sem marca pessoal ("quanto gastamos com
+mercado") responde a família inteira. Quando não conseguir identificar o
+interlocutor, responde pela família e diz isso.
+
+**A memória é por pessoa, não por família.** Se a sessão fosse por família, o
+"e o mês passado?" do Kirk continuaria a conversa que a Raquel estava tendo —
+com resposta errada e sem ninguém entender por quê. `chatSessions` é chaveada
+por **família + interlocutor**.
 
 ## 5. Prompt e persona
 
@@ -396,6 +456,10 @@ Verificação: console de faturamento do projeto Google associado à chave.
 Nada mais é tocado. Importação de extrato, faturas, orçamento, recorrentes,
 painel gestor e cobrança ficam intactos.
 
+**`transactionService.getMonthlySummary` NÃO é alterado.** Ele alimenta o
+dashboard em produção. A agregação por subcategoria (seção 3.1.1) é feita
+dentro do `consultaFinanceiraService`, a partir de `listTransactions`.
+
 ## 9. Custo
 
 Preço Gemini 3.6 Flash (verificado em 18/08/2026):
@@ -403,8 +467,10 @@ Preço Gemini 3.6 Flash (verificado em 18/08/2026):
 - **Até 31/12/2026:** US$ 0,75/milhão entrada, US$ 3,75/milhão saída
 - **A partir de 01/01/2027:** US$ 1,50 / US$ 7,50 (dobra)
 
-Consumo por pergunta: ~5.500 tokens de entrada, ~400 de saída (prompt +
-histórico curto + dados das ferramentas + resposta).
+Consumo por pergunta: ~5.800 tokens de entrada, ~400 de saída (prompt +
+vocabulário da família + histórico curto + dados das ferramentas + resposta).
+O vocabulário de categorias e subcategorias (seção 3.1.1) acrescenta 200 a 400
+tokens e está contabilizado.
 
 | | Por pergunta | 30/mês | 200/mês |
 |---|---|---|---|
@@ -434,10 +500,12 @@ contador do chat é separado e menor.
   sendo produção
 
 **Fase 1 — motor e painel**
-- `consultaFinanceiraService`, `chatIAService`, `chatSessionService`,
+- `consultaFinanceiraService` (incluindo `gastoPorSubcategoria` e o vocabulário
+  da família, seção 3.1.1), `chatIAService`, `chatSessionService`,
   `limiteChatService`
 - Correção do fuso e extração de `fusoBrasil.js`
 - Parametrizar `exigirAssinaturaPaga`
+- Interruptor de desligamento (seção 12.1)
 - Rota `/chat` e página `/consultor` com indicador de porcentagem
 - `chatSessions` em `escopo.js` e `lgpdService`
 
@@ -466,6 +534,8 @@ contador do chat é separado e menor.
   nunca mock de módulo (regra 2)
 - **Isolamento**: teste que prova que nenhuma ferramenta aceita `householdId`
 - **Papel**: teste que prova que viewer não recebe ferramenta de escrita
+- **Subcategoria sozinha**: "quanto gastei em futebol" resolve sem a
+  categoria-mãe; nome repetido em duas categorias devolve as duas separadas
 - **Injeção**: nome de IA malicioso é recusado; descrição maliciosa não vira
   instrução
 - **Roteador**: bateria de mensagens reais cobrindo os 5 caminhos, com atenção
@@ -479,7 +549,140 @@ contador do chat é separado e menor.
   bot)
 - **Suíte verde** antes de qualquer push (regra 4)
 
-## 12. Fora de escopo
+## 12. Resiliência operacional
+
+Pontos que precisam existir desde o primeiro deploy, dado que o sistema tem
+clientes pagantes ativos.
+
+### 12.1 Interruptor de desligamento
+
+**Variável de ambiente que desliga a feature inteira sem deploy de código.**
+Se a Nina se comportar mal em produção, o caminho de volta precisa ser
+imediato: desligada, o WhatsApp volta a se comportar exatamente como hoje e a
+página do painel some do menu. Nenhum dado é perdido.
+
+### 12.2 Timeout no WhatsApp
+
+O Cloud Run **congela a CPU quando a resposta HTTP sai** (armadilha conhecida
+do projeto), então o webhook precisa processar antes de responder. Uma pergunta
+com duas rodadas de ferramenta pode levar 5 a 10 segundos — bem mais que um
+lançamento simples.
+
+Necessário medir o timeout real do webhook da Evolution API antes da Fase 2. Se
+apertar, a saída é responder um aviso curto ("consultando seus dados...") e
+mandar a resposta como segunda mensagem — o que a barreira anti-loop já suporta.
+
+### 12.3 Degradação quando o Gemini falha
+
+Gemini fora do ar, cota estourada ou erro 429 **nunca podem quebrar o
+lançamento**. O chat responde que está indisponível no momento; o caminho de
+lançamento por regra continua funcionando normalmente, porque não passa por IA.
+
+### 12.4 Cota compartilhada entre membros
+
+A cota é **por família**, não por pessoa. Uma família de 8 membros no grupo
+divide as 20 perguntas do dia. Aceito no MVP (é a mesma lógica do teto de IA
+atual), mas é o primeiro número a revisar quando houver uso real.
+
+### 12.5 Custo de leitura do Firestore
+
+`retratoFinanceiro` com 6 meses pode ler centenas de documentos por pergunta.
+Desprezível perto do custo de IA, mas a ferramenta precisa de teto de meses e
+de limite de documentos, para uma pergunta não virar varredura.
+
+### 12.6 As conversas aparecem no log do WhatsApp?
+
+Decisão pendente para a Fase 2: se as mensagens de conversa com a Nina entram
+em `whatsappLogs` (tela `/whatsapp-logs`) ou ficam fora. Precedente:
+confirmações do bot são gravadas mas ocultas por padrão na tela.
+
+### 12.7 Mensagem processada duas vezes
+
+O webhook e o polling podem entregar a mesma mensagem duas vezes — por isso
+existe `jaProcessada(messageId)`. Uma pergunta processada em duplicidade
+gastaria **cota e dinheiro duas vezes** e responderia duas vezes ao cliente.
+
+O caminho do chat passa pela mesma verificação, antes de consumir cota.
+
+### 12.8 Descoberta pelo cliente e famílias existentes
+
+**Nome da IA nas famílias que já existem.** As ~10 famílias em produção não têm
+o campo. O padrão precisa valer por ausência (o código assume o nome padrão
+quando o campo não existe), **sem script de migração escrevendo em produção** —
+menos escrita em dado real, menos risco.
+
+**Como o cliente descobre.** A feature não se anuncia sozinha. Precisa entrar:
+no tour guiado de primeiro uso, na central de ajuda `/ajuda`, na landing (Fase
+4) e numa mensagem única de apresentação no WhatsApp quando a família passar a
+ter acesso.
+
+### 12.9 Frontend sem teste automatizado
+
+O projeto tem **539 testes de backend e zero no frontend**. A página de chat
+não terá cobertura automatizada — verificação é manual, via `agent-browser` em
+staging. Risco aceito e registrado, coerente com o resto do projeto.
+
+## 13. Open Finance — pesquisado, e a recomendação é não agora
+
+Pesquisado em 18/08/2026, a pedido do Kirk, por ser a maior vantagem dos
+concorrentes (Meu Assessor, ZapGastos e Financinha conectam mais de 110 bancos).
+
+### 13.1 Caminho direto: fechado
+
+Para participar do Open Finance é preciso **comprovar autorização para
+funcionar concedida pelo Banco Central**. Participam instituições financeiras,
+instituições de pagamento e demais instituições autorizadas pelo BC. A Lion
+Tech é empresa de TI — não se qualifica, e virar instituição autorizada é um
+projeto regulatório de outra ordem de grandeza.
+
+### 13.2 Caminho real: agregador já regulado
+
+| Provedor | Custo | Observação |
+|---|---|---|
+| Belvo | ~R$ 6.000/mês | mais caro |
+| Pluggy | **R$ 2.500/mês** mínimo (dados) | sandbox grátis 14 dias |
+| TecnoSpeed | **R$ 1.500 entrada + R$ 540/mês** | 47+ bancos, voltado a software house |
+
+### 13.3 A conta, com sinceridade
+
+Receita por assinante: R$ 24,90/mês. Base atual: ~10 famílias, ou seja
+**~R$ 249/mês de receita total**.
+
+| Provedor | Assinantes só para pagar o custo | Para o custo ser 20% da receita |
+|---|---|---|
+| Pluggy | ~101 | ~500 |
+| TecnoSpeed | ~22 (mais R$ 1.500 de entrada) | ~110 |
+
+**Com 10 famílias, o Pluggy custaria dez vezes a receita total do produto.**
+Não é caro — é inviável. Contratar hoje transformaria um negócio pequeno e
+lucrativo num negócio que perde dinheiro em cada mês.
+
+### 13.4 O que já temos que cobre boa parte disso
+
+A **importação de extrato**, no ar desde 16/08/2026, entrega grande parte do
+mesmo valor a **custo zero de recorrência**: o cliente traz OFX/CSV do banco,
+o sistema categoriza com IA, agrupa e importa sem duplicar.
+
+A diferença para o Open Finance é **automação, não capacidade**: lá o dado
+entra sozinho, aqui o cliente baixa o arquivo e sobe. É atrito real, mas é
+atrito de alguns minutos por mês — não é falta de funcionalidade.
+
+### 13.5 Recomendação
+
+**Não implementar agora.** Revisitar quando a base passar de **~150 assinantes
+pagantes**, e nessa hora começar pela **TecnoSpeed**, que é a mais barata e é
+explicitamente voltada a software house — não pela Pluggy, apesar de ser a mais
+conhecida.
+
+Gatilho objetivo para reabrir: 150 assinantes pagantes, ou um concorrente
+tirando cliente nosso especificamente por causa de Open Finance (o que
+apareceria em cancelamento, não em suposição).
+
+Riscos adicionais que entram junto quando chegar a hora, e que hoje não
+existem: consentimento com renovação periódica, tratamento de dado bancário
+bruto sob LGPD, e dependência de um fornecedor no caminho crítico do produto.
+
+## 14. Fora de escopo
 
 Deliberadamente:
 
@@ -488,4 +691,4 @@ Deliberadamente:
 - Conselho sobre investimento ou produto financeiro
 - Qualquer acesso a dado que não seja da própria família
 - Ferramenta que escreva mais de um registro por vez
-- Open Finance (frente estratégica separada)
+- Open Finance (ver seção 13 — pesquisado e adiado com gatilho definido)
