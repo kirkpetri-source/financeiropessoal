@@ -30,6 +30,10 @@ const COLECOES_ESCOPADAS = new Set([
   // contraparte -> categoria que a família ensina ao classificar.
   'importBatches',
   'importMemoria',
+  // Consultor de IA: memória curta da conversa, uma por família + interlocutor.
+  // Guarda texto financeiro em linguagem natural, então entra no export e no
+  // apagar da LGPD junto com o resto.
+  'chatSessions',
 ]);
 
 // Coleções que misturam registros globais (isDefault) com registros da família.
