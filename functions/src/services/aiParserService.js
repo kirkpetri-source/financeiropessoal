@@ -29,9 +29,15 @@ const SYSTEM_PROMPT = `Você é um extrator de lançamentos financeiros de mensa
 DEVE retornar SOMENTE um objeto JSON válido. NUNCA use markdown, crases, comentários ou texto fora do JSON.
 
 Formato EXATO:
-{"transactions":[{"type":"EXPENSE","description":"string","amount":0,"paymentMethod":null,"category":null,"paidBy":null}]}
+{"intencao":"LANCAMENTO","transactions":[{"type":"EXPENSE","description":"string","amount":0,"paymentMethod":null,"category":null,"paidBy":null}]}
 
 Uma mensagem pode conter VÁRIOS lançamentos (um por linha ou na mesma frase) — gere um item por lançamento.
+
+INTENÇÃO — decida antes de tudo:
+- "LANCAMENTO": a pessoa está REGISTRANDO algo que aconteceu ("gastei 30 no mercado", "recebi meu salário", "50 de gasolina").
+- "PERGUNTA": a pessoa está PERGUNTANDO ou PEDINDO ALGO sobre as finanças dela ("quanto gastei em mercado?", "como diminuir minhas despesas?", "quais são minhas categorias?", "apaga o último lançamento", "muda a categoria disso").
+- "OUTRO": não é nem uma coisa nem outra (saudação, agradecimento, assunto que não é dinheiro).
+Se for PERGUNTA ou OUTRO, "transactions" DEVE ser [].
 
 REGRAS (siga literalmente):
 - type: "EXPENSE" para gastos (paguei, comprei, gastei, uber, mercado, gasolina, conta...) e "INCOME" para entradas (recebi, salário, vendi, ganhei, depósito...).
@@ -47,7 +53,15 @@ Baseie-se APENAS no conteúdo da mensagem. NÃO invente valores nem lançamentos
 EXEMPLO
 Pagadores: ["Kirk", "Raquel"]
 Mensagem: "almocei 32 no crédito e a raquel pagou 84,90 de mercado no pix"
-Saída: {"transactions":[{"type":"EXPENSE","description":"almoço","amount":32,"paymentMethod":"Crédito","category":"Alimentação","paidBy":null},{"type":"EXPENSE","description":"mercado","amount":84.9,"paymentMethod":"Pix","category":"Mercado","paidBy":"Raquel"}]}`;
+Saída: {"intencao":"LANCAMENTO","transactions":[{"type":"EXPENSE","description":"almoço","amount":32,"paymentMethod":"Crédito","category":"Alimentação","paidBy":null},{"type":"EXPENSE","description":"mercado","amount":84.9,"paymentMethod":"Pix","category":"Mercado","paidBy":"Raquel"}]}
+
+EXEMPLO 2
+Mensagem: "quanto gastei no mercado esse mes?"
+Saída: {"intencao":"PERGUNTA","transactions":[]}
+
+EXEMPLO 3
+Mensagem: "apaga o ultimo lancamento"
+Saída: {"intencao":"PERGUNTA","transactions":[]}`;
 
 function normalizePaymentMethod(value) {
   if (!value) return null;
@@ -141,6 +155,18 @@ async function parseWithAI(message, payers = []) {
         };
       })
       .filter(Boolean);
+
+    // A intenção acompanha o resultado para o roteador do WhatsApp saber se a
+    // mensagem era pergunta — sem gastar uma chamada de IA só para classificar,
+    // já que esta aqui acontece de qualquer jeito quando a regra não dá conta.
+    const intencao = ['LANCAMENTO', 'PERGUNTA', 'OUTRO'].includes(parsed?.intencao)
+      ? parsed.intencao
+      : (transactions.length ? 'LANCAMENTO' : 'OUTRO');
+
+    // Continua sendo um array (era o contrato antigo, e todo mundo que já
+    // chamava esta função segue funcionando sem mudar). A intenção vem como
+    // propriedade dele, que é o jeito de acrescentar sem quebrar ninguém.
+    transactions.intencao = intencao;
 
     return transactions; // pode ser [] (mensagem não-financeira)
   } catch (err) {
