@@ -10,6 +10,7 @@ import {
   CalendarClock,
   Wallet,
   Upload,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -24,6 +25,10 @@ const NAV_ITEMS = [
   { to: '/contas-recorrentes', icon: CalendarClock, label: 'Contas Fixas' },
   { to: '/faturas', icon: Wallet, label: 'Faturas' },
   { to: '/importar', icon: Upload, label: 'Importar extrato' },
+  // "Assistente", e nao "Consultor": consultoria e assessoria de valores
+  // mobiliarios sao atividades REGULADAS pela CVM. O nome nao pode sugerir
+  // que a familia esta recebendo servico de profissional habilitado.
+  { to: '/assistente', icon: Sparkles, label: 'Assistente', novo: true },
   { to: '/whatsapp-logs', icon: MessageSquare, label: 'WhatsApp' },
   { to: '/assinatura', icon: CreditCard, label: 'Assinatura' },
   { to: '/settings', icon: Settings, label: 'Configurações' },
@@ -58,7 +63,7 @@ export default function Sidebar({ open, onClose }) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+        {NAV_ITEMS.map(({ to, icon: Icon, label, novo }) => (
           <NavLink
             key={to}
             to={to}
@@ -75,6 +80,11 @@ export default function Sidebar({ open, onClose }) {
             <span className="flex-1">{label}</span>
             {to === '/assinatura' && alertaDeAssinatura && (
               <span className="w-2 h-2 rounded-full bg-expense flex-shrink-0" />
+            )}
+            {novo && (
+              <span className="text-[9px] font-bold tracking-wide bg-accent-light text-accent-dark px-1.5 py-0.5 rounded-full flex-shrink-0">
+                NOVO
+              </span>
             )}
           </NavLink>
         ))}

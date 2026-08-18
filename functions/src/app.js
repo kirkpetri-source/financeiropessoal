@@ -16,6 +16,7 @@ const budgetRoutes = require('./routes/budgets');
 const recurringBillRoutes = require('./routes/recurringBills');
 const creditCardInvoiceRoutes = require('./routes/creditCardInvoices');
 const importacaoRoutes = require('./routes/importacao');
+const assistenteRoutes = require('./routes/assistente');
 const { handleEvolutionWebhook } = require('./webhooks/evolutionWebhook');
 const { handleMercadoPagoWebhook, handleMercadoPagoPing } = require('./webhooks/mercadoPagoWebhook');
 const errorHandler = require('./middlewares/errorHandler');
@@ -124,6 +125,7 @@ app.use('/budgets', budgetRoutes);
 app.use('/recurring-bills', recurringBillRoutes);
 app.use('/faturas', creditCardInvoiceRoutes);
 app.use('/importacao', importacaoRoutes);
+app.use('/assistente', assistenteRoutes);
 // Painel do operador — login próprio (usuário/senha, ver
 // tools/criar-login-operador.js), separado da conta pessoal de qualquer
 // família. A proteção de verdade continua sendo o middleware apenasAdmin

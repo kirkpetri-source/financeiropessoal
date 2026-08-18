@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { AssinaturaProvider } from './contexts/AssinaturaContext';
@@ -19,6 +20,9 @@ import AssinaturaPage from './pages/AssinaturaPage';
 import PlataformaPage from './pages/PlataformaPage';
 import TermosPage from './pages/legal/TermosPage';
 import PrivacidadePage from './pages/legal/PrivacidadePage';
+
+// Carregada sob demanda: so quem abre a assistente paga o download dela.
+const AssistentePage = lazy(() => import('./pages/AssistentePage'));
 
 export default function App() {
   return (
@@ -50,6 +54,14 @@ export default function App() {
                 <Route path="/contas-recorrentes" element={<RecurringBillsPage />} />
                 <Route path="/faturas" element={<InvoicesPage />} />
                 <Route path="/importar" element={<ImportarExtratoPage />} />
+                <Route
+                  path="/assistente"
+                  element={(
+                    <Suspense fallback={<div className="py-16 text-center text-muted text-sm">Carregando…</div>}>
+                      <AssistentePage />
+                    </Suspense>
+                  )}
+                />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/whatsapp-logs" element={<WhatsappLogsPage />} />
                 <Route path="/assinatura" element={<AssinaturaPage />} />
