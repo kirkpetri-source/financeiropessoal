@@ -1,6 +1,105 @@
-# Estado do projeto — 16/08/2026 (importação de extrato no ar)
+# Estado do projeto — 18/08/2026 (ambiente de homologação no ar)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
+
+## Sessão de 18/08/2026 — desenho do consultor de IA e ambiente de homologação
+
+### Bloco 1 — desenho do consultor conversacional (Nina)
+
+Pedido do Kirk: uma IA com quem a família conversa sobre o próprio dinheiro,
+por texto e áudio, no painel e no WhatsApp. Não só consulta ("quanto gastei com
+mercado esse mês?") — também conselho ("como posso diminuir minhas despesas?")
+e execução ("Nina, gastei 84 de gasolina, registra pra mim").
+
+Nada foi implementado. O que existe é desenho aprovado e plano:
+
+- **Desenho**: `docs/superpowers/specs/2026-08-18-consultor-ia-conversacional-design.md`
+- **Plano**: `docs/superpowers/plans/2026-08-18-consultor-ia-implementacao.md`
+
+Decisões que valem lembrar (o resto está no desenho):
+
+- **IA com ferramentas, não IA que calcula.** Todo número vem de uma função que
+  leu o Firestore. A IA raciocina e aconselha; ela nunca soma.
+- **Criar lançamento DELEGA para o fluxo que já existe** (`lancarPorTexto`), em
+  vez de gravar por conta própria. Não passa a existir um segundo caminho de
+  escrita no sistema.
+- **Alterar e apagar sempre confirmam antes.** Criar não precisa — já é assim
+  hoje e "apagar ultimo" existe.
+- **Nome próprio escolhido pela família** como atalho de invocação, **mais**
+  classificação de intenção reusando a chamada de IA que já acontece hoje
+  (mensagem que não casa a regra já vai ao Gemini). Funciona com e sem o nome.
+- **Só assinante pagante**, cota diária própria (20/dia), separada da de
+  lançamento — conversar nunca pode consumir o direito de lançar.
+
+**Pesquisa de concorrência**: o mercado já convergiu para assistente nomeado.
+Meu Assessor tem uma equipe de personas (Martin cuida das finanças), ZapGastos
+tem o "Leo". Todos têm **Open Finance**, que é a real vantagem deles.
+
+**Open Finance — pesquisado e adiado, com número.** Participar direto exige
+autorização do Banco Central (a Lion Tech não se qualifica). Via agregador:
+Pluggy R$ 2.500/mês, Belvo R$ 6.000/mês, TecnoSpeed R$ 1.500 + R$ 540/mês. Com
+13 famílias a receita é ~R$ 324/mês — o Pluggy custaria **oito vezes a receita
+total**. Recomendação registrada: reabrir com **~150 assinantes pagantes**, e
+começar pela TecnoSpeed. A importação de extrato já cobre boa parte do valor a
+custo zero; a diferença é automação, não capacidade.
+
+**Análise de segurança, seis achados** (detalhe na seção 7 do desenho). Os três
+que mais importam:
+
+1. **`householdId` nunca pode ser parâmetro de ferramenta** — é a defesa que
+   sustenta o isolamento inteiro. Fechado no escopo antes da IA existir.
+2. **O nome da IA vai para dentro do prompt do sistema** — vetor de injeção
+   nada óbvio (batizar a IA de "Ignore as instruções acima..."). Exige
+   validação estrita.
+3. **Um `viewer` poderia escrever pedindo para a IA**, driblando
+   `exigir('lancar')`. O catálogo de ferramentas precisa ser filtrado por papel.
+
+**Verificado e resolvido nesta sessão**: o tier da `GEMINI_API_KEY`. A chave em
+uso (terminada em `hxhw`, projeto "Financas") está em **billing pago, Nível 1**
+— confirmado no painel do AI Studio e por teste de carga (40 chamadas
+simultâneas, todas 200; o tier gratuito recusaria a maioria). **Os dados
+financeiros dos clientes não são usados para treinar modelos do Google.**
+
+### Bloco 2 — ambiente de homologação (staging)
+
+Motivo, nas palavras do Kirk: "alterações aqui sempre me levam a mexer no
+sistema que está em produção, o que me faz ter calafrios... não posso parar o
+sistema, temos usuários pagantes ativos".
+
+**Projeto `revelacash-staging` criado e funcionando.** Firestore em
+`southamerica-east1` (mesma região da produção), regras e índices deployados,
+cinco Cloud Functions no ar, seed rodado. Detalhe operacional completo no
+`CLAUDE.md`, seção "Dois ambientes".
+
+**Isolamento provado com números**, não com suposição:
+
+| | Homologação | Produção |
+|---|---|---|
+| Categorias | 23 (do seed) | 39 |
+| Famílias | **0** | **13** |
+| Lançamentos | **0** | **355** |
+
+**Bug sério achado antes de causar dano.** Ao conferir para onde o `seed`
+apontava, descobri que **todo script de `tools/` falava com produção, sempre** —
+projeto fixo no código e `firebaseAdmin.js` usando a credencial de produção
+fora do ambiente de Functions. Rodar `npm run seed` achando que ia para o
+staging teria escrito no banco dos clientes. Corrigido com `ALVO`, mantendo
+produção como padrão (nenhum comando existente mudou), com erro fatal quando a
+credencial de staging falta, e com **todo script anunciando em qual banco vai
+mexer**, usando o `project_id` lido da credencial de verdade.
+
+**Ganho lateral que encerra a regra 14.** O staging tem `.env` próprio com
+`APP_CHECK_ENFORCE=false` **permanente**. Testar local deixa de exigir editar o
+arquivo de produção e lembrar de reverter — que foi exatamente como o App Check
+ficou desligado em produção por alguns minutos em 11/08/2026.
+
+**Vocabulário combinado com o Kirk**: "sobe para homologação" = staging, "sobe
+para produção" = real. Virou a regra 17 do `CLAUDE.md`, junto com a decisão de
+que feature nova nasce em homologação — "é aditivo, não quebra nada" deixou de
+ser argumento para estrear código em cima de 13 famílias pagantes.
+
+Trabalho na branch `feature/chat-ia`. 539 testes verdes. Nada em produção foi
+tocado nesta sessão.
 
 ## Sessão de 16/08/2026 — aviso de cadastro no WhatsApp e importação de extrato concluída
 

@@ -41,7 +41,16 @@ function credencialLocal() {
     );
   }
 
-  return require(caminho);
+  const credencial = require(caminho);
+
+  // O aviso mora AQUI, e não no carregador de ambiente de tools/, porque este
+  // arquivo é o único ponto por onde TODO script que fala com o banco passa
+  // obrigatoriamente. `src/seed.js`, por exemplo, não usa tools/carregarAmbiente
+  // — rodou sem anunciar nada, que é justamente o silêncio perigoso.
+  const rotulo = ehStaging ? 'STAGING — ambiente de teste' : 'PRODUÇÃO — DADOS REAIS DE CLIENTES';
+  console.log(`\n  [${rotulo}] ${credencial.project_id}\n`);
+
+  return credencial;
 }
 
 if (!admin.apps.length) {

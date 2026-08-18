@@ -94,15 +94,9 @@ function carregarSegredo(nome) {
  * @returns {{ok: boolean, faltando: string[]}}
  */
 function carregar(segredos = []) {
-  // Sempre dizer em qual banco o script vai mexer. O custo é uma linha no
-  // terminal; o custo de NÃO avisar é alguém achando que está no staging
-  // enquanto escreve no banco de cliente pagante.
-  if (EH_STAGING) {
-    console.log(`\n  [STAGING] ${PROJETO} — ambiente de teste, sem cliente real.\n`);
-  } else {
-    console.log(`\n  [PRODUÇÃO] ${PROJETO} — DADOS REAIS DE CLIENTES.\n`);
-  }
-
+  // O anúncio de "em qual banco estou mexendo" fica em src/config/firebaseAdmin.js,
+  // que é o ponto por onde todo script que fala com o Firestore passa
+  // obrigatoriamente — inclusive os que não usam este carregador (src/seed.js).
   carregarArquivoEnv();
 
   const faltando = [];

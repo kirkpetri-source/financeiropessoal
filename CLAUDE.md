@@ -55,6 +55,66 @@ Vercel CLI já está instalado e autenticado nesta máquina (conta
 add/inspect/verify`, `vercel whoami` etc. funcionam direto, mesmo que um hook
 de sessão diga "CLI não instalada".
 
+## Dois ambientes: homologação e produção
+
+Desde 18/08/2026 existem **dois projetos Firebase**, e uma pasta só no disco.
+O código é o mesmo; o que muda é para onde ele aponta.
+
+| | Homologação (staging) | Produção |
+|---|---|---|
+| Projeto Firebase | `revelacash-staging` | `financeiropessoal-29b32` |
+| Quem usa | ninguém — banco de teste | **13 famílias reais, pagantes** |
+| Firestore | `southamerica-east1`, vazio | `southamerica-east1`, 355 lançamentos |
+| API | `southamerica-east1-revelacash-staging.cloudfunctions.net/api` | a de sempre |
+| App Check | **desligado, permanente** | `true`, sempre |
+| Mercado Pago / Evolution | secrets de descarte, nada real | credenciais de produção |
+
+### Vocabulário (pedido do Kirk em 18/08/2026)
+
+Quando ele disser **"sobe para homologação"**, é o ambiente de teste. Quando
+disser **"sobe para produção"** (ou "sobe pro ar", "publica"), é o real, com
+clientes. Na dúvida entre os dois, **perguntar** — nunca presumir produção.
+
+```bash
+# BACKEND
+firebase deploy --only functions --project staging   # homologação
+firebase deploy --only functions --project prod      # produção (= --project default)
+
+# SCRIPTS de tools/ e o seed — produção é o PADRÃO, staging exige pedir
+ALVO=staging node tools/algum-script.js              # bash
+$env:ALVO="staging"; node tools/algum-script.js      # PowerShell
+node tools/algum-script.js                           # produção
+
+# FRONTEND
+git push origin feature/<algo>   # homologação: Vercel gera preview automático
+git push origin main             # PRODUÇÃO NA HORA (ver seção abaixo)
+```
+
+**Todo script que fala com o Firestore anuncia em qual banco vai mexer**, na
+primeira linha, com o `project_id` lido da credencial de verdade:
+
+```
+  [STAGING — ambiente de teste] revelacash-staging
+  [PRODUÇÃO — DADOS REAIS DE CLIENTES] financeiropessoal-29b32
+```
+
+O anúncio mora em `src/config/firebaseAdmin.js` e não em
+`tools/carregarAmbiente.js` porque nem todo script passa pelo carregador
+(`src/seed.js` não passa) — mas todos passam pelo `firebaseAdmin`.
+
+### Arquivos locais que o staging precisa (fora do git)
+
+- `functions/serviceAccountKey.staging.json` — credencial do staging. **A falta
+  dela com `ALVO=staging` é erro fatal**, nunca um fallback silencioso para
+  produção. Gerada em Console → Configurações → Contas de serviço
+- `functions/.env.revelacash-staging` — config do staging, com
+  `APP_CHECK_ENFORCE=false` **permanente**
+
+Esse `APP_CHECK_ENFORCE=false` separado **encerra a armadilha da regra 14**:
+não é mais preciso editar o `.env` de produção para testar local e lembrar de
+reverter. Foi assim que o App Check ficou desligado em produção por alguns
+minutos em 11/08/2026. O arquivo de produção não precisa mais ser tocado.
+
 ## Git — push liberado
 
 Repositório: `github.com/kirkpetri-source/financeiropessoal` (branch `main`).
@@ -180,9 +240,29 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     nunca 402: o frontend trata 402 como "assinatura inativa" e dispara o
     alerta global (`EVENTO_ASSINATURA_INATIVA` em `services/api.js`) — quem
     está com o teste em dia veria alarme falso.
+17. **Feature nova nasce em homologação, nunca direto em produção.** Existe
+    ambiente de teste desde 18/08/2026 (ver seção "Dois ambientes") — o
+    argumento de "é aditivo, não quebra nada" deixou de justificar estrear
+    código em cima de 13 famílias pagantes. Fluxo: branch → homologação →
+    Kirk aprova → produção. E **"homologação" e "produção" são palavras
+    dele**: quando ele disser um dos dois, é esse ambiente, sem interpretar.
+    Na dúvida, perguntar — nunca presumir produção.
 
 ## Armadilhas já pagas (não repetir)
 
+- **Script em `tools/` apontava para PRODUÇÃO sempre, sem dizer.** Até
+  18/08/2026 o projeto era constante fixa em `carregarAmbiente.js` e
+  `firebaseAdmin.js` usava `serviceAccountKey.json` (credencial de produção)
+  fora do ambiente de Functions. Enquanto só existia um projeto isso era
+  óbvio; no minuto em que o staging passou a existir, virou armadilha —
+  rodar um script achando que está no ambiente de brincar e escrever no banco
+  de cliente pagante. Corrigido com `ALVO`, com erro fatal quando a
+  credencial de staging falta, e com o anúncio do ambiente em toda execução.
+  **Achado antes de causar dano**, ao conferir para onde o `seed` apontava.
+- **Renomear arquivo no Windows dobra a extensão.** A chave de staging virou
+  `serviceAccountKey.staging.json.json` porque o Explorer esconde extensões
+  conhecidas. Ao pedir um arquivo com nome exato para o Kirk, conferir o nome
+  real com `ls` antes de concluir que ele não fez.
 - **Cloud Run congela a CPU quando a resposta HTTP sai.** O webhook precisa
   processar ANTES de responder. A versão que respondia 200 na primeira linha
   perdia o trabalho no meio, sem deixar erro no log.
