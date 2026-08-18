@@ -129,6 +129,9 @@ function exigirAssinatura(req, res, next) {
  * escrita, nunca a leitura. Quem está no teste segue vendo, consultando e
  * exportando tudo que é dele.
  */
+const MENSAGEM_TRIAL_PADRAO =
+  'A importação de extrato está disponível para assinantes. Assine para trazer seu histórico financeiro.';
+
 function exigirAssinaturaPaga(req, res, next) {
   if (req.household?.deletion) {
     return res.status(423).json({
@@ -148,7 +151,7 @@ function exigirAssinaturaPaga(req, res, next) {
   // recurso é que não faz parte do teste.
   if (situacao.emTrial) {
     return res.status(403).json({
-      error: 'A importação de extrato está disponível para assinantes. Assine para trazer seu histórico financeiro.',
+      error: req.mensagemRecursoPago || MENSAGEM_TRIAL_PADRAO,
       codigo: 'RECURSO_DE_ASSINANTE',
       motivo: situacao.motivo || 'EM_TRIAL',
       emTrial: true,
@@ -163,4 +166,27 @@ function exigirAssinaturaPaga(req, res, next) {
   });
 }
 
-module.exports = { resolverHousehold, exigir, exigirAssinatura, exigirAssinaturaPaga };
+/**
+ * Diz QUAL recurso pago está sendo pedido, para a recusa não falar de outro.
+ *
+ * `exigirAssinaturaPaga` nasceu servindo só à importação de extrato e trazia
+ * essa mensagem fixa no corpo. Com um segundo recurso pago (o consultor de IA),
+ * quem pedisse para conversar receberia uma recusa falando de extrato.
+ *
+ * Uso: router.post('/', recursoPago('...'), exigirAssinaturaPaga, ...)
+ */
+function recursoPago(mensagem) {
+  return (req, _res, next) => {
+    req.mensagemRecursoPago = mensagem;
+    next();
+  };
+}
+
+module.exports = {
+  resolverHousehold,
+  exigir,
+  exigirAssinatura,
+  exigirAssinaturaPaga,
+  recursoPago,
+  MENSAGEM_TRIAL_PADRAO,
+};

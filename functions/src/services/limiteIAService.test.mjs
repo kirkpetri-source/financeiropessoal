@@ -89,4 +89,32 @@ describe('verificarLimiteDeIA', () => {
     const { limite } = criarLimiteIAService({ db: fakeDb, admin: fakeAdmin });
     expect(limite).toBe(60);
   });
+
+  // O Cloud Run roda em UTC. Antes de 18/08/2026 o contador usava a data do
+  // servidor, então zerava às 21h de Brasília — o cliente ganhava cota nova
+  // três horas antes da meia-noite dele. Invisível enquanto ninguém via o
+  // contador; virou mentira na tela quando a mensagem de limite passou a
+  // dizer a hora do retorno.
+  describe('a virada do dia segue o Brasil, não o servidor', () => {
+    it('não reseta às 21h de Brasília, quando o UTC já virou o dia', async () => {
+      process.env.LIMITE_DIARIO_IA = '1';
+      const { verificarLimiteDeIA } = criarLimiteIAService({ db: fakeDb, admin: fakeAdmin });
+
+      // 18/08 às 18h BRT (21h UTC) — consome a única chamada do dia.
+      expect(await verificarLimiteDeIA('fam-1', new Date('2026-08-18T21:00:00Z'))).toBe(true);
+
+      // 18/08 às 22h BRT = 19/08 01h UTC. Para o servidor já é outro dia;
+      // para o usuário ainda é o mesmo, e o limite tem que continuar valendo.
+      expect(await verificarLimiteDeIA('fam-1', new Date('2026-08-19T01:00:00Z'))).toBe(false);
+    });
+
+    it('reseta na meia-noite de Brasília', async () => {
+      process.env.LIMITE_DIARIO_IA = '1';
+      const { verificarLimiteDeIA } = criarLimiteIAService({ db: fakeDb, admin: fakeAdmin });
+
+      expect(await verificarLimiteDeIA('fam-1', new Date('2026-08-18T21:00:00Z'))).toBe(true);
+      // 00h01 BRT do dia 19 (03h01 UTC) — dia novo para o usuário.
+      expect(await verificarLimiteDeIA('fam-1', new Date('2026-08-19T03:01:00Z'))).toBe(true);
+    });
+  });
 });

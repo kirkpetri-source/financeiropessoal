@@ -1,4 +1,4 @@
-const { format } = require('date-fns');
+const { hojeNoBrasil } = require('../utils/fusoBrasil');
 
 /**
  * Teto diário de chamadas de IA (Gemini) por família.
@@ -28,9 +28,15 @@ function criarLimiteIAService({ db, admin }) {
    * Confere e já consome uma chamada do teto diário, na mesma transação —
    * duas mensagens quase simultâneas não podem ler a mesma contagem e as
    * duas passarem. Devolve false quando o teto de hoje já foi atingido.
+   *
+   * O "dia" é o do BRASIL, não o do servidor. O Cloud Run roda em UTC, então
+   * até 18/08/2026 este contador zerava às 21h de Brasília — três horas antes
+   * da meia-noite de quem usa. Passava despercebido porque ninguém via o
+   * contador; deixou de passar quando a mensagem de limite passou a informar
+   * ao cliente a hora exata em que ele volta.
    */
-  async function verificarLimiteDeIA(householdId) {
-    const hoje = format(new Date(), 'yyyy-MM-dd');
+  async function verificarLimiteDeIA(householdId, agora = new Date()) {
+    const hoje = hojeNoBrasil(agora);
     const ref = db.collection('whatsappConfigs').doc(householdId);
 
     return db.runTransaction(async (tx) => {

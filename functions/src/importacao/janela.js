@@ -17,22 +17,15 @@
  * cedo — pior, abriria enquanto agosto ainda está correndo para o usuário.
  */
 
-const FUSO = 'America/Sao_Paulo';
+// `hojeNoBrasil` nasceu aqui e foi extraído para utils/fusoBrasil.js quando o
+// contador diário de IA precisou da mesma regra. Continua reexportado por este
+// módulo para não quebrar quem já importava daqui.
+const { FUSO, hojeNoBrasil } = require('../utils/fusoBrasil');
 
 const MOTIVO = {
   MES_CORRENTE: 'MES_CORRENTE',
   FUTURA: 'FUTURA',
 };
-
-/** AAAA-MM-DD de "hoje" no fuso do Brasil, independente do fuso do servidor. */
-function hojeNoBrasil(agora = new Date()) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: FUSO,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(agora);
-}
 
 /** AAAA-MM do mês em curso no Brasil — o mês que NÃO pode ser importado. */
 function mesCorrente(agora = new Date()) {
