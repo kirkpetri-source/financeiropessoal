@@ -69,11 +69,31 @@ function criarConsultaFinanceira({ transactionService, categoryService, subcateg
       porCategoria.get(s.categoryId).push(s.name);
     }
 
-    return categorias.map((c) => ({
-      categoria: c.name,
-      tipo: c.type || 'BOTH',
-      subcategorias: porCategoria.get(c.id) || [],
-    }));
+    // AGRUPA POR NOME, e não por id. `listCategories` junta as categorias
+    // padrão do sistema com as da família, então uma família que criou a
+    // própria "Lazer" (nome que já existe no padrão) aparecia DUAS vezes: uma
+    // vazia e outra com as subcategorias. A IA que lesse a entrada errada
+    // concluiria que Lazer não tem subcategoria — e "quanto gastei em futebol"
+    // deixaria de funcionar.
+    //
+    // Do ponto de vista de quem usa, duas categorias com o mesmo nome são a
+    // mesma coisa; é assim que `gastoPorCategoria` já agrupa. Só apareceu
+    // testando contra dados reais: o dublê dos testes não tinha categoria padrão.
+    const porNome = new Map();
+
+    for (const c of categorias) {
+      const chave = normalizar(c.name);
+      if (!porNome.has(chave)) {
+        porNome.set(chave, { categoria: c.name, tipo: c.type || 'BOTH', subcategorias: [] });
+      }
+
+      const entrada = porNome.get(chave);
+      for (const nome of porCategoria.get(c.id) || []) {
+        if (!entrada.subcategorias.includes(nome)) entrada.subcategorias.push(nome);
+      }
+    }
+
+    return [...porNome.values()];
   }
 
   async function lancamentosDoMes(dados, mes) {

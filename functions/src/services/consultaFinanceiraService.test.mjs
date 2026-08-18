@@ -210,6 +210,46 @@ describe('vocabulário da família', () => {
     const vocab = await consulta.montarVocabulario(escopoDe(FAMILIA));
     expect(vocab.every((v) => v.subcategorias.length === 0)).toBe(true);
   });
+
+  // Bug real, achado só ao rodar contra dados de verdade: `listCategories`
+  // junta as categorias PADRÃO do sistema com as da família. Uma família que
+  // cria a própria "Lazer" (nome que já existe no padrão) aparecia duas vezes
+  // no vocabulário — uma vazia, outra com as subcategorias. A IA que lesse a
+  // entrada errada concluiria que Lazer não tem subcategoria, e "quanto gastei
+  // em futebol" deixaria de funcionar.
+  describe('categoria da família com o mesmo nome de uma padrão', () => {
+    beforeEach(() => {
+      // Simula a categoria PADRÃO "Lazer" do sistema convivendo com a da família.
+      estado.documentos['categories/cat-lazer-padrao'] = {
+        householdId: FAMILIA, name: 'Lazer', type: 'EXPENSE', isDefault: true,
+      };
+    });
+
+    it('aparece uma única vez no vocabulário', async () => {
+      const vocab = await consulta.montarVocabulario(escopoDe(FAMILIA));
+      const entradas = vocab.filter((v) => v.categoria === 'Lazer');
+
+      expect(entradas).toHaveLength(1);
+    });
+
+    it('mantém as subcategorias, sem esvaziar', async () => {
+      const vocab = await consulta.montarVocabulario(escopoDe(FAMILIA));
+      const lazer = vocab.find((v) => v.categoria === 'Lazer');
+
+      expect(lazer.subcategorias).toContain('Futebol');
+    });
+
+    it('não duplica subcategoria quando as duas categorias têm a mesma', async () => {
+      estado.documentos['subcategories/sub-futebol-padrao'] = {
+        householdId: FAMILIA, name: 'Futebol', categoryId: 'cat-lazer-padrao',
+      };
+
+      const vocab = await consulta.montarVocabulario(escopoDe(FAMILIA));
+      const lazer = vocab.find((v) => v.categoria === 'Lazer');
+
+      expect(lazer.subcategorias.filter((s) => s === 'Futebol')).toHaveLength(1);
+    });
+  });
 });
 
 describe('gastoPorCategoria', () => {
