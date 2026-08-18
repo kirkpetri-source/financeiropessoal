@@ -2,13 +2,21 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
+// Os valores caem para o projeto de PRODUÇÃO quando nada é definido, então
+// nenhum build existente muda de comportamento. As variáveis existem para
+// apontar o app ao projeto de homologação sem editar este arquivo — editar e
+// esquecer de reverter é exatamente a armadilha que já desligou o App Check em
+// produção uma vez (regra 14 do projeto).
+//
+// A apiKey do Firebase Web não é segredo: ela vai no bundle e é pública por
+// design. Quem protege o dado são as regras do Firestore e a autenticação.
 const firebaseConfig = {
-  apiKey: 'AIzaSyA9_AFJLPgAZF60s4nbu6Q5_SgqEkNqj1c',
-  authDomain: 'financeiropessoal-29b32.firebaseapp.com',
-  projectId: 'financeiropessoal-29b32',
-  storageBucket: 'financeiropessoal-29b32.firebasestorage.app',
-  messagingSenderId: '137963747650',
-  appId: '1:137963747650:web:1aac2bfea281c5aec5f0db',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyA9_AFJLPgAZF60s4nbu6Q5_SgqEkNqj1c',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'financeiropessoal-29b32.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'financeiropessoal-29b32',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'financeiropessoal-29b32.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_SENDER_ID || '137963747650',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:137963747650:web:1aac2bfea281c5aec5f0db',
 };
 
 const app = initializeApp(firebaseConfig);

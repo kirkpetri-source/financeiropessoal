@@ -64,6 +64,14 @@ function MedidorDeUso({ uso }) {
 
 function DeOndeVeio({ consultas }) {
   const [aberto, setAberto] = useState(false);
+  const lista = useRef(null);
+
+  // Sem isto a lista abre logo acima do campo de digitação e nasce cortada
+  // pela borda da área rolável — a pessoa clica e parece que nada apareceu.
+  useEffect(() => {
+    if (aberto) lista.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [aberto]);
+
   if (!consultas?.length) return null;
 
   const unicas = [...new Set(consultas)];
@@ -73,6 +81,7 @@ function DeOndeVeio({ consultas }) {
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
         className="inline-flex items-center gap-1 text-[11px] text-faint hover:text-muted transition-colors"
       >
         <ChevronDown className={`w-3 h-3 transition-transform ${aberto ? 'rotate-180' : ''}`} />
@@ -80,7 +89,7 @@ function DeOndeVeio({ consultas }) {
       </button>
 
       {aberto && (
-        <ul className="mt-1.5 pl-4 space-y-1">
+        <ul ref={lista} className="mt-1.5 pl-4 space-y-1 pb-1">
           {unicas.map((c) => (
             <li key={c} className="text-[11px] text-muted flex items-center gap-1.5">
               <span className="w-1 h-1 rounded-full bg-accent flex-shrink-0" />
@@ -89,6 +98,52 @@ function DeOndeVeio({ consultas }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * Renderiza a resposta da assistente com o markdown simples que ela usa:
+ * **negrito** e listas com hífen ou bolinha.
+ *
+ * Escrito à mão, sem biblioteca, por dois motivos. Primeiro, o repertório é
+ * minúsculo — o prompt manda usar só negrito e lista, e uma dependência de
+ * markdown completo pesaria mais que a página inteira. Segundo, e mais
+ * importante: aqui só se produzem elementos React, nunca HTML cru. O texto vem
+ * de um modelo de linguagem que, por sua vez, recebeu descrições escritas pelo
+ * próprio usuário — `dangerouslySetInnerHTML` nesse caminho seria uma porta de
+ * XSS aberta de graça.
+ */
+function TextoFormatado({ texto }) {
+  const linhas = String(texto || '').split('\n');
+
+  const negrito = (linha, chaveBase) =>
+    linha.split(/\*\*(.+?)\*\*/g).map((parte, i) => (
+      // Índices ímpares são o conteúdo capturado entre os asteriscos.
+      i % 2 === 1
+        ? <strong key={`${chaveBase}-${i}`} className="font-semibold">{parte}</strong>
+        : parte
+    ));
+
+  return (
+    <div className="space-y-1">
+      {linhas.map((linha, i) => {
+        const limpa = linha.trim();
+
+        if (!limpa) return <div key={i} className="h-1.5" />;
+
+        const item = limpa.match(/^[-•*]\s+(.*)$/);
+        if (item) {
+          return (
+            <div key={i} className="flex gap-2 pl-0.5">
+              <span className="text-faint select-none flex-shrink-0">•</span>
+              <span>{negrito(item[1], i)}</span>
+            </div>
+          );
+        }
+
+        return <div key={i}>{negrito(limpa, i)}</div>;
+      })}
     </div>
   );
 }
@@ -113,13 +168,13 @@ function Bolha({ mensagem }) {
       </div>
       <div className="max-w-[80%]">
         <div
-          className={`rounded-2xl rounded-bl-md px-4 py-2.5 text-sm border whitespace-pre-wrap ${
+          className={`rounded-2xl rounded-bl-md px-4 py-2.5 text-sm border leading-relaxed ${
             mensagem.ehAviso
               ? 'bg-amber-50 border-amber-200 text-amber-900'
               : 'bg-surface border-border text-ink'
           }`}
         >
-          {mensagem.texto}
+          <TextoFormatado texto={mensagem.texto} />
         </div>
         {!mensagem.ehAviso && <DeOndeVeio consultas={mensagem.consultasUsadas} />}
       </div>
@@ -177,7 +232,10 @@ export default function AssistentePage() {
   const [rascunho, setRascunho] = useState('');
   const fim = useRef(null);
 
+  // Só rola quando há conversa. Rolar com a tela vazia empurra o convite
+  // inicial para fora do quadro e ele aparece cortado no topo.
   useEffect(() => {
+    if (!mensagens.length && !pensando) return;
     fim.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [mensagens, pensando]);
 
