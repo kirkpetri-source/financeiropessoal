@@ -181,3 +181,53 @@ describe('reconhecerChamado', () => {
     expect(reconhecerChamado('Nina: quanto?', 'Nina').resto).toBe('quanto?');
   });
 });
+
+/**
+ * Vocativo com pontuação ou saudação antes.
+ *
+ * No teste ao vivo de 19/08/2026 a mensagem ", Nina, gastei 200 no mercado tá
+ * muito?" NÃO foi reconhecida como chamado: o roteador mandou para o fluxo de
+ * lançamento e ela virou um gasto de R$ 200, quando a pessoa queria conversar.
+ * A causa era olhar só a PRIMEIRA palavra — e a primeira palavra era a vírgula.
+ */
+describe('reconhecerChamado — o nome não precisa ser a primeira palavra', () => {
+  const chamou = (t) => reconhecerChamado(t, 'Nina').chamou;
+
+  it('reconhece depois de vírgula solta', () => {
+    expect(chamou(', Nina, gastei 200 no mercado tá muito?')).toBe(true);
+  });
+
+  it('reconhece depois de ponto ou traço', () => {
+    expect(chamou('. Nina quanto gastei')).toBe(true);
+    expect(chamou('- Nina quanto gastei')).toBe(true);
+  });
+
+  it('reconhece depois de saudação — o jeito mais natural de falar', () => {
+    expect(chamou('Oi Nina, quanto gastei')).toBe(true);
+    expect(chamou('Bom dia Nina, quanto gastei')).toBe(true);
+    expect(chamou('Boa noite, Nina, me ajuda')).toBe(true);
+  });
+
+  it('devolve a pergunta limpa, sem a saudação nem o nome', () => {
+    expect(reconhecerChamado('Bom dia Nina, quanto gastei', 'Nina').resto)
+      .toBe('quanto gastei');
+    expect(reconhecerChamado(', Nina, gastei 200 no mercado', 'Nina').resto)
+      .toBe('gastei 200 no mercado');
+  });
+
+  it('continua tolerando erro de transcrição depois da saudação', () => {
+    expect(chamou('Oi Nyna quanto gastei')).toBe(true);
+  });
+
+  // A fronteira que não pode ser perdida: nome como ASSUNTO não é chamado.
+  it('não confunde o nome no meio da frase com um chamado', () => {
+    expect(chamou('vou levar a Nina no mercado')).toBe(false);
+    expect(chamou('gastei 50 no mercado com a Nina')).toBe(false);
+    expect(chamou('comprei um presente para Nina ontem')).toBe(false);
+  });
+
+  it('mensagem que é só saudação não vira chamado', () => {
+    expect(chamou('bom dia')).toBe(false);
+    expect(chamou('oi')).toBe(false);
+  });
+});

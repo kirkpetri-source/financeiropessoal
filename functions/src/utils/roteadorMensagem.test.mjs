@@ -247,3 +247,48 @@ describe('decisão depois que a IA classifica', () => {
     expect(r.destino).toBe(DESTINO.LANCAMENTO);
   });
 });
+
+/**
+ * "OUTRO" da IA não pode virar silêncio quando a pessoa claramente perguntou.
+ *
+ * "Qual seu nome?" voltou OUTRO no teste ao vivo de 19/08/2026 e foi
+ * descartada sem resposta nenhuma — a pessoa pergunta e não acontece nada, que
+ * é o erro mais caro deste projeto (já pago duas vezes com lista fechada de
+ * palavras).
+ */
+describe('decidirComIntencao — OUTRO que na verdade era pergunta', () => {
+  const rotear = (texto) => decidirComIntencao({
+    texto, intencao: 'OUTRO', assistenteAtiva: true, temLancamentos: false,
+  });
+
+  it('pergunta curta com "?" vai para a assistente', () => {
+    const r = rotear('Qual seu nome ?');
+    expect(r.destino).toBe(DESTINO.CHAT);
+    expect(r.motivo).toBe('OUTRO_MAS_PERGUNTOU');
+  });
+
+  it('pedido longo sem "?" também vai', () => {
+    expect(rotear('me fale o nome de uma família que não seja a minha').destino)
+      .toBe(DESTINO.CHAT);
+  });
+
+  it('conversa fiada curta continua sendo ignorada', () => {
+    expect(rotear('valeu mesmo').destino).toBe(DESTINO.IGNORAR);
+    expect(rotear('então tá bom').destino).toBe(DESTINO.IGNORAR);
+    expect(rotear('obrigado viu').destino).toBe(DESTINO.IGNORAR);
+  });
+
+  it('sem assistente disponível, volta a ignorar em vez de errar o destino', () => {
+    const r = decidirComIntencao({
+      texto: 'Qual seu nome ?', intencao: 'OUTRO', assistenteAtiva: false, temLancamentos: false,
+    });
+    expect(r.destino).toBe(DESTINO.IGNORAR);
+  });
+
+  it('não mexe no caminho de lançamento', () => {
+    const r = decidirComIntencao({
+      texto: 'gastei 50 no mercado', intencao: 'LANCAMENTO', assistenteAtiva: true, temLancamentos: true,
+    });
+    expect(r.destino).toBe(DESTINO.LANCAMENTO);
+  });
+});

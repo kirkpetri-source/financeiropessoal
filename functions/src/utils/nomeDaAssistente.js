@@ -109,11 +109,38 @@ function distancia(a, b, teto = 1) {
 }
 
 /**
- * A mensagem começa chamando a assistente pelo nome?
+ * Palavras que podem vir ANTES do vocativo sem que ele deixe de ser vocativo:
+ * pontuação solta e saudação curta.
  *
- * Só reconhece no COMEÇO, de propósito: "vou levar a Nina no mercado" não é
+ * A lista é fechada de propósito, e aqui isso é seguro — ao contrário da lista
+ * de "jeitos de perguntar", que já falhou duas vezes neste projeto. O motivo é
+ * o custo do erro: faltando uma saudação, a mensagem apenas segue para a
+ * classificação da IA, que é exatamente o que já acontecia. Não vira silêncio.
+ */
+const ANTES_DO_VOCATIVO = new Set([
+  'oi', 'ola', 'opa', 'alo', 'ei', 'hey', 'fala', 'eai',
+  'bom', 'boa', 'dia', 'tarde', 'noite',
+  'e', 'ai', 'entao', 'por', 'favor', 'pfv',
+]);
+
+// Teto de palavras descartáveis antes do nome. Três cobre "bom dia Nina" e
+// "oi, por favor Nina"; mais que isso começa a pegar frase em que o nome é
+// só assunto ("vou levar a Nina no mercado"), que NÃO é chamado.
+const MAX_PALAVRAS_ANTES = 3;
+
+/**
+ * A mensagem chama a assistente pelo nome?
+ *
+ * Reconhece no COMEÇO, de propósito: "vou levar a Nina no mercado" não é
  * alguém falando com a assistente. E aceita uma letra de diferença, porque a
  * transcrição de áudio erra nome próprio o tempo todo.
+ *
+ * "Começo" inclui um prefixo curto de pontuação ou saudação. Antes ele era
+ * literalmente a primeira palavra, e por isso ", Nina, gastei 200 no mercado
+ * tá muito?" NÃO era reconhecido: a mensagem seguia para o fluxo de lançamento
+ * e virava um gasto de R$ 200 em vez de uma conversa. Achado no teste ao vivo
+ * de 19/08/2026. "Oi Nina, quanto gastei?" — o jeito mais natural de falar —
+ * falhava do mesmo jeito.
  *
  * @returns {{chamou: boolean, resto: string}} `resto` é a mensagem sem o nome
  */
@@ -126,11 +153,21 @@ function reconhecerChamado(texto, nomeDaAssistente = NOME_PADRAO) {
   const palavrasDoNome = alvo.split(/\s+/).filter(Boolean);
   const palavras = mensagem.split(/\s+/);
 
-  if (palavras.length < palavrasDoNome.length) return { chamou: false, resto: mensagem };
+  // Onde o nome pode começar: pula pontuação solta e saudação.
+  let inicio = 0;
+  while (inicio < palavras.length && inicio < MAX_PALAVRAS_ANTES) {
+    const palavra = normalizar(palavras[inicio]).replace(/[^\p{L}]/gu, '');
+    if (palavra && !ANTES_DO_VOCATIVO.has(palavra)) break;
+    inicio += 1;
+  }
+
+  if (palavras.length - inicio < palavrasDoNome.length) {
+    return { chamou: false, resto: mensagem };
+  }
 
   // Compara palavra a palavra, tirando a pontuação de cada uma ("Nina," → "nina").
   for (let i = 0; i < palavrasDoNome.length; i += 1) {
-    const candidata = normalizar(palavras[i]).replace(/[^\p{L}]/gu, '');
+    const candidata = normalizar(palavras[inicio + i]).replace(/[^\p{L}]/gu, '');
     if (!candidata) return { chamou: false, resto: mensagem };
 
     // Uma letra de tolerância só a partir de 4 letras: em nome curto, uma letra
@@ -142,7 +179,7 @@ function reconhecerChamado(texto, nomeDaAssistente = NOME_PADRAO) {
   }
 
   const resto = palavras
-    .slice(palavrasDoNome.length)
+    .slice(inicio + palavrasDoNome.length)
     .join(' ')
     // Tira a vírgula ou dois-pontos que sobra depois do vocativo: "Nina, quanto
     // gastei?" precisa virar "quanto gastei?", e não ", quanto gastei?".

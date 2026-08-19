@@ -132,6 +132,27 @@ function decidirSemIA({ texto, nomeDaAssistente, ehComando, casouRegra, assisten
   return { destino: null, texto: mensagem, motivo: 'INDEFINIDO' };
 }
 
+// Quantas palavras já fazem uma mensagem deixar de ser "valeu, tá ótimo".
+const PALAVRAS_DE_FRASE = 5;
+
+/**
+ * A mensagem é pergunta ou pedido, mesmo a IA tendo dito que não é nem
+ * lançamento nem pergunta?
+ *
+ * Dois sinais baratos e que não dependem de vocabulário — a lição do
+ * `CATEGORY_MAP` e da lista de aberturas de pergunta: o ponto de interrogação,
+ * e o tamanho. "Qual seu nome?" tem o primeiro; "me fale o nome de uma família
+ * que não seja a minha" tem o segundo. "valeu mesmo" não tem nenhum dos dois.
+ */
+function ehPerguntaOuPedidoLongo(texto) {
+  const limpo = String(texto || '').trim();
+  if (!limpo) return false;
+
+  if (limpo.includes('?')) return true;
+
+  return limpo.split(/\s+/).filter(Boolean).length >= PALAVRAS_DE_FRASE;
+}
+
 /**
  * Decisão depois que a IA classificou a intenção.
  *
@@ -154,8 +175,21 @@ function decidirComIntencao({ texto, intencao, assistenteAtiva = true, temLancam
 
   // A IA disse que não é nem uma coisa nem outra E não extraiu lançamento
   // nenhum: era conversa. Responder "não entendi" a um "bom dia" é ruído.
+  //
+  // MAS a classificação erra para o lado do silêncio, que é o erro caro deste
+  // projeto. "Qual seu nome?" — pergunta legítima, dirigida à assistente —
+  // voltou OUTRO no teste ao vivo de 19/08/2026 e foi descartada sem resposta
+  // nenhuma. Só que a pessoa perguntou. Por isso o OUTRO só ignora quando a
+  // mensagem também PARECE conversa fiada: sem ponto de interrogação e curta.
+  // Frase longa ou com "?" é pedido, mesmo que a IA não tenha sabido dizer de
+  // quê — e aí ir para a assistente custa uma resposta, não um silêncio.
   if (intencao === 'OUTRO' && !temLancamentos) {
-    return { destino: DESTINO.IGNORAR, texto: mensagem, motivo: 'IA_DISSE_OUTRO' };
+    if (!ehPerguntaOuPedidoLongo(mensagem)) {
+      return { destino: DESTINO.IGNORAR, texto: mensagem, motivo: 'IA_DISSE_OUTRO' };
+    }
+    return assistenteAtiva
+      ? { destino: DESTINO.CHAT, texto: mensagem, motivo: 'OUTRO_MAS_PERGUNTOU' }
+      : { destino: DESTINO.IGNORAR, texto: mensagem, motivo: 'IA_DISSE_OUTRO' };
   }
 
   return { destino: DESTINO.LANCAMENTO, texto: mensagem, motivo: 'IA_DISSE_LANCAMENTO' };
