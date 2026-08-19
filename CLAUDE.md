@@ -26,7 +26,7 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 539 testes (vitest)
+npm test                 # 810 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed              # só categorias e formas de pagamento padrão
@@ -39,6 +39,12 @@ node tools/testar-canal-ponta-a-ponta.js <id> --manter
 node tools/testar-subcategoria-ponta-a-ponta.js      # CRUD + lançamento com subcategoria, família descartável
 node tools/testar-importacao-ponta-a-ponta.js        # extrato: janela retroativa + trava de duplicidade, família descartável
 node tools/testar-notificacao-cadastro.js            # simula o aviso de cadastro novo; --enviar manda de verdade
+
+# Assistente de IA (Nina) — todos exigem ALVO=staging, recusam rodar em producao
+ALVO=staging node tools/testar-consultor-ponta-a-ponta.js   # conversa real com o Gemini, familia descartavel
+ALVO=staging node tools/testar-roteador-whatsapp.js         # prova que lancamento nao regride
+ALVO=staging node tools/criar-conta-de-teste-staging.js     # conta completa p/ testar a tela; --apagar limpa
+STAGING_WEB_API_KEY=<chave> ALVO=staging node tools/testar-rota-assistente.js  # rota HTTP com login real
 node tools/marcar-conta-interna.js <id> --confirmar  # cortesia vitalícia
 node tools/apagar-familia.js <id> --confirmar        # limpa conta de teste
 node tools/criar-login-operador.js --confirmar       # cria/reseta a senha do painel gestor (/plataforma)
@@ -64,7 +70,7 @@ O código é o mesmo; o que muda é para onde ele aponta.
 |---|---|---|
 | Projeto Firebase | `revelacash-staging` | `financeiropessoal-29b32` |
 | Quem usa | ninguém — banco de teste | **13 famílias reais, pagantes** |
-| Firestore | `southamerica-east1`, vazio | `southamerica-east1`, 355 lançamentos |
+| Firestore | `southamerica-east1`, vazio | `southamerica-east1`, 357 lançamentos |
 | API | `southamerica-east1-revelacash-staging.cloudfunctions.net/api` | a de sempre |
 | App Check | **desligado, permanente** | `true`, sempre |
 | Mercado Pago / Evolution | secrets de descarte, nada real | credenciais de produção |
@@ -248,6 +254,14 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     dele**: quando ele disser um dos dois, é esse ambiente, sem interpretar.
     Na dúvida, perguntar — nunca presumir produção.
 
+18. **A assistente de IA (Nina) está liberada SÓ para a família de teste.**
+    `ASSISTENTE_FAMILIAS` no `.env` de produção lista quem a enxerga — hoje só
+    `bgo6KJKTgCqC1HN2Jqzh` (Família Vinicius, conta de teste do Kirk). Todas as
+    outras 12 famílias seguem com o sistema exatamente como antes. Esvaziar a
+    variável libera para todos; `ASSISTENTE_ATIVA=false` desliga tudo sem
+    deploy e vence a lista. Com lista configurada, chamada SEM householdId
+    fica de fora — liberar por omissão seria o erro mais caro aqui.
+
 ## Armadilhas já pagas (não repetir)
 
 - **Script em `tools/` apontava para PRODUÇÃO sempre, sem dizer.** Até
@@ -263,6 +277,30 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   `serviceAccountKey.staging.json.json` porque o Explorer esconde extensões
   conhecidas. Ao pedir um arquivo com nome exato para o Kirk, conferir o nome
   real com `ls` antes de concluir que ele não fez.
+- **`maxOutputTokens` do Gemini 3.x inclui os tokens de RACIOCÍNIO do modelo,
+  não só o texto que a pessoa lê.** Medido em 18/08/2026: numa pergunta de
+  conselho, teto 800 → 764 tokens pensando + 32 de resposta + `MAX_TOKENS`
+  (frase cortada no meio); teto 3000 → 735 pensando + 121 de resposta + `STOP`.
+  Baixar o teto para "economizar" come a RESPOSTA, nunca o pensamento — quem
+  faz a resposta ser curta é a instrução do prompt. Não dá para desligar o
+  raciocínio neste modelo (`thinkingBudget: 0` é recusado). E **conferir
+  `finishReason`**: até esta data nenhuma chamada ao Gemini no projeto conferia,
+  então resposta truncada chegava ao cliente como se fosse completa. Isso
+  também dobra a conta de saída, que é o token mais caro — qualquer estimativa
+  de custo de IA feita sem contar o pensamento está errada.
+- **Lista fechada de palavras-chave falha em SILÊNCIO.** Já tinha cobrado o
+  projeto uma vez (`CATEGORY_MAP` mandando estabelecimento real para "Outros")
+  e cobrou de novo em 18/08/2026: o filtro que decidia se uma mensagem do
+  WhatsApp era pergunta tinha uma lista de aberturas ("quanto", "quais",
+  "como"). "Detalhe os gastos de moradia" não estava nela e a mensagem foi
+  descartada sem virar log — a pessoa fala e nada acontece. Português tem
+  jeitos demais de pedir a mesma coisa. **Inverter**: listar o que BARRA (oi,
+  bom dia, obrigado, ok, kkk — curta e estável) e deixar o resto passar. O erro
+  muda de lado e fica muito mais barato.
+- **`looksLikeFinancialMessage` responde NÃO para toda pergunta.** Ele procura
+  valor e palavra de gasto; "quanto gastei em mercado?" não tem valor. Qualquer
+  coisa nova que dependa de mensagens que NÃO são lançamento não pode ficar
+  atrás desse filtro.
 - **Cloud Run congela a CPU quando a resposta HTTP sai.** O webhook precisa
   processar ANTES de responder. A versão que respondia 200 na primeira linha
   perdia o trabalho no meio, sem deixar erro no log.

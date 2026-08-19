@@ -1,8 +1,110 @@
-# Estado do projeto — 18/08/2026 (ambiente de homologação no ar)
+# Estado do projeto — 18/08/2026 (assistente de IA em teste com 1 família)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
-## Sessão de 18/08/2026 — desenho do consultor de IA e ambiente de homologação
+## RETOMAR AQUI — assistente de IA (Nina), sessão de 18/08/2026
+
+Branch: **`feature/chat-ia`**, 18 commits, **nada em `main`** (o frontend não
+foi publicado). O BACKEND está em produção, com a assistente liberada só para
+a família de teste.
+
+### O que já está pronto e funcionando
+
+**Fase 1 — motor e painel (completa).**
+- `consultaFinanceiraService` — 10 ferramentas de leitura. Nenhuma aceita
+  `householdId`: ele vem preso no escopo antes de a IA existir na conversa
+- `acoesFinanceirasService` — registrar (delega para `lancarPorTexto`, o
+  caminho do WhatsApp que já existia), alterar e apagar em DUAS ETAPAS, com a
+  proposta gravada no servidor
+- `chatIAService` — orquestrador, prompt, catálogo filtrado por papel
+- `chatSessionService` — memória por família **e interlocutor**
+- `limiteChatService` — 20 conversas/dia, contador separado do de lançamento
+- `assistenteService` — fachada + interruptor + liberação por família
+- Rota `/assistente` e página `/assistente` no painel (layout de coluna única,
+  com "ver de onde veio" abrindo as consultas usadas)
+
+**Fase 2 — WhatsApp (quase completa).**
+- Nome da assistente com validação (entra no prompt: nome mal formado é
+  injeção) e casamento tolerante a erro de transcrição
+- Classificação de intenção reusando a chamada de IA que já acontecia
+- Roteador (`utils/roteadorMensagem.js`), a peça de maior risco
+- Mensagens de limite com data e hora do retorno
+
+### Estado em PRODUÇÃO
+
+Backend deployado. `ASSISTENTE_FAMILIAS=bgo6KJKTgCqC1HN2Jqzh` — só a **Família
+Vinicius** (conta de teste do Kirk, `liontech.sup@gmail.com`, dados fictícios,
+canal pareado) enxerga a assistente. As outras 12 famílias seguem exatamente
+como antes; verificado família por família depois do deploy.
+
+Desligar tudo sem deploy: `ASSISTENTE_ATIVA=false`.
+
+### Teste ao vivo pelo WhatsApp — 3 falhas achadas e corrigidas
+
+O Kirk testou de verdade pelo WhatsApp da Lion Tech. **Nenhuma das três falhas
+tinha sido pega pelos 810 testes automatizados** — todas moram na borda entre o
+WhatsApp real e o sistema.
+
+1. **Pergunta sem o nome era descartada em silêncio, sem virar log.**
+   `looksLikeFinancialMessage` responde NÃO para toda pergunta (procura valor).
+   Eu o havia deixado antes da classificação. "Nina quanto gastei" funcionava
+   (o nome resolve antes) e mascarou o problema.
+
+2. **Resposta chegou cortada no meio da frase, duas vezes.** Causa: o
+   `maxOutputTokens` do Gemini 3.x inclui os tokens de raciocínio — ver
+   armadilha nova no `CLAUDE.md`. Meu "conserto" anterior (baixar o teto para
+   400 no WhatsApp, para ganhar tempo) tinha PIORADO isso.
+
+3. **Conversa morria em "não consegui fechar uma resposta"** sempre que a
+   pergunta precisava de duas consultas. Bug no laço: o pedido de fechamento
+   era montado e nunca enviado.
+
+Depois da segunda correção, uma quarta falha do mesmo tipo: "Detalhe os gastos
+d moradia" também sumiu, porque minha correção usou **lista fechada de
+palavras** ("quanto", "quais", "como") e "detalhe" não estava nela. Invertido:
+agora passa tudo menos conversa fiada.
+
+### PENDÊNCIAS — o que fazer ao retomar
+
+1. **Mensagem processada DUAS vezes** (achado nos logs, não corrigido).
+   Mesmo `messageId`, dois registros, 1-2s de diferença, nas três perguntas
+   testadas. Significa **IA paga em dobro** em toda conversa. Causa: janela de
+   corrida entre `jaProcessada()` e a criação do log. **A correção certa é o
+   padrão que a importação de extrato já usa (regra 15): trava no BANCO, não
+   conferência da aplicação** — criar o log com `criarComId(messageId)`, que o
+   Firestore recusa se já existir.
+
+2. **Medir o custo real por pergunta.** A estimativa do desenho (R$ 0,03) está
+   ERRADA: não contava os ~700 tokens de raciocínio por chamada, nem a
+   duplicação. Pode estar 4 a 6 vezes acima. Medir e então rever a cota de
+   20/dia, que no limite ficaria cara demais.
+
+3. **Continuar o teste ao vivo** pelo WhatsApp (Família Vinicius), agora com as
+   4 correções no ar.
+
+4. Fase 3 (áudio nos dois canais) e Fase 4 (central de ajuda `/ajuda`, landing,
+   termos com aviso de persona de IA) — nenhuma começou.
+
+### Achados de manutenção (não relacionados à feature)
+
+- **`liontech.sup@gmail.com` está sem `householdId`** em `users` — a conta não
+  consegue entrar no painel (dá "sem família"), só funciona pelo WhatsApp.
+- **4 famílias com trial vencido** em 18/08: Weider e Aline (venceu no dia),
+  Lucas (1 dia), Raquel (2 dias), claudio (4 dias). Nada a ver com o deploy —
+  conferido pelas datas. Decidir: cobrar, estender ou marcar cortesia.
+
+### Documentos da feature
+
+- Desenho: `docs/superpowers/specs/2026-08-18-consultor-ia-conversacional-design.md`
+- Plano: `docs/superpowers/plans/2026-08-18-consultor-ia-implementacao.md`
+
+O desenho inclui a pesquisa de concorrência (Meu Assessor, ZapGastos,
+Financinha) e a análise de **Open Finance**: caminho direto exige autorização do
+Banco Central (a Lion Tech não se qualifica); via agregador, Pluggy custa
+R$ 2.500/mês — oito vezes a receita atual. Recomendação registrada: reabrir com
+~150 assinantes pagantes, começando pela TecnoSpeed (R$ 540/mês).
+
+## Sessão de 18/08/2026 — ambiente de homologação
 
 ### Bloco 1 — desenho do consultor conversacional (Nina)
 
