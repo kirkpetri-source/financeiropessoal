@@ -11,10 +11,13 @@ let trocasGravadas;
 
 const ia = { responder: vi.fn(async () => iaResposta) };
 
+let acaoPendenteResposta;
+
 const sessoes = {
   registrarTroca: vi.fn(async (_d, quem, troca) => { trocasGravadas.push({ quem, ...troca }); }),
   historico: vi.fn(async () => [{ papel: 'usuario', texto: 'oi' }]),
   limpar: vi.fn(async () => {}),
+  lerAcaoPendente: vi.fn(async () => acaoPendenteResposta),
 };
 
 const limite = {
@@ -35,6 +38,7 @@ beforeEach(() => {
   iaResposta = { texto: 'Você gastou R$ 520,00 em Mercado.', ferramentasUsadas: ['gastoPorCategoria'] };
   cotaResposta = { permitido: true, percentual: 15 };
   usoResposta = { percentual: 15, esgotado: false };
+  acaoPendenteResposta = null;
 });
 
 describe('responder', () => {
@@ -228,5 +232,72 @@ describe('histórico', () => {
     await svc().limparConversa({ householdId: FAMILIA, interlocutor: QUEM });
 
     expect(sessoes.limpar).toHaveBeenCalledWith({ householdId: FAMILIA }, QUEM);
+  });
+});
+
+
+/**
+ * O WhatsApp precisa saber se a pessoa está respondendo "sim" a uma proposta,
+ * porque "sim" está na lista de conversa fiada do roteador e seria descartado.
+ * Foi assim que uma alteração ficou pendente para sempre no teste ao vivo de
+ * 19/08/2026: a Nina propôs, o Kirk disse "Sim" e depois "Confirmo", e nada
+ * aconteceu — nem a alteração, nem uma resposta.
+ */
+describe('temAcaoPendente', () => {
+  const daFamilia = (extra = {}) => ({ householdId: FAMILIA, interlocutor: QUEM, ...extra });
+
+  it('diz que sim quando existe proposta dentro do prazo', async () => {
+    acaoPendenteResposta = {
+      tipo: 'ALTERAR',
+      expiraEm: new Date(Date.now() + 5 * 60000).toISOString(),
+    };
+
+    expect(await svc().temAcaoPendente(daFamilia())).toBe(true);
+  });
+
+  it('diz que não quando não há proposta nenhuma', async () => {
+    acaoPendenteResposta = null;
+
+    expect(await svc().temAcaoPendente(daFamilia())).toBe(false);
+  });
+
+  it('trata proposta vencida como inexistente', async () => {
+    // Responder "expirou" a um "ok" solto custaria uma chamada de IA. O prazo
+    // é curto de propósito; passou, volta a ser conversa fiada.
+    acaoPendenteResposta = {
+      tipo: 'ALTERAR',
+      expiraEm: new Date(Date.now() - 60000).toISOString(),
+    };
+
+    expect(await svc().temAcaoPendente(daFamilia())).toBe(false);
+  });
+
+  it('aceita proposta sem prazo declarado', async () => {
+    acaoPendenteResposta = { tipo: 'APAGAR' };
+
+    expect(await svc().temAcaoPendente(daFamilia())).toBe(true);
+  });
+
+  it('nem consulta o banco quando a assistente está desligada', async () => {
+    process.env[INTERRUPTOR] = 'false';
+    acaoPendenteResposta = { tipo: 'ALTERAR' };
+
+    expect(await svc().temAcaoPendente(daFamilia())).toBe(false);
+    expect(sessoes.lerAcaoPendente).not.toHaveBeenCalled();
+  });
+
+  it('nem consulta o banco quando a família está fora da lista de liberação', async () => {
+    process.env[LISTA] = 'outra-familia';
+    acaoPendenteResposta = { tipo: 'ALTERAR' };
+
+    expect(await svc().temAcaoPendente(daFamilia())).toBe(false);
+    expect(sessoes.lerAcaoPendente).not.toHaveBeenCalled();
+  });
+
+  it('sem interlocutor não procura proposta de ninguém', async () => {
+    acaoPendenteResposta = { tipo: 'ALTERAR' };
+
+    expect(await svc().temAcaoPendente({ householdId: FAMILIA, interlocutor: null })).toBe(false);
+    expect(sessoes.lerAcaoPendente).not.toHaveBeenCalled();
   });
 });

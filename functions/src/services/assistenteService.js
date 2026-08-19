@@ -99,6 +99,33 @@ function criarAssistente({ ia, sessoes, limite, escopoDe }) {
     };
   }
 
+  /**
+   * Existe uma proposta esperando "sim" desta pessoa AGORA?
+   *
+   * Serve para o WhatsApp: a alteração e a exclusão acontecem em duas etapas,
+   * e a resposta de confirmação é quase sempre uma palavra só — "sim", "ok",
+   * "confirmo". O roteador trata isso como conversa fiada e descarta, então a
+   * proposta ficava pendente para sempre e a pessoa não recebia nada. Ver o
+   * comentário do desvio em evolutionWebhook.
+   *
+   * Proposta vencida conta como inexistente: gastar uma chamada de IA para
+   * responder "expirou" a um "ok" solto sairia mais caro que o silêncio, e o
+   * prazo é curto (10 minutos) de propósito.
+   *
+   * É a leitura de UM documento por ID, e só acontece nas mensagens que iam
+   * ser descartadas de qualquer jeito.
+   */
+  async function temAcaoPendente({ householdId, interlocutor }) {
+    if (!ativa(householdId) || !householdId || !interlocutor) return false;
+
+    const pendente = await sessoes.lerAcaoPendente(escopoDe(householdId), interlocutor);
+    if (!pendente) return false;
+
+    if (pendente.expiraEm && new Date(pendente.expiraEm) <= new Date()) return false;
+
+    return true;
+  }
+
   /** Uso do dia, sem consumir. Alimenta a porcentagem no painel. */
   async function uso(householdId) {
     if (!ativa(householdId)) return { ativa: false };
@@ -125,7 +152,7 @@ function criarAssistente({ ia, sessoes, limite, escopoDe }) {
     return { ativa: true, mensagens };
   }
 
-  return { responder, uso, limparConversa, historico };
+  return { responder, uso, limparConversa, historico, temAcaoPendente };
 }
 
 let _padrao = null;
@@ -169,4 +196,5 @@ module.exports = {
   uso: (...args) => servico().uso(...args),
   limparConversa: (...args) => servico().limparConversa(...args),
   historico: (...args) => servico().historico(...args),
+  temAcaoPendente: (...args) => servico().temAcaoPendente(...args),
 };

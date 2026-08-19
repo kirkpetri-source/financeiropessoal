@@ -101,6 +101,8 @@ async function montar() {
 
   const dados = escopoDe(FAMILIA);
   const mercado = await dados.criar('categories', { name: 'Mercado', type: 'EXPENSE', color: '#22c55e' });
+  const educacao = await dados.criar('categories', { name: 'Educação', type: 'EXPENSE', color: '#3b82f6' });
+  const saude = await dados.criar('categories', { name: 'Saúde', type: 'EXPENSE', color: '#ef4444' });
   await dados.criar('paymentMethods', { name: 'Pix' });
 
   const mes = new Date().toISOString().slice(0, 7);
@@ -117,6 +119,24 @@ async function montar() {
     origin: 'MANUAL',
     paidBy: 'Kirk',
   });
+
+  // O lançamento que o teste de duas etapas vai mexer: nasce em Educação,
+  // igual ao do teste ao vivo (o áudio da academia caiu em Educação).
+  const academia = await dados.criar('transactions', {
+    type: 'EXPENSE',
+    description: 'academia. Mensalidade academia.',
+    amount: 59.9,
+    categoryId: educacao.id,
+    subcategoryId: null,
+    paymentMethodId: null,
+    date: admin.firestore.Timestamp.fromDate(new Date(`${mes}-11T12:00:00Z`)),
+    referenceMonth: mes,
+    status: 'CONFIRMED',
+    origin: 'MANUAL',
+    paidBy: 'Kirk',
+  });
+
+  return { educacaoId: educacao.id, saudeId: saude.id, academiaId: academia.id };
 }
 
 async function limpar() {
@@ -141,7 +161,7 @@ async function principal() {
   console.log('\n=== WEBHOOK DO WHATSAPP — teste ponta a ponta ===');
   console.log(`Família descartável: ${FAMILIA}\n`);
 
-  await montar();
+  const ids = await montar();
 
   // 1. O BUG DE 18/08/2026: pergunta SEM o nome da assistente.
   //
@@ -217,6 +237,62 @@ async function principal() {
   const logsBomDia = await logsDe(idBomDia);
   checar('"bom dia" não virou log nem lançamento', logsBomDia.length === 0,
     `gravou ${logsBomDia.length}`);
+
+  // 6. O BUG DE 19/08/2026: alteração em duas etapas.
+  //
+  // A Nina propõe, a pessoa responde "Sim" — e antes da correção esse "Sim"
+  // morria no roteador (está na lista de conversa fiada) sem virar log nem
+  // resposta. A proposta ficava pendente para sempre. "Confirmo" morria no
+  // outro caminho: a IA classificava como OUTRO e o roteador mandava ignorar.
+  console.log('\n6. Alteração em duas etapas (propor -> "Sim" -> executar)');
+
+  const idPropor = `TESTE-PROPOR-${Date.now()}`;
+  await processarMensagemRecebida(
+    payload(idPropor, 'Nina, mude a categoria do lançamento da academia para Saúde'),
+  );
+
+  const sessoesComProposta = await db.collection('chatSessions')
+    .where('householdId', '==', FAMILIA).get();
+  const comPendencia = sessoesComProposta.docs.find((d) => d.data().acaoPendente);
+  checar('a assistente guardou a proposta no servidor', !!comPendencia,
+    'nenhuma sessão com acaoPendente');
+
+  const aindaEmEducacao = await db.collection('transactions').doc(ids.academiaId).get();
+  checar('NÃO alterou nada ainda (é proposta, não execução)',
+    aindaEmEducacao.data()?.categoryId === ids.educacaoId,
+    `categoryId=${aindaEmEducacao.data()?.categoryId}`);
+
+  // O "Sim" que sumia.
+  const idSim = `TESTE-SIM-${Date.now()}`;
+  await processarMensagemRecebida(payload(idSim, 'Sim'));
+
+  const logsSim = await logsDe(idSim);
+  checar('o "Sim" virou log (antes era descartado em silêncio)', logsSim.length === 1,
+    `gravou ${logsSim.length}`);
+
+  const depoisDoSim = await db.collection('transactions').doc(ids.academiaId).get();
+  const novaCategoriaId = depoisDoSim.data()?.categoryId;
+
+  // Confere pelo NOME, não pelo id: `categories` é coleção mista, e existe uma
+  // "Saúde" padrão global além da que a família cadastra. Resolver para a
+  // padrão é correto — travar o teste num id específico é que estava errado.
+  const novaCategoria = novaCategoriaId
+    ? (await db.collection('categories').doc(novaCategoriaId).get()).data()
+    : null;
+
+  checar('saiu de Educação depois do "Sim"', novaCategoriaId !== ids.educacaoId,
+    `continua em ${novaCategoriaId}`);
+  checar('a categoria agora é Saúde', novaCategoria?.name === 'Saúde',
+    `virou "${novaCategoria?.name}" (${novaCategoriaId})`);
+
+  // 7. "Sim" solto continua sendo conversa fiada. A correção não pode ter
+  //    transformado toda confirmação numa chamada de IA.
+  console.log('\n7. "Sim" sem proposta aberta continua sendo ignorado');
+  const idSimSolto = `TESTE-SIM-SOLTO-${Date.now()}`;
+  await processarMensagemRecebida(payload(idSimSolto, 'Sim'));
+  const logsSimSolto = await logsDe(idSimSolto);
+  checar('"Sim" sem proposta não vira log nem gasta IA', logsSimSolto.length === 0,
+    `gravou ${logsSimSolto.length}`);
 
   console.log(`\n===== ${passou} passaram, ${falhou} falharam =====\n`);
 

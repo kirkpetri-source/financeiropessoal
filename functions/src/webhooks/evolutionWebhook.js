@@ -266,6 +266,49 @@ async function processarMensagemRecebida(req) {
   const nomeDaAssistente = config?.nomeDaAssistente || NOME_PADRAO;
   const assistenteAtiva = assistenteService.ativa(householdId);
 
+  /**
+   * Quem está falando, no formato que a memória de conversa usa. Memorizado
+   * porque `telefoneEfetivo` vai ao banco, e a fórmula precisa ser IDÊNTICA à
+   * de `conversarComAssistente` — se as duas divergirem, a confirmação procura
+   * a proposta na sessão errada e não acha nada.
+   */
+  let _interlocutor;
+  async function interlocutorDaMensagem() {
+    if (_interlocutor === undefined) {
+      _interlocutor = `wa-${await telefoneEfetivo(msg.senderJid, householdId) || 'desconhecido'}`;
+    }
+    return _interlocutor;
+  }
+
+  /**
+   * A pessoa está respondendo "sim" a uma proposta da assistente?
+   *
+   * Alterar e apagar acontecem em duas etapas: a Nina propõe, a pessoa
+   * confirma. Só que a confirmação é quase sempre uma palavra — "sim", "ok",
+   * "confirmo" — e o roteador matava isso de duas formas diferentes: "sim"
+   * está na lista de conversa fiada e era descartado sem virar log; "confirmo"
+   * passava, mas a IA classificava como OUTRO e o roteador mandava ignorar.
+   * Resultado: a proposta ficava pendente para sempre e a pessoa não recebia
+   * NADA — nem a alteração, nem um aviso. Achado no teste ao vivo de
+   * 19/08/2026, com "Sim" e depois "Confirmo", os dois no vazio.
+   *
+   * Este desvio só é consultado nas mensagens que iam morrer de qualquer
+   * jeito, DEPOIS de comando e regra de lançamento terem sido descartados.
+   * Assim "gastei 50 no mercado" com uma proposta aberta continua virando
+   * lançamento, e a regra 3 do roteador segue de pé.
+   */
+  let _pendente;
+  async function respondendoAProposta() {
+    if (!assistenteAtiva) return false;
+    if (_pendente === undefined) {
+      _pendente = await assistenteService.temAcaoPendente({
+        householdId,
+        interlocutor: await interlocutorDaMensagem(),
+      });
+    }
+    return _pendente;
+  }
+
   // O comando é consultado antes de decidir, porque a decisão precisa saber se
   // casou — mas a resposta só é usada se o roteador mandar para COMANDO.
   const respostaDeComando = await tratarComando(msg.content, { householdId, remoteJid: msg.remoteJid, senderJid: msg.senderJid });
@@ -300,6 +343,13 @@ async function processarMensagemRecebida(req) {
   if (rota.destino === null
       && !looksLikeFinancialMessage(msg.content)
       && !(assistenteAtiva && pareceperguntaOuPedido(msg.content))) {
+    // Último filtro antes do silêncio: "sim", "ok", "isso mesmo" são conversa
+    // fiada — EXCETO quando a assistente acabou de propor uma alteração e está
+    // esperando exatamente essa palavra.
+    if (await respondendoAProposta()) {
+      await conversarComAssistente({ householdId, config, msg, texto: msg.content, nomeDaAssistente });
+      return;
+    }
     return;
   }
 
@@ -352,8 +402,15 @@ async function processarMensagemRecebida(req) {
     }
 
     // "bom dia" não merece um "não entendi" — era conversa, não tentativa de
-    // lançamento.
+    // lançamento. Mas "confirmo" também cai aqui como OUTRO, e aí é o oposto
+    // de conversa: é a resposta que a assistente está esperando.
     if (rotaFinal.destino === DESTINO.IGNORAR) {
+      if (await respondendoAProposta()) {
+        await conversarComAssistente({
+          householdId, config, msg, texto: msg.content, nomeDaAssistente, logExistente: log,
+        });
+        return;
+      }
       await updateLog(dados, log.id, { processingStatus: 'CANCELLED' });
       return;
     }
