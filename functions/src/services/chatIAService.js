@@ -19,7 +19,14 @@
  * — incluindo os caminhos de erro — ser testável sem rede.
  */
 
-const MODELO = 'gemini-3.6-flash';
+/**
+ * O modelo. A variável de ambiente existe para PODER MEDIR alternativas sem
+ * editar código — `GEMINI_MODELO_CHAT=gemini-3.5-flash-lite` roda a mesma
+ * bateria contra um modelo mais barato. Sem ela definida, é o padrão.
+ *
+ * Trocar o padrão aqui obriga a trocar PRECO_USD_POR_MILHAO junto (ver abaixo).
+ */
+const MODELO = process.env.GEMINI_MODELO_CHAT || 'gemini-3.6-flash';
 const URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 // Teto de idas ao banco por pergunta. Sem isso uma conversa pode virar um laço
@@ -60,22 +67,47 @@ const ORCAMENTO_DE_PENSAMENTO = 512;
 /**
  * Preço do modelo, em dólar por MILHÃO de tokens.
  *
- * Serve para transformar tokens em reais no log, que é a única forma de saber
- * se a cota diária está certa. A estimativa do desenho (R$ 0,03 por pergunta)
- * foi feita no papel e ignorava duas coisas: o pensamento conta como saída, e
- * uma pergunta com ferramenta custa VÁRIAS chamadas, não uma — cada rodada
- * reenvia a conversa inteira, então a entrada cresce a cada volta.
+ * TEM QUE SER O PREÇO DO MODELO EM `MODELO`, e isso já deu errado uma vez:
+ * a primeira versão desta tabela trazia 0,30/2,50, que é o preço do
+ * **Flash-Lite**, não do `gemini-3.6-flash` que este serviço usa. O custo
+ * medido saiu 2,2 vezes menor que o real e por algumas horas o projeto
+ * acreditou numa conta errada. Ao trocar `MODELO`, trocar isto junto.
+ *
+ * `entradaCacheada` é o pulo do gato: o Gemini cobra 10x menos pelos tokens
+ * que já estavam em cache, e neste serviço a entrada é ~95% do volume
+ * (prompt + catálogo de ferramentas + vocabulário, reenviados a cada rodada).
  *
  * Conferir em https://ai.google.dev/gemini-api/docs/pricing quando o modelo
  * mudar de nome (já aconteceu: ver a armadilha do gemini-2.0-flash desligado).
  */
-const PRECO_USD_POR_MILHAO = { entrada: 0.30, saida: 2.50 };
+const TABELA_DE_PRECOS = {
+  'gemini-3.6-flash': { entrada: 0.75, entradaCacheada: 0.075, saida: 3.75 },
+  'gemini-3.7-flash': { entrada: 0.75, entradaCacheada: 0.075, saida: 3.75 },
+  'gemini-3.5-flash': { entrada: 1.50, entradaCacheada: 0.15, saida: 9.00 },
+  'gemini-3.5-flash-lite': { entrada: 0.30, entradaCacheada: 0.03, saida: 2.50 },
+  'gemini-3.1-flash-lite': { entrada: 0.25, entradaCacheada: 0.025, saida: 1.50 },
+};
+
+// Modelo desconhecido cai no preço do mais CARO da tabela, de propósito: uma
+// conta de custo que erra para baixo é pior que nenhuma conta.
+const PRECO_USD_POR_MILHAO = TABELA_DE_PRECOS[MODELO]
+  || { entrada: 1.50, entradaCacheada: 0.15, saida: 9.00 };
 const USD_PARA_BRL = 5.40;
 
-/** Tokens -> reais. `saida` já inclui os tokens de raciocínio. */
-function custoEmReais({ entrada = 0, saida = 0 }) {
-  const usd = (entrada / 1e6) * PRECO_USD_POR_MILHAO.entrada
+/**
+ * Tokens -> reais.
+ *
+ * `entrada` é o total informado pela API e JÁ INCLUI o que veio do cache, por
+ * isso a parte cacheada é descontada antes de aplicar o preço cheio.
+ * `saida` já inclui os tokens de raciocínio.
+ */
+function custoEmReais({ entrada = 0, saida = 0, entradaCacheada = 0 }) {
+  const entradaCheia = Math.max(0, entrada - entradaCacheada);
+
+  const usd = (entradaCheia / 1e6) * PRECO_USD_POR_MILHAO.entrada
+    + (entradaCacheada / 1e6) * PRECO_USD_POR_MILHAO.entradaCacheada
     + (saida / 1e6) * PRECO_USD_POR_MILHAO.saida;
+
   return usd * USD_PARA_BRL;
 }
 
@@ -363,7 +395,9 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
     // Conta de tokens da pergunta INTEIRA, somando todas as rodadas. Sem isso
     // o custo por conversa era estimativa de papel — e estava errada, porque
     // ignorava o pensamento (que é saída, a mais cara) e as rodadas extras.
-    const uso = { entrada: 0, saida: 0, pensamento: 0, chamadasAoModelo: 0 };
+    const uso = {
+      entrada: 0, saida: 0, pensamento: 0, entradaCacheada: 0, chamadasAoModelo: 0,
+    };
 
     /** Soma o que a API informou nesta chamada. */
     function contabilizar(resposta) {
@@ -377,6 +411,12 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
       // `candidatesTokenCount` traz só o texto visível; o raciocínio vem
       // separado mas é cobrado como saída do mesmo jeito.
       uso.saida += (m.candidatesTokenCount || 0) + pensamento;
+
+      // Quanto da entrada o Gemini reaproveitou do cache implícito (10x mais
+      // barato). Só medindo dá para saber se o prefixo da conversa está
+      // estável o suficiente para o cache pegar — e a entrada é quase todo o
+      // custo deste serviço.
+      uso.entradaCacheada += m.cachedContentTokenCount || 0;
     }
 
     /** Fecha a conta, registra no log e devolve o resultado ao chamador. */
@@ -384,8 +424,13 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
       uso.custoBRL = Number(custoEmReais(uso).toFixed(4));
       // Sem o texto da conversa: o Cloud Logging guardaria dado financeiro
       // da família em texto puro.
+      const aproveitamento = uso.entrada > 0
+        ? Math.round((uso.entradaCacheada / uso.entrada) * 100)
+        : 0;
+
       console.log(`[ChatIA] canal=${canal} chamadas=${uso.chamadasAoModelo} `
         + `ferramentas=${ferramentasUsadas.length} entrada=${uso.entrada} `
+        + `(cache=${uso.entradaCacheada}/${aproveitamento}%) `
         + `saida=${uso.saida} (pensamento=${uso.pensamento}) `
         + `custo=R$${uso.custoBRL.toFixed(4)}`
         + (resultado.erro ? ` erro=${resultado.erro}` : ''));

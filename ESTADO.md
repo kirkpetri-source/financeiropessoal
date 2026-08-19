@@ -2,7 +2,135 @@
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
-## RETOMAR AQUI — assistente de IA (Nina), sessão de 18/08/2026
+## RETOMAR AQUI — custo da IA, decisão pendente (19/08/2026)
+
+### A pergunta em aberto (é do Kirk)
+
+A cota de 20 conversas/dia é apertada e o custo por pergunta é alto demais no
+modelo atual. **Nada foi trocado ainda** — o que existe é medição e pesquisa.
+A decisão é qual caminho seguir (ver "Recomendação" abaixo).
+
+### Custo real, medido — e a conta anterior estava ERRADA
+
+A primeira medição desta sessão (R$ 0,0177/pergunta) usava a tabela de preço
+do **Flash-Lite** aplicada ao **3.6-flash**, que é 2,5x mais caro na entrada.
+Corrigido e remedido contra o Gemini real:
+
+| | `gemini-3.6-flash` (atual) | `gemini-3.5-flash-lite` |
+|---|---|---|
+| custo por pergunta | **R$ 0,0453** | **R$ 0,0123** |
+| entrada (tokens) | 7.753 | 6.304 |
+| saída (tokens) | 687 (552 de raciocínio) | 152 (51) |
+| chamadas ao modelo | 2,8 | 2,4 |
+| **20/dia (teto)** | **R$ 27,19/mês = 109% da mensalidade** | R$ 7,37/mês = 30% |
+| 3/dia (uso real) | R$ 4,08/mês = 16% | R$ 1,11/mês = 4% |
+
+No modelo de hoje, uma família que usasse o teto todo dia **daria prejuízo**:
+R$ 27,19 de custo para R$ 24,90 de receita.
+
+### O cache NÃO é saída — está fechado por limitação do Gemini
+
+Era a solução óbvia (entrada é ~92% do volume, e token cacheado custa 10x
+menos). **Medido: 0% de aproveitamento em todas as chamadas.**
+
+Motivo, confirmado na documentação e em issues abertas: **o cache do Gemini
+não funciona junto com function calling.** O explícito recusa com todas as
+letras ("CachedContent cannot be used with GenerateContent request setting
+system_instruction, tools or tool_config") e o implícito simplesmente devolve
+zero, sem erro. Como a Nina é inteiramente construída sobre ferramentas, não
+há como usar cache sem desmontar o desenho.
+
+`chatIAService` agora mede e loga o aproveitamento (`cache=0/0%`) — se o
+Google liberar isso um dia, aparece sozinho no log.
+
+### BYOK (a ideia do Kirk: cliente usa a conta de IA dele)
+
+**Funciona tecnicamente, mas é o caminho errado para ESTE produto.**
+
+- Os dados continuariam vindo do nosso Firestore pelas nossas ferramentas. A
+  chave do cliente só paga a conta — ela **não** faz a IA dele "enxergar" o
+  sistema, nem exige nada disso.
+- O free tier do Gemini dá 1.500 requisições/dia, o que cobriria ~500
+  conversas/dia por família. De graça.
+- **Mas** exige que a pessoa crie conta no Google AI Studio, gere uma API key
+  e cole no sistema. Isso é infraestrutura — e bate de frente com a **regra 9**
+  ("O cliente nunca configura infraestrutura"), que existe porque um formulário
+  de config já apagou o canal de um cliente em produção.
+- A pesquisa de mercado é unânime: BYOK é padrão de **ferramenta de
+  desenvolvedor** (Warp, Kilo, Cline). Em produto para família, o passo de
+  colar a chave é onde se perde mais assinante do que se economiza em margem.
+
+Vale como **opção avançada futura** (quem quiser, liga), nunca como padrão.
+
+### Recomendação
+
+1. **Trocar para `gemini-3.5-flash-lite`** — 3,7x mais barato, resposta mais
+   rápida (menos raciocínio) e qualidade equivalente nas consultas. A perda
+   aparece só em pergunta de CONSELHO aberta, onde ele se sai pior. Já dá
+   para medir os dois com `GEMINI_MODELO_CHAT=<modelo>`.
+2. **Encolher a entrada.** São ~2.600 tokens de prompt + catálogo + vocabulário
+   reenviados a CADA rodada, e são 2,8 rodadas por pergunta. Cortar o catálogo
+   de 12 ferramentas e enxugar o prompt derruba o custo em qualquer modelo, sem
+   depender de cache.
+3. **Só então rever a cota.** Com o Lite, 20/dia custa 30% da mensalidade —
+   caberia até subir o teto.
+
+Modelo híbrido (Lite para consulta, Flash para conselho) é possível e junta o
+melhor dos dois, ao custo de decidir qual usar antes de saber o que a pergunta
+é. Fica como terceira opção.
+
+### O que JÁ está em produção e funcionando (sessão de 18-19/08)
+
+Backend deployado, assistente liberada só para a Família Vinicius
+(`ASSISTENTE_FAMILIAS`). Quatro bugs achados em teste ao vivo e corrigidos:
+
+1. **Log duplicado** — o caminho de fallback abria um segundo registro da mesma
+   mensagem (12 de 12 perguntas). O diagnóstico anterior culpava corrida entre
+   `jaProcessada()` e a gravação; os dados de produção mostraram zero corridas.
+   Corrigido reaproveitando o log.
+2. **"Sim"/"Confirmo" caíam no vazio** — alteração e exclusão em duas etapas
+   ficavam pendentes para sempre. "Sim" morria na lista de conversa fiada,
+   "Confirmo" era classificado como OUTRO e ignorado.
+3. **Vocativo com pontuação ou saudação antes** — ", Nina, gastei 200 no
+   mercado tá muito?" virou LANÇAMENTO de R$ 200 em vez de conversa, porque o
+   reconhecimento olhava só a primeira palavra. "Oi Nina, ..." falhava igual.
+4. **"Qual seu nome?" descartada em silêncio** — classificada como OUTRO. Agora
+   OUTRO só ignora se a mensagem também for curta e sem "?".
+
+Também nesta sessão: a **chave privada de produção estava sendo empacotada no
+deploy** (sem `ignore` no `firebase.json`), indo parar no container de
+homologação. Corrigido; pacote caiu de 474,74 KB para 347,35 KB.
+
+### Ferramentas novas
+
+```bash
+node tools/acompanhar-whatsapp.js <id>            # assiste ao teste ao vivo
+node tools/diagnostico-duplicidade-whatsapp.js    # separa as causas de duplicidade
+node tools/diagnostico-conta-sem-familia.js       # login que nao abre o painel
+node tools/zerar-limite-do-dia.js <id> --confirmar # destrava teste que bateu a cota
+ALVO=staging node tools/testar-webhook-ponta-a-ponta.js   # 18 verificacoes
+ALVO=staging node tools/medir-custo-assistente.js         # custo real, em reais
+GEMINI_MODELO_CHAT=gemini-3.5-flash-lite ALVO=staging node tools/medir-custo-assistente.js
+```
+
+### Pendências
+
+1. **Decidir o caminho de custo** (acima) — é a que trava as outras.
+2. **Limite de 20/dia**: com o modelo atual, 20 conversas somem em 15 minutos de
+   teste. Depende da decisão 1.
+3. A Nina **calcula** quando pedem porcentagem ("15% do que gastei" → ela
+   multiplicou). O número base veio da ferramenta, mas a propriedade declarada
+   é "a IA nunca calcula". Decidir se trava.
+4. **Corrida entre `jaProcessada()` e a gravação**: real, nunca observada (0 em
+   96 registros). Mudar o ID de `whatsappLogs` mexe em coleção com dado de
+   produção — decisão do Kirk.
+5. Fase 3 (áudio na assistente — hoje áudio só LANÇA, perguntar por áudio
+   devolve "não entendi") e Fase 4 (central de ajuda, landing, termos).
+6. **4 famílias com trial vencido**: Weider e Aline, Lucas, Raquel, claudio.
+
+---
+
+## Sessão de 18/08/2026 — assistente de IA (Nina), primeira versão
 
 Branch: **`feature/chat-ia`**, 18 commits, **nada em `main`** (o frontend não
 foi publicado). O BACKEND está em produção, com a assistente liberada só para
