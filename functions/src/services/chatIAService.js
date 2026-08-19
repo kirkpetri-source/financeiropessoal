@@ -27,14 +27,19 @@ const URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // diante, tudo pago por uma assinatura de preço fixo.
 const MAX_RODADAS = 2;
 
-// Resposta mais curta no WhatsApp não é só estética: cada token gerado é tempo
-// de espera dentro do webhook, e ali a mensagem tem que caber numa bolha de
-// qualquer jeito. Medido em homologação (18/08/2026): pergunta simples ~5s,
-// conselho com três consultas ~10s. Cortar o teto de saída pela metade no
-// canal é a economia mais barata de conseguir, sem mexer no que a assistente
-// consegue fazer.
+/**
+ * Teto de saída. É teto de SEGURANÇA contra resposta desgovernada, não
+ * ferramenta de concisão — quem faz a resposta ser curta é a instrução do
+ * prompt, que manda responder em poucas linhas.
+ *
+ * Já foi 400 no WhatsApp, para ganhar tempo dentro do webhook. Errado: o teste
+ * ao vivo de 18/08/2026 entregou ao cliente uma resposta cortada no meio da
+ * frase ("Se quiser ver a divisão por categoria ou"). Segundos economizados não
+ * pagam uma resposta truncada sobre o dinheiro de alguém — o corte volta a ser
+ * folgado nos dois canais.
+ */
 const MAX_TOKENS_RESPOSTA = 800;
-const MAX_TOKENS_WHATSAPP = 400;
+const MAX_TOKENS_WHATSAPP = 800;
 
 /**
  * As ferramentas, no formato de declaração que a API do modelo espera.

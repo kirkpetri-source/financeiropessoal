@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { decidirSemIA, decidirComIntencao, DESTINO } = require('./roteadorMensagem.js');
+const { decidirSemIA, decidirComIntencao, pareceperguntaOuPedido, DESTINO } = require('./roteadorMensagem.js');
 const { parseFinancialMessage } = require('./financialParser.js');
 
 /**
@@ -120,6 +120,57 @@ describe('mensagem vazia', () => {
   it('é ignorada sem custo', () => {
     expect(rotear('').destino).toBe(DESTINO.IGNORAR);
     expect(rotear('    ').destino).toBe(DESTINO.IGNORAR);
+  });
+});
+
+/**
+ * Estes testes existem por causa de uma falha real, no primeiro teste ao vivo
+ * (18/08/2026): "Quanto gastei em mercado ?" não recebeu resposta nenhuma —
+ * nem log foi gerado. O filtro barato `looksLikeFinancialMessage`, que protege
+ * a IA de lançamento, responde NÃO para toda pergunta (procura valor e palavra
+ * de gasto), e eu o havia deixado no caminho antes da classificação.
+ *
+ * O sintoma é o pior possível: silêncio. A pessoa fala com o sistema e nada
+ * acontece.
+ */
+describe('pareceperguntaOuPedido — o que salva a pergunta do filtro barato', () => {
+  const PERGUNTAS_REAIS = [
+    'Quanto gastei em mercado ?',
+    'quanto gastei esse mes',
+    'como posso diminuir minhas despesas?',
+    'quais sao minhas categorias',
+    'qual foi meu maior gasto',
+    'me da um resumo do mes',
+    'apaga o ultimo lancamento',
+    'muda a categoria pra lazer',
+    'compara com o mes passado',
+    'estou gastando muito?',
+  ];
+
+  for (const texto of PERGUNTAS_REAIS) {
+    it(`deixa passar: "${texto}"`, () => {
+      expect(pareceperguntaOuPedido(texto)).toBe(true);
+    });
+  }
+
+  // O filtro precisa continuar barrando conversa solta, senão toda mensagem
+  // vira chamada de IA paga.
+  const NAO_SAO_PERGUNTA = ['bom dia', 'obrigado', 'kkkk', 'ok', 'valeu', ''];
+
+  for (const texto of NAO_SAO_PERGUNTA) {
+    it(`barra: "${texto}"`, () => {
+      expect(pareceperguntaOuPedido(texto)).toBe(false);
+    });
+  }
+
+  it('funciona sem acento e em maiúscula', () => {
+    expect(pareceperguntaOuPedido('QUANTO GASTEI')).toBe(true);
+    expect(pareceperguntaOuPedido('Quanto gastei em mercado')).toBe(true);
+  });
+
+  it('a palavra precisa abrir a frase, não aparecer no meio', () => {
+    // "gastei quanto queria" é relato, não pergunta.
+    expect(pareceperguntaOuPedido('gastei quanto queria no mercado')).toBe(false);
   });
 });
 

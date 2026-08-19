@@ -32,6 +32,43 @@ const DESTINO = {
   IGNORAR: 'IGNORAR',
 };
 
+// Aberturas de pergunta e de pedido. Não é para entender a frase — é só para
+// saber se vale a pena gastar a chamada de IA que vai classificá-la.
+const ABERTURAS = [
+  'quanto', 'quais', 'qual', 'como', 'quando', 'onde', 'porque', 'por que',
+  'quem', 'me da', 'me de', 'me diga', 'me mostra', 'me mostre', 'mostra',
+  'mostre', 'lista', 'liste', 'apaga', 'apague', 'muda', 'mude', 'troca',
+  'troque', 'altera', 'altere', 'corrige', 'corrija', 'registra', 'registre',
+  'anota', 'anote', 'sugere', 'sugira', 'sugestao', 'compara', 'compare',
+  'estou', 'consigo', 'posso', 'preciso', 'tenho',
+];
+
+/**
+ * A mensagem parece uma pergunta ou um pedido?
+ *
+ * Existe porque `looksLikeFinancialMessage` (o filtro barato que protege a IA
+ * de lançamento) responde NÃO para toda pergunta — ele procura valor e palavra
+ * de gasto, e "quanto gastei em mercado?" não tem valor nenhum.
+ *
+ * Isso derrubou o primeiro teste ao vivo: com a assistente no ar, perguntas sem
+ * o nome eram descartadas em silêncio, antes mesmo de virar log. A pessoa
+ * perguntava e não acontecia nada.
+ *
+ * Deliberadamente permissivo — errar para o lado de deixar passar custa uma
+ * classificação de IA que já ia acontecer nesse caminho; errar para o outro
+ * lado é a pessoa falar com o sistema e ser ignorada. "bom dia" continua de
+ * fora, que é o caso que o filtro precisa barrar.
+ */
+function pareceperguntaOuPedido(texto) {
+  const limpo = String(texto || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  if (!limpo) return false;
+  if (limpo.includes('?')) return true;
+
+  return ABERTURAS.some((a) => limpo === a || limpo.startsWith(`${a} `));
+}
+
 /**
  * Decisão que não precisa de IA. É o que o webhook consulta ANTES de gastar
  * qualquer coisa.
@@ -107,4 +144,4 @@ function decidirComIntencao({ texto, intencao, assistenteAtiva = true, temLancam
   return { destino: DESTINO.LANCAMENTO, texto: mensagem, motivo: 'IA_DISSE_LANCAMENTO' };
 }
 
-module.exports = { decidirSemIA, decidirComIntencao, DESTINO };
+module.exports = { decidirSemIA, decidirComIntencao, pareceperguntaOuPedido, DESTINO };

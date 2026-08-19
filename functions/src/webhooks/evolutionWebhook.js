@@ -13,7 +13,7 @@ const {
 const { tratarComando } = require('../services/comandosWhatsapp');
 const { responder, confirmarLancamentos, ehMensagemDoBot } = require('../services/respostaWhatsapp');
 const { provedorDe } = require('../canais');
-const { decidirSemIA, decidirComIntencao, DESTINO } = require('../utils/roteadorMensagem');
+const { decidirSemIA, decidirComIntencao, pareceperguntaOuPedido, DESTINO } = require('../utils/roteadorMensagem');
 const assistenteService = require('../services/assistenteService');
 const { NOME_PADRAO } = require('../utils/nomeDaAssistente');
 
@@ -283,7 +283,16 @@ async function processarMensagemRecebida(req) {
 
   // Filtro barato antes de acionar a IA: conversa comum não vira lançamento.
   // Só vale para o caminho INDEFINIDO — o que casou a regra já passou direto.
-  if (rota.destino === null && !looksLikeFinancialMessage(msg.content)) return;
+  //
+  // `looksLikeFinancialMessage` responde NÃO para toda pergunta (procura valor
+  // e palavra de gasto, e "quanto gastei em mercado?" não tem valor). Sem o
+  // segundo teste, perguntas sem o nome eram descartadas em SILÊNCIO, antes de
+  // virar log — foi o que derrubou o primeiro teste ao vivo, em 18/08/2026.
+  if (rota.destino === null
+      && !looksLikeFinancialMessage(msg.content)
+      && !(assistenteAtiva && pareceperguntaOuPedido(msg.content))) {
+    return;
+  }
 
   // Deduplicação: a mesma mensagem pode chegar por reenvio do Evolution e
   // também pelo polling.
