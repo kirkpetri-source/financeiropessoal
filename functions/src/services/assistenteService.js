@@ -47,7 +47,14 @@ function ativa(householdId) {
   return !!householdId && lista.includes(householdId);
 }
 
-function criarAssistente({ ia, sessoes, limite, escopoDe }) {
+function criarAssistente({ ia, sessoes, limite, escopoDe, consultaDireta = null, agora = () => new Date() }) {
+  /** Mês corrente no fuso do Brasil — o Cloud Run roda em UTC. */
+  function mesCorrente() {
+    const d = agora();
+    const brasilia = new Date(d.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    return `${brasilia.getFullYear()}-${String(brasilia.getMonth() + 1).padStart(2, '0')}`;
+  }
+
   /**
    * Uma pergunta, do pedido à resposta.
    *
@@ -64,6 +71,53 @@ function criarAssistente({ ia, sessoes, limite, escopoDe }) {
     const texto = String(pergunta || '').trim();
     if (!texto) {
       return { erro: 'Escreva sua pergunta.', codigo: 'PERGUNTA_VAZIA' };
+    }
+
+    // CAMINHO SEM IA, e ele vem antes de tudo — inclusive da cota.
+    //
+    // Pergunta de consulta ("quanto gastei em mercado esse mês?") é respondida
+    // pelas mesmas agregações que a IA usaria, direto do banco: custo zero,
+    // resposta em menos de um segundo, número exato. Medido em 19/08/2026:
+    // 96,5% do que se pagava por pergunta era estrutura fixa do prompt, não
+    // dado — o produto pagava modelo caro para fazer uma soma.
+    //
+    // NÃO consome cota de propósito. O teto existe para conter gasto de IA, e
+    // aqui não há gasto nenhum: limitar consulta seria racionar o que é de
+    // graça. Só o conselho — que é o que realmente custa — passa a contar.
+    //
+    // Devolvendo `null`, o fluxo segue para a IA exatamente como antes.
+    if (consultaDireta) {
+      try {
+        const direta = await consultaDireta.responder({
+          dados: escopoDe(householdId),
+          pergunta: texto,
+          canal,
+          nomeDaIA: nomeDaIA || 'Nina',
+          mesCorrente: mesCorrente(),
+        });
+
+        if (direta) {
+          const dadosDaFamilia = escopoDe(householdId);
+          // A troca entra na memória igual: a pergunta seguinte pode ser um
+          // "e em julho?", e sem isto a IA não saberia do que se fala.
+          await sessoes.registrarTroca(dadosDaFamilia, interlocutor, {
+            pergunta: texto,
+            resposta: direta.texto,
+          });
+
+          const atual = await limite.consultarUso(householdId);
+          return {
+            texto: direta.texto,
+            consultasUsadas: direta.consultasUsadas,
+            semIA: true,
+            uso: { percentual: atual.percentual, esgotado: atual.esgotado },
+          };
+        }
+      } catch (err) {
+        // Falhar aqui NUNCA pode derrubar a pergunta: cai para a IA, que é o
+        // comportamento de sempre.
+        console.error(`[ConsultaDireta] Falhou, seguindo para a IA: ${err.message}`);
+      }
     }
 
     const cota = await limite.consumir(householdId);
@@ -182,7 +236,13 @@ function servico() {
     });
     const ia = criarChatIA({ consulta, acoes, sessoes, chamarModelo: chamarModeloReal });
 
-    _padrao = criarAssistente({ ia, sessoes, limite, escopoDe });
+    // A camada sem IA usa as MESMAS agregações que o orquestrador entrega à
+    // IA — é o mesmo `consulta`, de propósito: um único lugar produzindo os
+    // números, com ou sem modelo no caminho.
+    const { criarConsultaDireta } = require('./consultaDiretaService');
+    const consultaDireta = criarConsultaDireta({ consulta });
+
+    _padrao = criarAssistente({ ia, sessoes, limite, escopoDe, consultaDireta });
   }
   return _padrao;
 }

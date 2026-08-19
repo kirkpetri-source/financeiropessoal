@@ -301,3 +301,91 @@ describe('temAcaoPendente', () => {
     expect(sessoes.lerAcaoPendente).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * A camada sem IA.
+ *
+ * O que estes testes protegem: consulta respondida direto NÃO pode consumir
+ * cota (é de graça, racionar seria absurdo) e NÃO pode chamar o modelo. E, o
+ * mais importante, quando a camada não sabe responder, o fluxo antigo tem que
+ * seguir intacto — é isso que garante que nada regride.
+ */
+describe('consulta direta (sem IA)', () => {
+  const comCamada = (responder) => criarAssistente({
+    ia, sessoes, limite, escopoDe,
+    consultaDireta: { responder },
+    agora: () => new Date('2026-08-19T14:00:00Z'),
+  });
+
+  const pergunta = () => ({
+    householdId: FAMILIA, pergunta: 'quanto gastei em mercado esse mês?',
+    interlocutor: QUEM, canal: 'WHATSAPP',
+  });
+
+  it('responde sem chamar o modelo', async () => {
+    const svcDireto = comCamada(async () => ({
+      texto: 'Você gastou R$ 575,00 em Mercado.',
+      consultasUsadas: ['gastoPorCategoria'],
+    }));
+
+    const r = await svcDireto.responder(pergunta());
+
+    expect(r.texto).toContain('575');
+    expect(r.semIA).toBe(true);
+    expect(ia.responder).not.toHaveBeenCalled();
+  });
+
+  it('NÃO consome cota — consulta é de graça', async () => {
+    const svcDireto = comCamada(async () => ({ texto: 'ok', consultasUsadas: [] }));
+
+    await svcDireto.responder(pergunta());
+
+    expect(limite.consumir).not.toHaveBeenCalled();
+  });
+
+  it('registra a troca na memória, para o "e em julho?" seguinte funcionar', async () => {
+    const svcDireto = comCamada(async () => ({ texto: 'R$ 575,00', consultasUsadas: [] }));
+
+    await svcDireto.responder(pergunta());
+
+    expect(trocasGravadas).toHaveLength(1);
+    expect(trocasGravadas[0].resposta).toBe('R$ 575,00');
+  });
+
+  it('devolvendo null, o fluxo da IA segue exatamente como antes', async () => {
+    const svcDireto = comCamada(async () => null);
+
+    const r = await svcDireto.responder({ ...pergunta(), pergunta: 'como economizar?' });
+
+    expect(ia.responder).toHaveBeenCalledTimes(1);
+    expect(limite.consumir).toHaveBeenCalledTimes(1);
+    expect(r.semIA).toBeUndefined();
+    expect(r.texto).toContain('520');
+  });
+
+  it('se a camada quebrar, cai para a IA em vez de derrubar a pergunta', async () => {
+    const svcDireto = comCamada(async () => { throw new Error('Firestore fora do ar'); });
+
+    const r = await svcDireto.responder(pergunta());
+
+    expect(ia.responder).toHaveBeenCalledTimes(1);
+    expect(r.texto).toContain('520');
+  });
+
+  it('respeita o interruptor da feature antes de tudo', async () => {
+    process.env[INTERRUPTOR] = 'false';
+    const responder = vi.fn(async () => ({ texto: 'nao deveria', consultasUsadas: [] }));
+
+    const r = await comCamada(responder).responder(pergunta());
+
+    expect(r.codigo).toBe('DESLIGADA');
+    expect(responder).not.toHaveBeenCalled();
+  });
+
+  it('sem a camada montada, nada muda', async () => {
+    const r = await svc().responder(pergunta());
+
+    expect(ia.responder).toHaveBeenCalledTimes(1);
+    expect(r.texto).toContain('520');
+  });
+});
