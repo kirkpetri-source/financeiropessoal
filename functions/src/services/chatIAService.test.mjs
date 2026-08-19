@@ -214,9 +214,43 @@ describe('resiliência', () => {
 
     const r = await ia.responder({ dados: dadosFalsos, pergunta: 'x' });
 
-    // Não pode chamar o modelo infinitamente.
-    expect(chamarModelo.mock.calls.length).toBeLessThanOrEqual(MAX_RODADAS + 1);
+    // Não pode chamar o modelo infinitamente. O teto é MAX_RODADAS voltas de
+    // consulta + uma para pedir o fechamento + uma para o modelo redigir.
+    expect(chamarModelo.mock.calls.length).toBeLessThanOrEqual(MAX_RODADAS + 2);
     expect(r.texto).toBeTruthy();
+  });
+
+  // A volta extra existe para o modelo REDIGIR depois de esgotar as consultas.
+  // Sem ela o pedido de fechamento era montado e nunca enviado, e a conversa
+  // morria em "não consegui fechar uma resposta" — falha real vista em
+  // homologação (18/08/2026) em toda pergunta que precisava de duas consultas.
+  it('depois do teto, o modelo ainda tem a chance de responder', async () => {
+    const chamarModelo = vi.fn()
+      .mockResolvedValueOnce(pedeFerramenta('resumoDoMes', {}))
+      .mockResolvedValueOnce(pedeFerramenta('gastoPorCategoria', {}))
+      .mockResolvedValueOnce(pedeFerramenta('resumoDoMes', {}))   // insiste
+      .mockResolvedValueOnce(respondeTexto('Em agosto você gastou R$ 3.200,00.'));
+
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'como diminuir despesas?' });
+
+    expect(r.texto).toContain('3.200');
+    expect(r.texto).not.toMatch(/não consegui fechar/i);
+  });
+
+  it('o pedido de fechamento chega mesmo ao modelo', async () => {
+    const chamarModelo = vi.fn()
+      .mockResolvedValueOnce(pedeFerramenta('resumoDoMes', {}))
+      .mockResolvedValueOnce(pedeFerramenta('resumoDoMes', {}))
+      .mockResolvedValueOnce(pedeFerramenta('resumoDoMes', {}))
+      .mockResolvedValueOnce(respondeTexto('pronto'));
+
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+    await ia.responder({ dados: dadosFalsos, pergunta: 'x' });
+
+    const ultimaChamada = chamarModelo.mock.calls.at(-1)[0];
+    const textos = ultimaChamada.contents.flatMap((c) => c.parts.map((p) => p.text || ''));
+    expect(textos.some((t) => /sem pedir mais consultas/i.test(t))).toBe(true);
   });
 
   it('pergunta vazia não chama o modelo', async () => {
@@ -371,5 +405,71 @@ describe('instrução do sistema', () => {
       });
       expect(semCanal).toContain('markdown simples');
     });
+  });
+});
+
+/**
+ * Truncamento por teto de tokens — falha real, vista duas vezes em produção
+ * (18/08/2026). O `maxOutputTokens` do Gemini 3.x inclui os tokens de
+ * raciocínio interno: o modelo gasta ~700 pensando e o que sobra do teto é a
+ * resposta. Com teto apertado, a frase corta no meio e o cliente lê um número
+ * pela metade — pior que não responder.
+ */
+describe('resposta cortada pelo teto de tokens', () => {
+  function truncada() {
+    return {
+      candidates: [{
+        finishReason: 'MAX_TOKENS',
+        content: { parts: [{ text: 'Em agosto, Moradia representou R$ 2.074,75 (67%) e' }] },
+      }],
+    };
+  }
+
+  it('não entrega ao cliente uma resposta cortada', async () => {
+    const chamarModelo = vi.fn().mockResolvedValue(truncada());
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'como diminuir despesas?' });
+
+    expect(r.erro).toBe('RESPOSTA_TRUNCADA');
+    expect(r.texto).not.toContain('(67%) e');
+  });
+
+  it('explica o que fazer em vez de só falhar', async () => {
+    const chamarModelo = vi.fn().mockResolvedValue(truncada());
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'x' });
+    expect(r.texto).toMatch(/espec[íi]fic/i);
+  });
+
+  // Pedir ferramenta e bater no teto no meio do caminho é outra história: ali
+  // ainda há uma rodada pela frente, e cortar a conversa seria pior.
+  it('não interrompe quando o modelo estava pedindo uma consulta', async () => {
+    const chamarModelo = vi.fn()
+      .mockResolvedValueOnce({
+        candidates: [{
+          finishReason: 'MAX_TOKENS',
+          content: { parts: [{ functionCall: { name: 'resumoDoMes', args: {} } }] },
+        }],
+      })
+      .mockResolvedValueOnce(respondeTexto('Você gastou R$ 3.200,00 em agosto.'));
+
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'como foi o mês?' });
+
+    expect(r.erro).toBeUndefined();
+    expect(r.texto).toContain('3.200');
+  });
+
+  it('resposta completa passa normalmente', async () => {
+    const chamarModelo = vi.fn().mockResolvedValue({
+      candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'Resposta inteira.' }] } }],
+    });
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'x' });
+    expect(r.texto).toBe('Resposta inteira.');
+    expect(r.erro).toBeUndefined();
   });
 });

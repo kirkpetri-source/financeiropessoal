@@ -28,18 +28,34 @@ const URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_RODADAS = 2;
 
 /**
- * Teto de saída. É teto de SEGURANÇA contra resposta desgovernada, não
- * ferramenta de concisão — quem faz a resposta ser curta é a instrução do
- * prompt, que manda responder em poucas linhas.
+ * TETO DE SAÍDA — e a armadilha que ele esconde.
  *
- * Já foi 400 no WhatsApp, para ganhar tempo dentro do webhook. Errado: o teste
- * ao vivo de 18/08/2026 entregou ao cliente uma resposta cortada no meio da
- * frase ("Se quiser ver a divisão por categoria ou"). Segundos economizados não
- * pagam uma resposta truncada sobre o dinheiro de alguém — o corte volta a ser
- * folgado nos dois canais.
+ * `maxOutputTokens` no Gemini 3.x **inclui os tokens de raciocínio interno**
+ * do modelo, não só o texto que o usuário lê. Medido em produção
+ * (18/08/2026), numa pergunta de conselho:
+ *
+ *     maxOutputTokens: 800  ->  pensamento 764 · resposta 32 · MAX_TOKENS
+ *     maxOutputTokens: 3000 ->  pensamento 735 · resposta 121 · STOP
+ *
+ * Ou seja: o modelo gasta ~700 tokens pensando ANTES de escrever, e o que
+ * sobra do teto é a resposta. Com 800, sobram trinta e poucos tokens e a frase
+ * corta no meio — foi exatamente o que dois testes ao vivo entregaram ao
+ * cliente ("...divisão por categoria ou", "...(67%) e").
+ *
+ * Baixar o teto para "economizar" piora tudo: come a resposta, não o
+ * pensamento. Quem faz a resposta ser curta é a INSTRUÇÃO do prompt.
+ *
+ * Não é possível desligar o raciocínio neste modelo (`thinkingBudget: 0` é
+ * recusado com "invalid argument"); dá para pedir moderação, e o modelo trata
+ * como sugestão.
  */
-const MAX_TOKENS_RESPOSTA = 800;
-const MAX_TOKENS_WHATSAPP = 800;
+const MAX_TOKENS_RESPOSTA = 3000;
+const MAX_TOKENS_WHATSAPP = 3000;
+
+// Sugestão de quanto raciocinar. Não é obrigação — pedindo 256 o modelo usou
+// 522 no teste — mas puxa o consumo para baixo, e cada token de saída é o
+// componente mais caro da conta.
+const ORCAMENTO_DE_PENSAMENTO = 512;
 
 /**
  * As ferramentas, no formato de declaração que a API do modelo espera.
@@ -322,7 +338,12 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
     const declaracoes = ferramentasPara(permissoes).map(({ exigePermissao, ...decl }) => decl);
     const ferramentasUsadas = [];
 
-    for (let rodada = 0; rodada <= MAX_RODADAS; rodada += 1) {
+    // O laco vai ate MAX_RODADAS + 1 de proposito: as primeiras voltas sao
+    // para buscar dados, e a ultima existe so para o modelo REDIGIR com o que
+    // ja tem. Sem essa volta extra, o pedido de fechamento era montado e
+    // nunca chegava a ser enviado — a conversa morria em "nao consegui fechar
+    // uma resposta" sempre que a pergunta precisava de duas consultas.
+    for (let rodada = 0; rodada <= MAX_RODADAS + 1; rodada += 1) {
       let resposta;
       try {
         resposta = await chamarModelo({
@@ -332,6 +353,7 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
           generationConfig: {
             temperature: 0.3,
             maxOutputTokens: canal === 'WHATSAPP' ? MAX_TOKENS_WHATSAPP : MAX_TOKENS_RESPOSTA,
+            thinkingConfig: { thinkingBudget: ORCAMENTO_DE_PENSAMENTO },
           },
         });
       } catch (err) {
@@ -343,8 +365,21 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
         };
       }
 
-      const partes = resposta?.candidates?.[0]?.content?.parts || [];
+      const candidato = resposta?.candidates?.[0];
+      const partes = candidato?.content?.parts || [];
       const chamadas = partes.filter((p) => p.functionCall).map((p) => p.functionCall);
+
+      // Resposta cortada no meio da frase e pior que resposta nenhuma: o
+      // cliente le um numero pela metade e acredita. Aconteceu duas vezes em
+      // producao antes desta verificacao existir.
+      if (candidato?.finishReason === 'MAX_TOKENS' && !chamadas.length) {
+        console.error('[ChatIA] Resposta truncada pelo teto de tokens - nao entregue ao cliente.');
+        return {
+          texto: 'Essa resposta ficou longa demais e eu me perdi no meio. Pode perguntar de um jeito mais especifico? Por exemplo: "quanto gastei em mercado esse mes?"',
+          ferramentasUsadas,
+          erro: 'RESPOSTA_TRUNCADA',
+        };
+      }
 
       if (!chamadas.length) {
         const final = partes.map((p) => p.text).filter(Boolean).join('\n').trim();
@@ -354,8 +389,9 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
         };
       }
 
-      // Última rodada permitida: não executa mais nada, pede o fechamento.
-      if (rodada === MAX_RODADAS) {
+      // Chegou no teto de consultas: nao executa mais nada, pede o fechamento
+      // e deixa a volta seguinte redigir.
+      if (rodada >= MAX_RODADAS) {
         contents.push({ role: 'model', parts: partes });
         contents.push({
           role: 'user',
