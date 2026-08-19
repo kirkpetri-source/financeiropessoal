@@ -1,4 +1,5 @@
-const { hojeNoBrasil, proximaMeiaNoiteBrasil } = require('../utils/fusoBrasil');
+const { hojeNoBrasil } = require('../utils/fusoBrasil');
+const { mensagemLimiteChat } = require('../utils/mensagensDeLimite');
 
 /**
  * Teto diário de conversas com o consultor de IA, por família.
@@ -83,34 +84,9 @@ function criarLimiteChatService({ db, admin }) {
     });
   }
 
-  /**
-   * A recusa que o cliente lê quando a cota acaba.
-   *
-   * Diz o que aconteceu, quando volta (data e hora, no fuso dele) e — o que
-   * mais importa — **o que continua funcionando**. Ninguém pode sair desta
-   * mensagem sem saber como registrar um gasto: o parser por regra não gasta
-   * IA nenhuma e não tem limite, então o caminho nunca está fechado de verdade.
-   */
-  function mensagemDeLimite(agora = new Date()) {
-    const { data, hora } = proximaMeiaNoiteBrasil(agora);
-
-    return [
-      'Chegamos no limite de conversa de hoje.',
-      '',
-      `Volto a responder amanhã, ${data}, a partir da ${hora}`,
-      '(horário de Brasília).',
-      '',
-      'Enquanto isso, continua tudo funcionando normalmente:',
-      '',
-      '• Registrar gasto: gastei 84,90 no mercado',
-      '• Totais do mês: resumo',
-      '• Últimos lançamentos: ultimos',
-      '• Gastos por categoria: categorias',
-      '',
-      'Esses comandos não passam por IA e não têm limite.',
-    ].join('\n');
-  }
-
+  // A mensagem mora em utils/mensagensDeLimite.js, junto com a do limite de
+  // lancamento: as duas seguem o mesmo principio e mudam juntas.
+  const mensagemDeLimite = (agora = new Date()) => mensagemLimiteChat(agora);
   return { consultarUso, consumir, mensagemDeLimite, limite };
 }
 

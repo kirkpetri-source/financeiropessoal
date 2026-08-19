@@ -27,7 +27,14 @@ const URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // diante, tudo pago por uma assinatura de preço fixo.
 const MAX_RODADAS = 2;
 
+// Resposta mais curta no WhatsApp não é só estética: cada token gerado é tempo
+// de espera dentro do webhook, e ali a mensagem tem que caber numa bolha de
+// qualquer jeito. Medido em homologação (18/08/2026): pergunta simples ~5s,
+// conselho com três consultas ~10s. Cortar o teto de saída pela metade no
+// canal é a economia mais barata de conseguir, sem mexer no que a assistente
+// consegue fazer.
 const MAX_TOKENS_RESPOSTA = 800;
+const MAX_TOKENS_WHATSAPP = 400;
 
 /**
  * As ferramentas, no formato de declaração que a API do modelo espera.
@@ -317,7 +324,10 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
           systemInstruction: { parts: [{ text: instrucao }] },
           tools: [{ functionDeclarations: declaracoes }],
           contents,
-          generationConfig: { temperature: 0.3, maxOutputTokens: MAX_TOKENS_RESPOSTA },
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: canal === 'WHATSAPP' ? MAX_TOKENS_WHATSAPP : MAX_TOKENS_RESPOSTA,
+          },
         });
       } catch (err) {
         console.error(`[ChatIA] Modelo indisponível: ${err.message}`);

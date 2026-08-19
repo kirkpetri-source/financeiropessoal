@@ -10,12 +10,9 @@ const { listSubcategories } = require('./subcategoryService');
 const householdService = require('./householdService');
 const { situacaoDaAssinatura, mensagemDaSituacao } = require('../assinatura/estado');
 const { telefoneDe, montarPerguntaSubcategoria, resolverRespostaConfirmacao } = require('../utils/subcategoriaConfirmacao');
+const { mensagemLimiteIA } = require('../utils/mensagensDeLimite');
 
-const MENSAGEM_LIMITE_IA = 'Limite diário de lançamentos por IA atingido para esta família.\n\n'
-  + 'Lançamentos no formato direto continuam funcionando sem limite:\n'
-  + '• gastei 84,90 no mercado\n'
-  + '• paguei 50 de gasolina no pix\n'
-  + '• recebi 2500 de salário';
+
 
 /**
  * Transforma uma mensagem de texto em lançamento(s), para a família certa.
@@ -288,7 +285,7 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
   } else {
     const permitido = await verificarLimiteDeIA(householdId);
     if (!permitido) {
-      return { transacoes: [], criadas: [], erro: MENSAGEM_LIMITE_IA };
+      return { transacoes: [], criadas: [], erro: mensagemLimiteIA() };
     }
 
     const porIA = await parseWithAI(textoParaParser, nomesDosMembros);
@@ -414,7 +411,7 @@ async function lancarPorAudio({ householdId, base64, mimeType, senderJid, pushNa
   if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
 
   const permitido = await verificarLimiteDeIA(householdId);
-  if (!permitido) return { transacoes: [], criadas: [], erro: MENSAGEM_LIMITE_IA };
+  if (!permitido) return { transacoes: [], criadas: [], erro: mensagemLimiteIA() };
 
   const { transcreverAudio } = require('./midiaParserService');
   const { texto, erro } = await transcreverAudio(base64, mimeType);
@@ -433,7 +430,7 @@ async function lancarPorCupom({ householdId, base64, mimeType, senderJid, pushNa
   if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
 
   const permitido = await verificarLimiteDeIA(householdId);
-  if (!permitido) return { transacoes: [], criadas: [], erro: MENSAGEM_LIMITE_IA };
+  if (!permitido) return { transacoes: [], criadas: [], erro: mensagemLimiteIA() };
 
   const { interpretarCupom } = require('./midiaParserService');
   const { texto, erro } = await interpretarCupom(base64, mimeType);
