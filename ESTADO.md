@@ -187,11 +187,25 @@ Corrigido com `ignore` no `firebase.json`. O pacote caiu de 474,74 KB para
 
 ### Achados de manutenção (não relacionados à feature)
 
-- **`liontech.sup@gmail.com` está sem `householdId`** em `users` — a conta não
-  consegue entrar no painel (dá "sem família"), só funciona pelo WhatsApp.
-- **4 famílias com trial vencido** em 18/08: Weider e Aline (venceu no dia),
-  Lucas (1 dia), Raquel (2 dias), claudio (4 dias). Nada a ver com o deploy —
-  conferido pelas datas. Decidir: cobrar, estender ou marcar cortesia.
+- ~~**`liontech.sup@gmail.com` está sem `householdId`**~~ — **ERA FALSO,
+  conferido em 19/08.** A conta de verdade
+  (`ZLnUGkgrAddubKy9szHsbfMBcCF2`) tem `householdId` normal, é `owner` da
+  Família Vinicius e entrou no painel em 19/08 às 00:39. O que existe é um
+  documento ÓRFÃO em `users/aq64PgkaF3aMbg9ekhETMv90qgu1`, com o mesmo
+  e-mail e sem conta no Firebase Auth — sobra de um cadastro anterior
+  ("Vinicius Ferreira", 05/08) cuja conta foi apagada. A sessão anterior
+  olhou o documento morto e concluiu errado.
+
+  **Não "consertar" escrevendo `householdId` no documento órfão** — ele não
+  pertence a ninguém que consiga logar. Existem 3 desses em produção
+  (2 de testes antigos, 1 este); são inertes. `tools/diagnostico-conta-sem-familia.js`
+  separa os dois casos (é membro de alguma família ou de nenhuma).
+
+- **4 famílias com trial vencido**, reconferido em 19/08 — segue de pé:
+  Weider e Aline, Lucas, Raquel, claudio. `tools/diagnostico-assinatura.js`
+  diz "seriam bloqueadas: 4". Hoje 9 de 13 ativas, MRR R$ 74,70, 3 pagantes
+  e 3 em trial. Decidir: cobrar, estender ou marcar cortesia
+  (`tools/marcar-conta-interna.js`).
 
 ### Documentos da feature
 
