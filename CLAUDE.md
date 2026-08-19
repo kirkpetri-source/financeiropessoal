@@ -45,6 +45,9 @@ ALVO=staging node tools/testar-consultor-ponta-a-ponta.js   # conversa real com 
 ALVO=staging node tools/testar-roteador-whatsapp.js         # prova que lancamento nao regride
 ALVO=staging node tools/criar-conta-de-teste-staging.js     # conta completa p/ testar a tela; --apagar limpa
 STAGING_WEB_API_KEY=<chave> ALVO=staging node tools/testar-rota-assistente.js  # rota HTTP com login real
+ALVO=staging node tools/testar-webhook-ponta-a-ponta.js     # webhook inteiro: payload cru -> Firestore
+ALVO=staging node tools/medir-custo-assistente.js           # custo real por pergunta, em reais
+node tools/diagnostico-duplicidade-whatsapp.js [householdId]  # SO LEITURA: mensagem que virou 2 logs
 node tools/marcar-conta-interna.js <id> --confirmar  # cortesia vitalícia
 node tools/apagar-familia.js <id> --confirmar        # limpa conta de teste
 node tools/criar-login-operador.js --confirmar       # cria/reseta a senha do painel gestor (/plataforma)
@@ -264,6 +267,51 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
 
 ## Armadilhas já pagas (não repetir)
 
+- **Diagnóstico escrito numa sessão anterior pode estar errado — conferir
+  contra o banco ANTES de aplicar a correção prescrita.** O `ESTADO.md`
+  registrava que a duplicidade de mensagens vinha de corrida entre
+  `jaProcessada()` e a gravação, e mandava corrigir com `criarComId`
+  (regra 15). Os dados de produção diziam outra coisa: 12 de 12 duplicatas
+  vinham do caminho de fallback do roteador, que abria um segundo log da
+  mesma mensagem, e ZERO de corrida. A correção prescrita teria quebrado o
+  fallback e deixado o bug de pé. As duas causas se distinguem no banco:
+  o log do webhook tem `rawPayload`, o que a assistente abria não tinha.
+  `tools/diagnostico-duplicidade-whatsapp.js` faz essa separação.
+- **Nenhuma chamada de IA do projeto reportava consumo de tokens até
+  19/08/2026** — então toda conta de custo era chute, inclusive a do
+  desenho da assistente (R$ 0,03/pergunta). Medido: **R$ 0,0177**, e o peso
+  está na ENTRADA (7.628 tokens médios contra 393 de saída), porque cada
+  rodada reenvia conversa + catálogo de ferramentas + vocabulário. O
+  raciocínio variou de 0 a 665 tokens conforme a pergunta, não os ~700
+  fixos que se supunha. Para cortar custo de IA aqui, encolher o que vai na
+  ENTRADA — mexer no teto de saída só quebra a resposta (ver armadilha do
+  `maxOutputTokens`). `chatIAService` e `aiParserService` agora registram
+  tokens e reais no log de toda chamada.
+- **`firebase deploy` empacota TUDO que está em `functions/` se o
+  `firebase.json` não tiver lista de `ignore`** — não existe exclusão
+  automática de credencial. Até 19/08/2026 o `serviceAccountKey.json` (chave
+  privada de PRODUÇÃO) subia dentro do container da function de HOMOLOGAÇÃO,
+  e vice-versa. Inerte em execução (`firebaseAdmin` só lê o arquivo quando
+  `NODE_ENV != production`, e em Cloud Functions é sempre `production`), mas
+  é a chave do Firestore de 13 famílias pagantes parada num projeto de
+  acesso mais frouxo. O `ignore` do `firebase.json` SUBSTITUI a lista padrão
+  — ao mexer nele, manter `node_modules` e `.git` na lista. Conferir pelo
+  tamanho do pacote na saída do deploy (caiu de 474,74 KB para 347,35 KB).
+- **O anúncio de ambiente do `firebaseAdmin` grita "PRODUÇÃO — DADOS REAIS
+  DE CLIENTES" durante um `firebase deploy` para HOMOLOGAÇÃO.** É a etapa
+  local de descoberta do backend carregando os módulos sem `ALVO` definido;
+  nada é escrito e a function deployada usa a credencial do próprio projeto
+  (`admin.initializeApp()` sem argumento). Mas o aviso que existe para
+  proteger está dando alarme falso justamente na hora do deploy — não
+  aprender a ignorá-lo.
+- **Webhook do WhatsApp não pode ter teste em vitest.** `evolutionWebhook`
+  importa `whatsappLogService`, que importa `firebaseAdmin` no topo, e a
+  trava da regra 2 derruba a suíte inteira. Foi essa lacuna que deixou as
+  quatro falhas do teste ao vivo de 18/08 passarem por 810 testes verdes. O
+  substituto é `tools/testar-webhook-ponta-a-ponta.js`, que roda o webhook
+  de verdade contra homologação — o envio da resposta falha de propósito
+  (URL da Evolution inválida em staging) e `responder()` engole a falha, de
+  modo que tudo que importa no banco acontece igual.
 - **Script em `tools/` apontava para PRODUÇÃO sempre, sem dizer.** Até
   18/08/2026 o projeto era constante fixa em `carregarAmbiente.js` e
   `firebaseAdmin.js` usava `serviceAccountKey.json` (credencial de produção)

@@ -64,25 +64,125 @@ d moradia" também sumiu, porque minha correção usou **lista fechada de
 palavras** ("quanto", "quais", "como") e "detalhe" não estava nela. Invertido:
 agora passa tudo menos conversa fiada.
 
+### Sessão de 19/08/2026 — duplicidade resolvida, custo medido, chave vazando
+
+**1. A duplicidade era outra coisa — o diagnóstico anterior estava errado.**
+
+A pendência dizia "janela de corrida entre `jaProcessada()` e a criação do
+log", com a correção prescrita sendo `criarComId(messageId)` (regra 15).
+`tools/diagnostico-duplicidade-whatsapp.js` (só leitura) foi lido contra a
+produção antes de mexer em qualquer coisa, e a conta deu outra:
+
+```
+  fallback do roteador (1 com payload + 1 sem): 12
+  reentrega/corrida (todos com payload):         0
+```
+
+**12 de 12, zero corridas.** As duas causas têm assinaturas diferentes no
+banco e dá para separá-las: o log do webhook guarda `rawPayload`, o log que
+`conversarComAssistente` abria não guardava. Todos os pares eram um de cada.
+
+A causa real: pergunta que chega SEM o nome da assistente percorre o caminho
+de fallback — o webhook grava o log, `lancarPorTexto` tenta interpretar como
+lançamento, a IA responde "era PERGUNTA", e aí `conversarComAssistente` abria
+um SEGUNDO log da mesma mensagem. Corrigido reaproveitando o log existente
+(`logExistente`). Pergunta com o nome nunca duplicou — vai direto ao chat.
+
+Se a correção prescrita tivesse sido aplicada sem conferir, ela teria
+quebrado: a segunda criação bateria em `criado: false` e o caminho de
+fallback precisaria de tratamento novo. Consertar a causa errada custa duas
+vezes.
+
+**Sobre "IA paga em dobro": era menos grave do que estava escrito.** Não são
+duas conversas cobradas — é UMA chamada extra do parser, que toda pergunta
+sem o nome paga para o sistema descobrir que era pergunta. Isso é o desenho,
+não um bug: pular essa chamada exigiria decidir "é pergunta" antes da IA, e
+foi justamente o que a regra 3 do roteador protege (mensagem que o parser
+entende nunca chega perto da assistente). O que era bug foi só o log dobrado.
+
+**2. Custo real, medido — a estimativa errou nos DOIS sentidos.**
+
+`tools/medir-custo-assistente.js` roda 5 perguntas reais (as do teste ao vivo
+do Kirk, não perguntas de vitrine) contra o Gemini de verdade em homologação.
+`chatIAService` agora soma os tokens de todas as rodadas e registra o custo em
+reais no log; `aiParserService` faz o mesmo. Antes disso nenhuma chamada de IA
+do projeto reportava consumo — qualquer número de custo era chute.
+
+| | estimado no desenho | medido |
+|---|---|---|
+| custo por pergunta | R$ 0,03 | **R$ 0,0177** |
+| tokens de entrada | não estimado | **7.628** (média) |
+| tokens de saída | ~700 (só raciocínio) | **393**, dos quais 258 de raciocínio |
+| chamadas ao modelo | 1 | **2,8** |
+
+O medo registrado ("pode estar 4 a 6 vezes acima") **não se confirmou** — o
+custo por pergunta é menor que a estimativa. Mas a estrutura do custo estava
+toda errada:
+
+- **O peso está na ENTRADA, não no raciocínio.** São 7.628 tokens de entrada
+  contra 393 de saída. Cada rodada reenvia a conversa inteira + o catálogo de
+  ferramentas + o vocabulário da família, então a entrada cresce a cada volta.
+  Entrada é 8x mais barata por token, o que salva a conta — mas é ela o
+  volume. Se algum dia for preciso cortar custo, é aí que se mexe (encolher o
+  catálogo/vocabulário), não no teto de saída.
+- **O raciocínio variou de 0 a 665 tokens** por chamada, não os ~700 fixos que
+  a armadilha registrava. Consulta simples pensa pouco; conselho pensa muito.
+
+**Cota de 20/dia: cabe, com folga menor do que parece.** No teto absoluto dá
+R$ 10,60/mês por família = **43% da mensalidade de R$ 24,90**. É viável mas
+apertado se alguém usar o limite todo dia. No uso realista (3 perguntas/dia)
+são R$ 1,59/mês, ou 6% da mensalidade. **Decisão do Kirk:** manter 20/dia
+(ninguém chega perto) ou baixar para ~10 para garantir a margem.
+
+**3. Primeiro teste automatizado do webhook.**
+
+`tools/testar-webhook-ponta-a-ponta.js` — 12 verificações, todas verdes.
+O webhook não tinha NENHUM teste e não pode ter em vitest: importa
+`whatsappLogService`, que importa `firebaseAdmin` no topo, e a trava da regra
+2 derruba a suíte. Era essa lacuna que deixava as falhas escaparem dos 810
+testes verdes — as quatro do teste ao vivo moravam todas ali.
+
+Cobre: o bug corrigido (pergunta sem nome grava UM log), o caminho direto,
+lançamento que não pode regredir (`gastei 37,50 no mercado` vira transação de
+R$ 37,50), deduplicação no reenvio e conversa fiada ignorada.
+
+**4. A chave de produção estava sendo empacotada no deploy.**
+
+`firebase.json` não tinha lista de `ignore` e não existe `.gcloudignore`,
+então o pacote levava tudo de `functions/` — inclusive
+`serviceAccountKey.json`, a chave privada de produção. A function de
+**homologação subia com a credencial de produção dentro do container**.
+
+Não era explorada pelo código (`firebaseAdmin` só lê o arquivo quando
+`NODE_ENV != production`, e em Cloud Functions é sempre `production`), mas a
+chave estava lá — num projeto com acesso mais frouxo por ser o ambiente de
+teste. Quem lesse aquele container teria leitura e escrita no Firestore das
+13 famílias pagantes.
+
+Corrigido com `ignore` no `firebase.json`. O pacote caiu de 474,74 KB para
+347,35 KB — a diferença é a prova de que ia junto. Homologação redeployada e
+`/health` respondendo 200.
+
 ### PENDÊNCIAS — o que fazer ao retomar
 
-1. **Mensagem processada DUAS vezes** (achado nos logs, não corrigido).
-   Mesmo `messageId`, dois registros, 1-2s de diferença, nas três perguntas
-   testadas. Significa **IA paga em dobro** em toda conversa. Causa: janela de
-   corrida entre `jaProcessada()` e a criação do log. **A correção certa é o
-   padrão que a importação de extrato já usa (regra 15): trava no BANCO, não
-   conferência da aplicação** — criar o log com `criarComId(messageId)`, que o
-   Firestore recusa se já existir.
+1. **Kirk decide sobre a cota diária** (hoje 20/dia = 43% da mensalidade no
+   teto). Manter ou baixar para ~10.
 
-2. **Medir o custo real por pergunta.** A estimativa do desenho (R$ 0,03) está
-   ERRADA: não contava os ~700 tokens de raciocínio por chamada, nem a
-   duplicação. Pode estar 4 a 6 vezes acima. Medir e então rever a cota de
-   20/dia, que no limite ficaria cara demais.
+2. **Subir para produção.** Homologação já está no ar com tudo isto. As
+   correções são de bug em código que JÁ está em produção — falta só o
+   `firebase deploy --only functions:api --project prod`.
 
-3. **Continuar o teste ao vivo** pelo WhatsApp (Família Vinicius), agora com as
-   4 correções no ar.
+3. **Continuar o teste ao vivo** pelo WhatsApp (Família Vinicius).
 
-4. Fase 3 (áudio nos dois canais) e Fase 4 (central de ajuda `/ajuda`, landing,
+4. **Corrida entre `jaProcessada()` e a gravação: real, mas nunca observada.**
+   Zero ocorrências nos 96 registros lidos. A trava do banco
+   (`criarComId(messageId)`) continua sendo a correção certa SE ela aparecer,
+   e o caminho da assistente aumenta a janela (4 a 8s de processamento contra
+   menos de 1s do lançamento). Mudar o ID dos documentos de `whatsappLogs`
+   mexe em coleção com dado de produção, então fica como decisão do Kirk, não
+   como conserto preventivo silencioso.
+
+5. Fase 3 (áudio nos dois canais) e Fase 4 (central de ajuda `/ajuda`, landing,
    termos com aviso de persona de IA) — nenhuma começou.
 
 ### Achados de manutenção (não relacionados à feature)
