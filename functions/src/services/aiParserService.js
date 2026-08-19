@@ -22,6 +22,29 @@ const VALID_CATEGORIES = [
 
 const VALID_PAYMENT_METHODS = ['Pix', 'Dinheiro', 'Débito', 'Crédito', 'Boleto', 'Transferência', 'Outro'];
 
+/**
+ * Registra no log quantos tokens a chamada custou.
+ *
+ * Este parser é a chamada de IA MAIS FREQUENTE do produto — acontece em toda
+ * mensagem que a regra não entende — e até 18/08/2026 nunca reportou consumo.
+ * Sem isso, qualquer conta de custo do WhatsApp era chute.
+ *
+ * `thoughtsTokenCount` é cobrado como saída (a parte cara), e no Gemini 3.x
+ * ele aparece mesmo sem ninguém pedir raciocínio. Nunca imprime a mensagem:
+ * o Cloud Logging guardaria dado financeiro da família em texto puro.
+ */
+function registrarUso(rotulo, data) {
+  const m = data?.usageMetadata;
+  if (!m) return;
+
+  const pensamento = m.thoughtsTokenCount || 0;
+  const saida = (m.candidatesTokenCount || 0) + pensamento;
+  const motivo = data?.candidates?.[0]?.finishReason;
+
+  console.log(`[AI Parser] ${rotulo} entrada=${m.promptTokenCount || 0} `
+    + `saida=${saida} (pensamento=${pensamento}) fim=${motivo || '?'}`);
+}
+
 // Prompt construído com o prompt-mestre (alvo: Gemini 2.0 Flash).
 // Trava de formato + exemplo rotulado + ancoragem (Gemini desvia de formatos estritos sem isso).
 const SYSTEM_PROMPT = `Você é um extrator de lançamentos financeiros de mensagens de WhatsApp em português do Brasil (linguagem informal). Sua ÚNICA função é converter a mensagem do usuário em JSON.
@@ -118,6 +141,9 @@ async function parseWithAI(message, payers = []) {
     }
 
     const data = await resp.json();
+
+    registrarUso('parseWithAI', data);
+
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
       console.error('[AI Parser] Resposta da IA sem texto:', JSON.stringify(data).slice(0, 300));

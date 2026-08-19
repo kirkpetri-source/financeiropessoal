@@ -473,3 +473,99 @@ describe('resposta cortada pelo teto de tokens', () => {
     expect(r.erro).toBeUndefined();
   });
 });
+
+/**
+ * Conta de tokens.
+ *
+ * Existe porque o custo por pergunta era estimativa de papel (R$ 0,03) e
+ * estava errado por dois motivos que só aparecem somando de verdade: o
+ * raciocínio do modelo é cobrado como SAÍDA (a parte cara) e vem num campo
+ * separado, e uma pergunta com ferramenta custa várias chamadas, não uma.
+ */
+describe('contabilidade de tokens', () => {
+  /** Resposta em texto, com o relatório de uso que a API de verdade manda. */
+  function comUso(resposta, { entrada, texto, pensamento }) {
+    return {
+      ...resposta,
+      usageMetadata: {
+        promptTokenCount: entrada,
+        candidatesTokenCount: texto,
+        thoughtsTokenCount: pensamento,
+      },
+    };
+  }
+
+  it('soma o pensamento como saída, e não como uma terceira categoria', async () => {
+    const chamarModelo = vi.fn().mockResolvedValue(
+      comUso(respondeTexto('Pronto.'), { entrada: 1000, texto: 100, pensamento: 700 }),
+    );
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'e aí?' });
+
+    expect(r.uso.entrada).toBe(1000);
+    expect(r.uso.pensamento).toBe(700);
+    // 100 de texto + 700 de raciocínio: é isso que o Google cobra como saída.
+    expect(r.uso.saida).toBe(800);
+    expect(r.uso.chamadasAoModelo).toBe(1);
+  });
+
+  it('acumula as rodadas — uma pergunta com ferramenta custa mais de uma chamada', async () => {
+    const chamarModelo = vi.fn()
+      .mockResolvedValueOnce(
+        comUso(pedeFerramenta('resumoDoMes', {}), { entrada: 1200, texto: 20, pensamento: 500 }),
+      )
+      .mockResolvedValueOnce(
+        comUso(respondeTexto('Seu saldo foi R$ 1.800,00.'), { entrada: 1800, texto: 90, pensamento: 600 }),
+      );
+
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'como foi o mês?' });
+
+    expect(r.uso.chamadasAoModelo).toBe(2);
+    expect(r.uso.entrada).toBe(3000);
+    expect(r.uso.saida).toBe(20 + 500 + 90 + 600);
+    expect(r.uso.custoBRL).toBeGreaterThan(0);
+  });
+
+  it('fecha a conta mesmo quando a resposta é cortada pelo teto', async () => {
+    const chamarModelo = vi.fn().mockResolvedValue({
+      candidates: [{ content: { parts: [{ text: 'metade da fra' }] }, finishReason: 'MAX_TOKENS' }],
+      usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 30, thoughtsTokenCount: 760 },
+    });
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'me dá um conselho' });
+
+    expect(r.erro).toBe('RESPOSTA_TRUNCADA');
+    // Truncada ou não, ela foi paga — tem que aparecer na conta.
+    expect(r.uso.saida).toBe(790);
+    expect(r.uso.custoBRL).toBeGreaterThan(0);
+  });
+
+  it('não quebra quando a API não manda usageMetadata', async () => {
+    const chamarModelo = vi.fn().mockResolvedValue(respondeTexto('ok'));
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'oi' });
+
+    expect(r.uso.chamadasAoModelo).toBe(1);
+    expect(r.uso.saida).toBe(0);
+    expect(r.uso.custoBRL).toBe(0);
+  });
+
+  it('conta o que já foi gasto mesmo quando o modelo cai no meio', async () => {
+    const chamarModelo = vi.fn()
+      .mockResolvedValueOnce(
+        comUso(pedeFerramenta('resumoDoMes', {}), { entrada: 1000, texto: 10, pensamento: 400 }),
+      )
+      .mockRejectedValueOnce(new Error('503 indisponível'));
+
+    const ia = criarChatIA({ consulta: consultaFalsa, chamarModelo, sessoes: sessoesFalsas });
+    const r = await ia.responder({ dados: dadosFalsos, pergunta: 'como foi o mês?' });
+
+    expect(r.erro).toBe('MODELO_INDISPONIVEL');
+    // A primeira chamada foi cobrada mesmo com a segunda falhando.
+    expect(r.uso.saida).toBe(410);
+  });
+});

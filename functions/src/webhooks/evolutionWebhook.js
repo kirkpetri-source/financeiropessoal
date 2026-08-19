@@ -26,11 +26,20 @@ const { NOME_PADRAO } = require('../utils/nomeDaAssistente');
  *
  * Nunca derruba o webhook: se a assistente falhar, a pessoa recebe um aviso
  * curto em vez de silêncio.
+ *
+ * `logExistente` é obrigatório quando quem chama JÁ registrou a mensagem. O
+ * caminho de fallback (a IA classificou como pergunta depois de tentar
+ * interpretar como lançamento) é exatamente esse caso: sem reaproveitar, a
+ * mesma mensagem virava DOIS registros em `whatsappLogs`, com 1 a 2 segundos
+ * de diferença. Achado nos logs do teste ao vivo de 18/08/2026 — 12 de 12
+ * perguntas duplicadas, todas por aqui, nenhuma por reentrega do webhook.
  */
-async function conversarComAssistente({ householdId, config, msg, texto, nomeDaAssistente }) {
+async function conversarComAssistente({
+  householdId, config, msg, texto, nomeDaAssistente, logExistente = null,
+}) {
   const dados = escopoDe(householdId);
 
-  const log = await createLog(dados, {
+  const log = logExistente || await createLog(dados, {
     messageId: msg.messageId,
     groupId: msg.remoteJid,
     sender: msg.pushName || 'você',
@@ -333,8 +342,12 @@ async function processarMensagemRecebida(req) {
     });
 
     if (rotaFinal.destino === DESTINO.CHAT) {
-      await updateLog(dados, log.id, { processingStatus: 'PROCESSED' });
-      await conversarComAssistente({ householdId, config, msg, texto: msg.content, nomeDaAssistente });
+      // Reaproveita o log desta mensagem em vez de abrir outro: é a mesma
+      // mensagem, só que agora sabemos que era pergunta. Quem fecha o status
+      // é a própria conversa (PROCESSED no fim, ERROR se a assistente falhar).
+      await conversarComAssistente({
+        householdId, config, msg, texto: msg.content, nomeDaAssistente, logExistente: log,
+      });
       return;
     }
 

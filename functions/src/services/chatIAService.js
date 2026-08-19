@@ -58,6 +58,28 @@ const MAX_TOKENS_WHATSAPP = 3000;
 const ORCAMENTO_DE_PENSAMENTO = 512;
 
 /**
+ * Preço do modelo, em dólar por MILHÃO de tokens.
+ *
+ * Serve para transformar tokens em reais no log, que é a única forma de saber
+ * se a cota diária está certa. A estimativa do desenho (R$ 0,03 por pergunta)
+ * foi feita no papel e ignorava duas coisas: o pensamento conta como saída, e
+ * uma pergunta com ferramenta custa VÁRIAS chamadas, não uma — cada rodada
+ * reenvia a conversa inteira, então a entrada cresce a cada volta.
+ *
+ * Conferir em https://ai.google.dev/gemini-api/docs/pricing quando o modelo
+ * mudar de nome (já aconteceu: ver a armadilha do gemini-2.0-flash desligado).
+ */
+const PRECO_USD_POR_MILHAO = { entrada: 0.30, saida: 2.50 };
+const USD_PARA_BRL = 5.40;
+
+/** Tokens -> reais. `saida` já inclui os tokens de raciocínio. */
+function custoEmReais({ entrada = 0, saida = 0 }) {
+  const usd = (entrada / 1e6) * PRECO_USD_POR_MILHAO.entrada
+    + (saida / 1e6) * PRECO_USD_POR_MILHAO.saida;
+  return usd * USD_PARA_BRL;
+}
+
+/**
  * As ferramentas, no formato de declaração que a API do modelo espera.
  *
  * `exigePermissao` é do nosso lado, não vai para a API: é o que impede um
@@ -338,6 +360,38 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
     const declaracoes = ferramentasPara(permissoes).map(({ exigePermissao, ...decl }) => decl);
     const ferramentasUsadas = [];
 
+    // Conta de tokens da pergunta INTEIRA, somando todas as rodadas. Sem isso
+    // o custo por conversa era estimativa de papel — e estava errada, porque
+    // ignorava o pensamento (que é saída, a mais cara) e as rodadas extras.
+    const uso = { entrada: 0, saida: 0, pensamento: 0, chamadasAoModelo: 0 };
+
+    /** Soma o que a API informou nesta chamada. */
+    function contabilizar(resposta) {
+      const m = resposta?.usageMetadata;
+      uso.chamadasAoModelo += 1;
+      if (!m) return;
+
+      const pensamento = m.thoughtsTokenCount || 0;
+      uso.entrada += m.promptTokenCount || 0;
+      uso.pensamento += pensamento;
+      // `candidatesTokenCount` traz só o texto visível; o raciocínio vem
+      // separado mas é cobrado como saída do mesmo jeito.
+      uso.saida += (m.candidatesTokenCount || 0) + pensamento;
+    }
+
+    /** Fecha a conta, registra no log e devolve o resultado ao chamador. */
+    function encerrar(resultado) {
+      uso.custoBRL = Number(custoEmReais(uso).toFixed(4));
+      // Sem o texto da conversa: o Cloud Logging guardaria dado financeiro
+      // da família em texto puro.
+      console.log(`[ChatIA] canal=${canal} chamadas=${uso.chamadasAoModelo} `
+        + `ferramentas=${ferramentasUsadas.length} entrada=${uso.entrada} `
+        + `saida=${uso.saida} (pensamento=${uso.pensamento}) `
+        + `custo=R$${uso.custoBRL.toFixed(4)}`
+        + (resultado.erro ? ` erro=${resultado.erro}` : ''));
+      return { ...resultado, uso };
+    }
+
     // O laco vai ate MAX_RODADAS + 1 de proposito: as primeiras voltas sao
     // para buscar dados, e a ultima existe so para o modelo REDIGIR com o que
     // ja tem. Sem essa volta extra, o pedido de fechamento era montado e
@@ -358,12 +412,14 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
         });
       } catch (err) {
         console.error(`[ChatIA] Modelo indisponível: ${err.message}`);
-        return {
+        return encerrar({
           texto: 'Não consegui pensar direito agora — tive um problema para acessar meu raciocínio. Tente de novo em instantes. Seus lançamentos estão todos salvos.',
           ferramentasUsadas,
           erro: 'MODELO_INDISPONIVEL',
-        };
+        });
       }
+
+      contabilizar(resposta);
 
       const candidato = resposta?.candidates?.[0];
       const partes = candidato?.content?.parts || [];
@@ -374,19 +430,19 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
       // producao antes desta verificacao existir.
       if (candidato?.finishReason === 'MAX_TOKENS' && !chamadas.length) {
         console.error('[ChatIA] Resposta truncada pelo teto de tokens - nao entregue ao cliente.');
-        return {
+        return encerrar({
           texto: 'Essa resposta ficou longa demais e eu me perdi no meio. Pode perguntar de um jeito mais especifico? Por exemplo: "quanto gastei em mercado esse mes?"',
           ferramentasUsadas,
           erro: 'RESPOSTA_TRUNCADA',
-        };
+        });
       }
 
       if (!chamadas.length) {
         const final = partes.map((p) => p.text).filter(Boolean).join('\n').trim();
-        return {
+        return encerrar({
           texto: final || 'Não consegui montar uma resposta para isso. Pode perguntar de outro jeito?',
           ferramentasUsadas,
-        };
+        });
       }
 
       // Chegou no teto de consultas: nao executa mais nada, pede o fechamento
@@ -413,10 +469,10 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
       contents.push({ role: 'user', parts: respostasDeFerramenta });
     }
 
-    return {
+    return encerrar({
       texto: 'Não consegui fechar uma resposta para isso. Pode perguntar de outro jeito?',
       ferramentasUsadas,
-    };
+    });
   }
 
   return { responder, ferramentasPara, montarInstrucao };
