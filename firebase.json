@@ -1,7 +1,23 @@
 {
   "functions": {
     "source": "functions",
-    "runtime": "nodejs22"
+    "runtime": "nodejs22",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "*.local",
+      "serviceAccountKey.json",
+      "serviceAccountKey.staging.json",
+      "tools/**",
+      "**/*.test.mjs",
+      "src/__testes__/**",
+      "graphify-out/**",
+      "backups/**",
+      ".DS_Store",
+      "._*"
+    ]
   },
   "firestore": {
     "rules": "firestore.rules",
