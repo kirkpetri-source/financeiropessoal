@@ -281,6 +281,7 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
 
   // 1) regras (rápido e grátis)  2) IA, só se as regras não derem conta
   let interpretados = [];
+  let intencaoDaIA = null;
   const porRegra = parseFinancialMessage(textoParaParser, nomesDosMembros);
   if (porRegra) {
     interpretados = [porRegra];
@@ -291,12 +292,19 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
     }
 
     const porIA = await parseWithAI(textoParaParser, nomesDosMembros);
-    if (Array.isArray(porIA)) interpretados = porIA;
+    if (Array.isArray(porIA)) {
+      interpretados = porIA;
+      // A IA classificou junto o que a mensagem era. Sobe no retorno para o
+      // webhook poder mandar uma PERGUNTA para a assistente em vez de
+      // responder "não entendi" — sem gastar uma segunda chamada de IA.
+      intencaoDaIA = porIA.intencao || null;
+    }
   }
 
   if (!interpretados.length) {
     return {
       transacoes: [],
+      intencaoDaIA,
       // O erro precisa ensinar a regra, não só reclamar: começar dizendo se
       // gastou ou recebeu é o que faz a mensagem ser entendida.
       erro: `Não entendi "${texto}".\n\n`

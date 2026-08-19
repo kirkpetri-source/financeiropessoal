@@ -52,7 +52,30 @@ const PROTEGIDOS = new Set([
   // Teto diário de chamadas de IA (limiteIAService.js) — contador do sistema,
   // não um campo de configuração.
   'iaContagemDiaria', 'iaContagemData',
+  // Idem para o teto de conversa com a assistente (limiteChatService.js).
+  'chatContagemDiaria', 'chatContagemData',
 ]);
+
+/**
+ * O nome da assistente é o ÚNICO campo desta configuração que o cliente
+ * escolhe — e ele não passa por `updateConfig`, que é a porta de
+ * infraestrutura. Tem função própria porque precisa de validação de verdade:
+ * o nome entra no prompt do sistema, e um nome mal formado ali é injeção.
+ */
+async function definirNomeDaAssistente(householdId, nome, nomesDaFamilia = []) {
+  const { validarNome } = require('../utils/nomeDaAssistente');
+
+  const r = validarNome(nome, nomesDaFamilia);
+  if (!r.ok) throw Object.assign(new Error(r.erro), { statusCode: 400 });
+
+  await db.collection('whatsappConfigs').doc(householdId).set({
+    householdId,
+    nomeDaAssistente: r.nome,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return { nomeDaAssistente: r.nome };
+}
 
 async function updateConfig(householdId, entrada) {
   const ref = db.collection('whatsappConfigs').doc(householdId);
@@ -94,4 +117,4 @@ async function getRawConfig(householdId) {
   return configEfetiva({ householdId, ...doc.data() });
 }
 
-module.exports = { getConfig, updateConfig, getRawConfig, PADROES };
+module.exports = { getConfig, updateConfig, getRawConfig, PADROES, definirNomeDaAssistente };

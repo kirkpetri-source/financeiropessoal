@@ -8,10 +8,64 @@ const {
   jaProcessada,
   looksLikeFinancialMessage,
   tentarResolverConfirmacaoPendente,
+  telefoneEfetivo,
 } = require('../services/lancamentoPorMensagem');
 const { tratarComando } = require('../services/comandosWhatsapp');
 const { responder, confirmarLancamentos, ehMensagemDoBot } = require('../services/respostaWhatsapp');
 const { provedorDe } = require('../canais');
+const { decidirSemIA, decidirComIntencao, DESTINO } = require('../utils/roteadorMensagem');
+const assistenteService = require('../services/assistenteService');
+const { NOME_PADRAO } = require('../utils/nomeDaAssistente');
+
+/**
+ * Conversa com a assistente e devolve a resposta pelo WhatsApp.
+ *
+ * O canal é bolha de mensagem, não tela: a resposta sai em formato de
+ * WhatsApp (negrito com UM asterisco, poucas linhas), que é o que o `canal`
+ * ajusta no prompt. Sem isso a resposta chega com "**asteriscos**" visíveis.
+ *
+ * Nunca derruba o webhook: se a assistente falhar, a pessoa recebe um aviso
+ * curto em vez de silêncio.
+ */
+async function conversarComAssistente({ householdId, config, msg, texto, nomeDaAssistente }) {
+  const dados = escopoDe(householdId);
+
+  const log = await createLog(dados, {
+    messageId: msg.messageId,
+    groupId: msg.remoteJid,
+    sender: msg.pushName || 'você',
+    messageType: 'TEXT',
+    content: msg.content,
+    processingStatus: 'PENDING',
+  });
+
+  try {
+    // Quem está falando: no modo individual `senderJid` nunca vem preenchido
+    // (trava documentada do projeto), então cai para o dono do canal — sem
+    // isso a memória de conversa não separaria as pessoas do grupo.
+    const interlocutor = await telefoneEfetivo(msg.senderJid, householdId) || 'desconhecido';
+
+    const r = await assistenteService.responder({
+      householdId,
+      pergunta: texto,
+      interlocutor: `wa-${interlocutor}`,
+      // Pelo WhatsApp quem fala já é membro autorizado da família, e lançar por
+      // mensagem sempre foi permitido a eles.
+      permissoes: { lancar: true },
+      nomeDaIA: nomeDaAssistente,
+      canal: 'WHATSAPP',
+    });
+
+    const resposta = r.texto || r.erro;
+    await responder(householdId, config, msg.remoteJid, resposta);
+    await updateLog(dados, log.id, { processingStatus: 'PROCESSED' });
+  } catch (err) {
+    console.error(`[Assistente] Falha ao responder ${householdId}: ${err.message}`);
+    await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: err.message });
+    await responder(householdId, config, msg.remoteJid,
+      'Não consegui responder agora. Tente de novo em instantes — seus lançamentos estão salvos.');
+  }
+}
 
 /**
  * Webhook do Evolution — porta de entrada instantânea das mensagens.
@@ -197,16 +251,39 @@ async function processarMensagemRecebida(req) {
     return;
   }
 
-  // Comandos respondem de verdade agora. Antes eram detectados só para serem
-  // ignorados: quem digitava "resumo" não recebia nada.
+  // Roteamento. A ordem está em utils/roteadorMensagem.js e é a garantia de
+  // que nada do fluxo de lançamento regride: mensagem que o parser por regra
+  // entende nunca chega perto da assistente.
+  const nomeDaAssistente = config?.nomeDaAssistente || NOME_PADRAO;
+  const assistenteAtiva = assistenteService.ativa();
+
+  // O comando é consultado antes de decidir, porque a decisão precisa saber se
+  // casou — mas a resposta só é usada se o roteador mandar para COMANDO.
   const respostaDeComando = await tratarComando(msg.content, { householdId, remoteJid: msg.remoteJid, senderJid: msg.senderJid });
-  if (respostaDeComando) {
+
+  const rota = decidirSemIA({
+    texto: msg.content,
+    nomeDaAssistente,
+    ehComando: !!respostaDeComando,
+    assistenteAtiva,
+  });
+
+  if (rota.destino === DESTINO.IGNORAR) return;
+
+  if (rota.destino === DESTINO.COMANDO) {
     await responder(householdId, config, msg.remoteJid, respostaDeComando);
     return;
   }
 
+  if (rota.destino === DESTINO.CHAT) {
+    if (await jaProcessada(msg.messageId)) return;
+    await conversarComAssistente({ householdId, config, msg, texto: rota.texto, nomeDaAssistente });
+    return;
+  }
+
   // Filtro barato antes de acionar a IA: conversa comum não vira lançamento.
-  if (!looksLikeFinancialMessage(msg.content)) return;
+  // Só vale para o caminho INDEFINIDO — o que casou a regra já passou direto.
+  if (rota.destino === null && !looksLikeFinancialMessage(msg.content)) return;
 
   // Deduplicação: a mesma mensagem pode chegar por reenvio do Evolution e
   // também pelo polling.
@@ -226,7 +303,7 @@ async function processarMensagemRecebida(req) {
     ? new Date(msg.timestamp * 1000).toISOString()
     : new Date().toISOString();
 
-  const { transacoes, criadas, erro, silencioso, perguntaSubcategoria } = await lancarPorTexto({
+  const { transacoes, criadas, erro, silencioso, perguntaSubcategoria, intencaoDaIA } = await lancarPorTexto({
     householdId,
     texto: msg.content,
     senderJid: msg.senderJid,
@@ -234,6 +311,31 @@ async function processarMensagemRecebida(req) {
     dataDaMensagem,
     origem,
   });
+
+  // A IA já classificou a mensagem na mesma chamada que tentou interpretá-la.
+  // Se era pergunta, mandar para a assistente em vez de responder "não
+  // entendi" — sem gastar uma segunda chamada de IA para descobrir isso.
+  if (!transacoes.length && intencaoDaIA) {
+    const rotaFinal = decidirComIntencao({
+      texto: msg.content,
+      intencao: intencaoDaIA,
+      assistenteAtiva,
+      temLancamentos: false,
+    });
+
+    if (rotaFinal.destino === DESTINO.CHAT) {
+      await updateLog(dados, log.id, { processingStatus: 'PROCESSED' });
+      await conversarComAssistente({ householdId, config, msg, texto: msg.content, nomeDaAssistente });
+      return;
+    }
+
+    // "bom dia" não merece um "não entendi" — era conversa, não tentativa de
+    // lançamento.
+    if (rotaFinal.destino === DESTINO.IGNORAR) {
+      await updateLog(dados, log.id, { processingStatus: 'CANCELLED' });
+      return;
+    }
+  }
 
   if (erro) {
     await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: erro });
