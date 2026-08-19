@@ -255,7 +255,7 @@ async function processarMensagemRecebida(req) {
   // que nada do fluxo de lançamento regride: mensagem que o parser por regra
   // entende nunca chega perto da assistente.
   const nomeDaAssistente = config?.nomeDaAssistente || NOME_PADRAO;
-  const assistenteAtiva = assistenteService.ativa();
+  const assistenteAtiva = assistenteService.ativa(householdId);
 
   // O comando é consultado antes de decidir, porque a decisão precisa saber se
   // casou — mas a resposta só é usada se o roteador mandar para COMANDO.

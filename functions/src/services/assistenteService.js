@@ -14,10 +14,37 @@
  */
 
 const INTERRUPTOR = 'ASSISTENTE_ATIVA';
+const LISTA = 'ASSISTENTE_FAMILIAS';
 
-/** A feature está ligada? Desligada, some sem deixar rastro nem custo. */
-function ativa() {
-  return String(process.env[INTERRUPTOR] || '').toLowerCase() !== 'false';
+/**
+ * A feature está ligada para esta família?
+ *
+ * Dois controles, e a ordem importa:
+ *
+ * - `ASSISTENTE_FAMILIAS` é uma lista de householdIds. Existindo, SÓ elas têm
+ *   a assistente — todas as outras seguem exatamente como antes, sem ver nada.
+ *   É o que permite estrear a feature em produção com uma família de teste
+ *   enquanto os clientes pagantes continuam intocados.
+ * - `ASSISTENTE_ATIVA=false` desliga para todo mundo, inclusive a lista. É o
+ *   botão de pânico: derruba a feature inteira sem deploy de código.
+ *
+ * Sem nenhuma das duas, a assistente vale para todos — que é o estado final,
+ * depois do teste.
+ */
+function ativa(householdId) {
+  if (String(process.env[INTERRUPTOR] || '').toLowerCase() === 'false') return false;
+
+  const lista = String(process.env[LISTA] || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (!lista.length) return true;
+
+  // Com lista configurada, quem não está nela não tem a feature. Uma chamada
+  // sem householdId (um teste, um caminho que ainda não sabe a família) é
+  // tratada como fora: liberar por omissão seria o erro mais caro aqui.
+  return !!householdId && lista.includes(householdId);
 }
 
 function criarAssistente({ ia, sessoes, limite, escopoDe }) {
@@ -30,7 +57,7 @@ function criarAssistente({ ia, sessoes, limite, escopoDe }) {
    * chamada.
    */
   async function responder({ householdId, pergunta, interlocutor, permissoes, nomeDaIA, canal = 'PAINEL' }) {
-    if (!ativa()) {
+    if (!ativa(householdId)) {
       return { erro: 'A assistente está temporariamente indisponível.', codigo: 'DESLIGADA' };
     }
 
@@ -74,7 +101,7 @@ function criarAssistente({ ia, sessoes, limite, escopoDe }) {
 
   /** Uso do dia, sem consumir. Alimenta a porcentagem no painel. */
   async function uso(householdId) {
-    if (!ativa()) return { ativa: false };
+    if (!ativa(householdId)) return { ativa: false };
 
     const atual = await limite.consultarUso(householdId);
     return {
@@ -92,7 +119,7 @@ function criarAssistente({ ia, sessoes, limite, escopoDe }) {
 
   /** O histórico para a tela reabrir a conversa onde parou. */
   async function historico({ householdId, interlocutor }) {
-    if (!ativa()) return { ativa: false, mensagens: [] };
+    if (!ativa(householdId)) return { ativa: false, mensagens: [] };
 
     const mensagens = await sessoes.historico(escopoDe(householdId), interlocutor);
     return { ativa: true, mensagens };
@@ -137,6 +164,7 @@ module.exports = {
   criarAssistente,
   ativa,
   INTERRUPTOR,
+  LISTA,
   responder: (...args) => servico().responder(...args),
   uso: (...args) => servico().uso(...args),
   limparConversa: (...args) => servico().limparConversa(...args),

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { criarAssistente, ativa, INTERRUPTOR } from './assistenteService.js';
+import { criarAssistente, ativa, INTERRUPTOR, LISTA } from './assistenteService.js';
 
 const FAMILIA = 'fam-1';
 const QUEM = 'user-abc';
@@ -30,6 +30,7 @@ const svc = () => criarAssistente({ ia, sessoes, limite, escopoDe });
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env[INTERRUPTOR];
+  delete process.env[LISTA];
   trocasGravadas = [];
   iaResposta = { texto: 'Você gastou R$ 520,00 em Mercado.', ferramentasUsadas: ['gastoPorCategoria'] };
   cotaResposta = { permitido: true, percentual: 15 };
@@ -110,6 +111,60 @@ describe('cota', () => {
 
     expect(limite.consultarUso).toHaveBeenCalled();
     expect(limite.consumir).not.toHaveBeenCalled();
+  });
+});
+
+describe('liberação por família', () => {
+  // É o que permite estrear a feature em produção com uma família de teste
+  // enquanto as famílias pagantes seguem sem ver absolutamente nada.
+  it('com lista configurada, só as famílias listadas têm a assistente', () => {
+    process.env[LISTA] = 'fam-teste,fam-outra';
+
+    expect(ativa('fam-teste')).toBe(true);
+    expect(ativa('fam-outra')).toBe(true);
+    expect(ativa('fam-de-cliente-real')).toBe(false);
+  });
+
+  it('sem lista, vale para todos', () => {
+    delete process.env[LISTA];
+    expect(ativa('qualquer-familia')).toBe(true);
+  });
+
+  it('tolera espaços na lista', () => {
+    process.env[LISTA] = ' fam-a , fam-b ';
+    expect(ativa('fam-a')).toBe(true);
+    expect(ativa('fam-b')).toBe(true);
+  });
+
+  // Liberar por omissão seria o erro mais caro possível aqui.
+  it('com lista, chamada sem família fica de FORA', () => {
+    process.env[LISTA] = 'fam-teste';
+    expect(ativa()).toBe(false);
+    expect(ativa(undefined)).toBe(false);
+    expect(ativa('')).toBe(false);
+  });
+
+  it('o desligamento geral vence a lista', () => {
+    process.env[LISTA] = 'fam-teste';
+    process.env[INTERRUPTOR] = 'false';
+    expect(ativa('fam-teste')).toBe(false);
+  });
+
+  it('família fora da lista não gasta cota nem chama o modelo', async () => {
+    process.env[LISTA] = 'outra-familia';
+
+    const r = await svc().responder({ householdId: FAMILIA, pergunta: 'oi', interlocutor: QUEM });
+
+    expect(r.codigo).toBe('DESLIGADA');
+    expect(limite.consumir).not.toHaveBeenCalled();
+    expect(ia.responder).not.toHaveBeenCalled();
+  });
+
+  it('família da lista conversa normalmente', async () => {
+    process.env[LISTA] = FAMILIA;
+
+    const r = await svc().responder({ householdId: FAMILIA, pergunta: 'oi', interlocutor: QUEM });
+    expect(r.texto).toBeTruthy();
   });
 });
 
