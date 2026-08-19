@@ -134,7 +134,12 @@ describe('mensagem vazia', () => {
  * acontece.
  */
 describe('pareceperguntaOuPedido — o que salva a pergunta do filtro barato', () => {
-  const PERGUNTAS_REAIS = [
+  /**
+   * Frases REAIS, das duas falhas em produção e das variações que a primeira
+   * correção ainda deixava passar batido. Português tem jeitos demais de pedir
+   * a mesma coisa — por isso o filtro deixa passar por padrão.
+   */
+  const PEDIDOS_REAIS = [
     'Quanto gastei em mercado ?',
     'quanto gastei esse mes',
     'como posso diminuir minhas despesas?',
@@ -145,32 +150,49 @@ describe('pareceperguntaOuPedido — o que salva a pergunta do filtro barato', (
     'muda a categoria pra lazer',
     'compara com o mes passado',
     'estou gastando muito?',
+    // A que falhou na segunda rodada de teste ao vivo:
+    'Detalhe os gastos d moradia',
+    'detalha os gastos de moradia',
+    // Variações que a lista de aberturas também perdia:
+    'explica esse gasto',
+    'abre o detalhe de mercado',
+    'quero ver os lancamentos',
+    'separa por categoria',
+    'resume o mes',
+    'ok, e quanto gastei?',
   ];
 
-  for (const texto of PERGUNTAS_REAIS) {
+  for (const texto of PEDIDOS_REAIS) {
     it(`deixa passar: "${texto}"`, () => {
       expect(pareceperguntaOuPedido(texto)).toBe(true);
     });
   }
 
-  // O filtro precisa continuar barrando conversa solta, senão toda mensagem
-  // vira chamada de IA paga.
-  const NAO_SAO_PERGUNTA = ['bom dia', 'obrigado', 'kkkk', 'ok', 'valeu', ''];
+  // A lista do que barra é curta e estável, ao contrário da lista de jeitos de
+  // perguntar. Sem ela, todo "kkk" viraria chamada de IA paga.
+  const CONVERSA = [
+    'bom dia', 'Boa noite!', 'obrigado', 'Valeu', 'kkkk', 'ok', 'blz',
+    'sim', 'entendi', 'tchau', 'top', '', '   ', '👍', '...',
+  ];
 
-  for (const texto of NAO_SAO_PERGUNTA) {
+  for (const texto of CONVERSA) {
     it(`barra: "${texto}"`, () => {
       expect(pareceperguntaOuPedido(texto)).toBe(false);
     });
   }
 
-  it('funciona sem acento e em maiúscula', () => {
+  it('ignora acento, maiúscula e pontuação final', () => {
+    expect(pareceperguntaOuPedido('OBRIGADO!')).toBe(false);
+    expect(pareceperguntaOuPedido('Bom dia.')).toBe(false);
     expect(pareceperguntaOuPedido('QUANTO GASTEI')).toBe(true);
-    expect(pareceperguntaOuPedido('Quanto gastei em mercado')).toBe(true);
   });
 
-  it('a palavra precisa abrir a frase, não aparecer no meio', () => {
-    // "gastei quanto queria" é relato, não pergunta.
-    expect(pareceperguntaOuPedido('gastei quanto queria no mercado')).toBe(false);
+  // Saudação sozinha é conversa; saudação com pedido é pedido.
+  it('só barra quando a mensagem é SÓ a conversa fiada', () => {
+    expect(pareceperguntaOuPedido('bom dia')).toBe(false);
+    expect(pareceperguntaOuPedido('bom dia, quanto gastei?')).toBe(true);
+    expect(pareceperguntaOuPedido('ok')).toBe(false);
+    expect(pareceperguntaOuPedido('ok obrigado, detalha o mercado')).toBe(true);
   });
 });
 

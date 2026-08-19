@@ -32,41 +32,58 @@ const DESTINO = {
   IGNORAR: 'IGNORAR',
 };
 
-// Aberturas de pergunta e de pedido. Não é para entender a frase — é só para
-// saber se vale a pena gastar a chamada de IA que vai classificá-la.
-const ABERTURAS = [
-  'quanto', 'quais', 'qual', 'como', 'quando', 'onde', 'porque', 'por que',
-  'quem', 'me da', 'me de', 'me diga', 'me mostra', 'me mostre', 'mostra',
-  'mostre', 'lista', 'liste', 'apaga', 'apague', 'muda', 'mude', 'troca',
-  'troque', 'altera', 'altere', 'corrige', 'corrija', 'registra', 'registre',
-  'anota', 'anote', 'sugere', 'sugira', 'sugestao', 'compara', 'compare',
-  'estou', 'consigo', 'posso', 'preciso', 'tenho',
-];
+/**
+ * Conversa que não pede resposta. É a lista do que NÃO passa — e ela é curta,
+ * fechada e estável, ao contrário da lista de "jeitos de perguntar", que é
+ * infinita.
+ *
+ * Só bloqueia quando a mensagem é ISSO e nada mais: "ok" sozinho é
+ * confirmação, "ok, e quanto gastei?" é pergunta.
+ */
+const CONVERSA_FIADA = new Set([
+  'oi', 'ola', 'opa', 'e ai', 'eai', 'fala', 'alo',
+  'bom dia', 'boa tarde', 'boa noite', 'bom dia!', 'boa tarde!', 'boa noite!',
+  'obrigado', 'obrigada', 'obg', 'valeu', 'vlw', 'brigado', 'brigada',
+  'ok', 'okay', 'blz', 'beleza', 'certo', 'isso', 'isso mesmo', 'perfeito',
+  'sim', 'nao', 'claro', 'ta', 'ta bom', 'tudo bem', 'entendi', 'show',
+  'kkk', 'kkkk', 'kkkkk', 'rs', 'rsrs', 'haha', 'hahaha', 'ata',
+  'tchau', 'falou', 'ate mais', 'ate logo', 'boa', 'legal', 'top', 'otimo',
+]);
 
 /**
- * A mensagem parece uma pergunta ou um pedido?
+ * Vale gastar a classificação de IA nesta mensagem?
  *
- * Existe porque `looksLikeFinancialMessage` (o filtro barato que protege a IA
- * de lançamento) responde NÃO para toda pergunta — ele procura valor e palavra
- * de gasto, e "quanto gastei em mercado?" não tem valor nenhum.
+ * A LÓGICA É INVERTIDA DE PROPÓSITO: deixa passar tudo, menos a conversa que
+ * claramente não pede resposta.
  *
- * Isso derrubou o primeiro teste ao vivo: com a assistente no ar, perguntas sem
- * o nome eram descartadas em silêncio, antes mesmo de virar log. A pessoa
- * perguntava e não acontecia nada.
+ * A primeira versão fazia o contrário — tinha uma lista de aberturas de
+ * pergunta ("quanto", "quais", "como"...) e só elas passavam. Falhou duas
+ * vezes em produção no mesmo dia: "Quanto gastei em mercado?" passava, mas
+ * "Detalhe os gastos de moradia" era descartada em silêncio, porque "detalhe"
+ * não estava na lista. Português tem jeitos demais de pedir a mesma coisa —
+ * "detalha", "explica", "abre", "separa", "quero ver", "resume".
  *
- * Deliberadamente permissivo — errar para o lado de deixar passar custa uma
- * classificação de IA que já ia acontecer nesse caminho; errar para o outro
- * lado é a pessoa falar com o sistema e ser ignorada. "bom dia" continua de
- * fora, que é o caso que o filtro precisa barrar.
+ * É a mesma armadilha que o `CATEGORY_MAP` do parser já cobrou deste projeto:
+ * lista fechada de palavras-chave falha em SILÊNCIO quando a vida real traz
+ * uma palavra que não está nela.
+ *
+ * Invertendo, o erro muda de lado — e de tamanho. Antes: a pessoa fala com o
+ * sistema e é ignorada, sem log, sem pista. Agora: no pior caso gasta-se uma
+ * classificação de IA à toa, que é barata e já acontecia no fluxo antigo para
+ * essas mesmas mensagens.
  */
 function pareceperguntaOuPedido(texto) {
   const limpo = String(texto || '').trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[!.,;]+$/, '')
+    .replace(/\s+/g, ' ');
 
   if (!limpo) return false;
-  if (limpo.includes('?')) return true;
 
-  return ABERTURAS.some((a) => limpo === a || limpo.startsWith(`${a} `));
+  // Emoji ou pontuação solta não é pergunta.
+  if (!/\p{L}|\d/u.test(limpo)) return false;
+
+  return !CONVERSA_FIADA.has(limpo);
 }
 
 /**
