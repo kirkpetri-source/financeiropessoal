@@ -6,11 +6,16 @@ const { parseWithAI, resolverSubcategoria } = require('./aiParserService');
 const { verificarLimiteDeIA } = require('./limiteIAService');
 const { permitirMensagem, limite: limiteMensagens } = require('./limiteMensagensService');
 const { createTransaction, updateTransaction } = require('./transactionService');
-const { listSubcategories } = require('./subcategoryService');
+const { listSubcategories, createSubcategory } = require('./subcategoryService');
 const householdService = require('./householdService');
 const { situacaoDaAssinatura, mensagemDaSituacao } = require('../assinatura/estado');
 const { telefoneDe, montarPerguntaSubcategoria, resolverRespostaConfirmacao } = require('../utils/subcategoriaConfirmacao');
 const { identificarNoVocabulario } = require('../utils/vocabularioDaFamilia');
+const { normalizar } = require('../utils/normalizarTexto');
+const memoriaDeDescricao = require('./memoriaDeDescricaoService');
+const {
+  nomeSugerido, montarOfertaDeCriacao, montarConfirmacaoDeCriacao, interpretarResposta,
+} = require('../utils/sugestaoDeSubcategoria');
 const { mensagemLimiteIA } = require('../utils/mensagensDeLimite');
 
 
@@ -203,9 +208,18 @@ async function carregarVocabulario(dados) {
   return { categorias, subcategorias };
 }
 
-async function resolverOuPerguntarSubcategoria({ dados, householdId, transacao, categoryId, categoryName, senderJid }) {
+async function resolverOuPerguntarSubcategoria({
+  dados, householdId, transacao, categoryId, categoryName, senderJid, descricao,
+}) {
   const subcategorias = await listSubcategories(dados, categoryId);
-  if (!subcategorias.length) return null;
+
+  // SEM subcategoria nesta categoria: não há o que escolher, mas pode haver o
+  // que CRIAR — é o caminho de "gastei 29,90 ração cachorro" caindo em Outros.
+  if (!subcategorias.length) {
+    return oferecerCriarSubcategoria({
+      dados, householdId, transacao, categoryId, categoryName, senderJid, descricao,
+    });
+  }
 
   const permitido = await verificarLimiteDeIA(householdId);
   if (!permitido) return null;
@@ -227,6 +241,7 @@ async function resolverOuPerguntarSubcategoria({ dados, householdId, transacao, 
 
   await dados.criar('pendingSubcategoryConfirmations', {
     phone: telefone,
+    tipo: 'ESCOLHER',
     transactionId: transacao.id,
     categoryId,
     categoryName,
@@ -234,6 +249,54 @@ async function resolverOuPerguntarSubcategoria({ dados, householdId, transacao, 
   });
 
   return montarPerguntaSubcategoria(categoryName, subcategorias);
+}
+
+/**
+ * Oferece CRIAR uma subcategoria para uma descrição que já se repetiu.
+ *
+ * Só na segunda aparição, e nunca depois de um "não". Subcategoria serve para
+ * gasto que se repete — oferecer no primeiro seria perguntar sobre algo que
+ * talvez nunca mais aconteça, em toda mensagem. Desenhado com o Kirk em
+ * 20/08/2026.
+ *
+ * Não gasta IA: o nome sai por regra da própria descrição.
+ */
+const VEZES_PARA_OFERECER = 2;
+
+async function oferecerCriarSubcategoria({
+  dados, householdId, transacao, categoryId, categoryName, senderJid, descricao,
+}) {
+  const texto = String(descricao || transacao.description || '').trim();
+  if (!texto) return null;
+
+  const conhecida = await memoriaDeDescricao.consultar(householdId, texto);
+  if (conhecida?.recusada || conhecida?.subcategoryId) return null;
+
+  const vezes = await memoriaDeDescricao.registrarAparicao(householdId, texto, categoryId);
+  if (vezes < VEZES_PARA_OFERECER) return null;
+
+  const nome = nomeSugerido(texto);
+  if (!nome) return null;
+
+  // Já existe com esse nome nesta categoria? Então não é novidade nenhuma.
+  const irmas = await listSubcategories(dados, categoryId);
+  if (irmas.some((s) => normalizar(s.name) === normalizar(nome))) return null;
+
+  const telefone = await telefoneEfetivo(senderJid, householdId);
+  if (!telefone) return null;
+
+  await dados.criar('pendingSubcategoryConfirmations', {
+    phone: telefone,
+    tipo: 'CRIAR',
+    transactionId: transacao.id,
+    categoryId,
+    categoryName,
+    descricao: texto,
+    nomeProposto: nome,
+    opcoes: [],
+  });
+
+  return montarOfertaDeCriacao({ descricao: texto, nome, categoriaNome: categoryName, vezes });
 }
 
 const EXPIRA_CONFIRMACAO_MS = 15 * 60 * 1000;
@@ -266,6 +329,13 @@ async function tentarResolverConfirmacaoPendente({ householdId, senderJid, texto
     return { tratado: false };
   }
 
+  // Duas perguntas diferentes moram nesta coleção, e a resposta é lida de
+  // acordo. Uma coleção só, e não duas, porque duas pendências simultâneas
+  // brigariam pela mesma mensagem seguinte.
+  if (pendencia.tipo === 'CRIAR') {
+    return responderOfertaDeCriacao({ dados, householdId, pendencia, texto });
+  }
+
   const resultado = resolverRespostaConfirmacao(pendencia.opcoes, texto);
 
   await dados.remover('pendingSubcategoryConfirmations', pendencia.id);
@@ -273,6 +343,76 @@ async function tentarResolverConfirmacaoPendente({ householdId, senderJid, texto
 
   await updateTransaction(dados, pendencia.transactionId, { subcategoryId: resultado.subcategoryId });
   return { tratado: true, resposta: resultado.resposta };
+}
+
+/**
+ * A pessoa respondeu à oferta de criar subcategoria.
+ *
+ * "sim" cria com o nome proposto; um nome solto cria com ele; "Pet em Casa"
+ * cria em outra categoria; "não" cala a sugestão para sempre. Qualquer outra
+ * coisa não é resposta a isto — a pendência morre e a mensagem segue como
+ * lançamento novo, igual à pergunta de escolha.
+ */
+async function responderOfertaDeCriacao({ dados, householdId, pendencia, texto }) {
+  const decisao = interpretarResposta(texto, pendencia.nomeProposto);
+
+  await dados.remover('pendingSubcategoryConfirmations', pendencia.id);
+  if (!decisao) return { tratado: false };
+
+  if (decisao.acao === 'RECUSAR') {
+    await memoriaDeDescricao.recusar(householdId, pendencia.descricao);
+    return {
+      tratado: true,
+      resposta: '✅ Combinado, não sugiro mais isso. '
+        + 'Se mudar de ideia, dá para criar subcategoria pelo painel a qualquer momento.',
+    };
+  }
+
+  // A pessoa pode ter apontado outra categoria-mãe ("Pet em Casa").
+  let categoryId = pendencia.categoryId;
+  let categoryName = pendencia.categoryName;
+
+  if (decisao.categoria) {
+    const alvo = await resolverCategoriaId(dados, decisao.categoria);
+    if (!alvo) {
+      return {
+        tratado: true,
+        resposta: `Não encontrei a categoria *${decisao.categoria}*. `
+          + `Se quiser, responda de novo com o nome de uma categoria que já existe, `
+          + `ou crie *${decisao.nome}* em *${categoryName}* mandando *sim*.`,
+      };
+    }
+    categoryId = alvo;
+    const doc = await dados.buscarDoc('categories', alvo);
+    categoryName = doc?.name || decisao.categoria;
+  }
+
+  const jaExiste = (await listSubcategories(dados, categoryId))
+    .find((x) => normalizar(x.name) === normalizar(decisao.nome));
+
+  const subcategoria = jaExiste
+    || await createSubcategory(dados, { name: decisao.nome, categoryId });
+
+  // O lançamento que disparou a pergunta também vai para a subcategoria nova —
+  // senão a pessoa cria e o gasto que motivou tudo fica de fora.
+  await updateTransaction(dados, pendencia.transactionId, {
+    categoryId,
+    subcategoryId: subcategoria.id,
+  });
+
+  await memoriaDeDescricao.aprender(householdId, pendencia.descricao, {
+    subcategoryId: subcategoria.id,
+    categoryId,
+  });
+
+  return {
+    tratado: true,
+    resposta: montarConfirmacaoDeCriacao({
+      nome: subcategoria.name,
+      categoriaNome: categoryName,
+      descricao: pendencia.descricao,
+    }),
+  };
 }
 
 /**
@@ -360,7 +500,23 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
     const ondeProcurar = interpretados.length === 1
       ? `${item.description || ''} ${texto}`
       : (item.description || '');
-    const explicito = identificarNoVocabulario(ondeProcurar, vocabulario);
+    let explicito = identificarNoVocabulario(ondeProcurar, vocabulario);
+
+    // O que a família já ensinou sobre esta descrição. Vem DEPOIS da menção
+    // explícita (quem escreve o nome agora manda mais que o histórico) e ANTES
+    // do palpite da IA. É o que faz o próximo "ração cachorro" ir direto para
+    // *Pet* — um nome que não aparece na frase, e que portanto nenhum
+    // casamento por texto acharia.
+    if (!explicito.subcategoria && !explicito.categoria && item.description) {
+      const aprendido = await memoriaDeDescricao.consultar(householdId, item.description);
+      if (aprendido?.subcategoryId) {
+        const sub = vocabulario.subcategorias.find((x) => x.id === aprendido.subcategoryId);
+        const mae = sub && vocabulario.categorias.find((c) => c.id === sub.categoryId);
+        // Só vale se as duas pontas ainda existirem: subcategoria apagada no
+        // painel não pode ressuscitar por memória.
+        if (sub && mae) explicito = { subcategoria: sub, categoria: mae };
+      }
+    }
 
     const [categoryIdResolvido, paymentMethodId] = await Promise.all([
       explicito.categoria ? explicito.categoria.id : resolverCategoriaId(dados, item.categoryName),
@@ -430,7 +586,8 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
     // 20/08/2026, depois de "gastei 80 no mercado" ainda perguntar.
     if (!perguntaSubcategoria && !explicito.categoria && !explicito.subcategoria) {
       perguntaSubcategoria = await resolverOuPerguntarSubcategoria({
-        dados, householdId, transacao, categoryId, categoryName: item.categoryName, senderJid,
+        dados, householdId, transacao, categoryId, categoryName: item.categoryName,
+        senderJid, descricao: item.description,
       });
     }
   }

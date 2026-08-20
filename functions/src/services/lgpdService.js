@@ -48,7 +48,7 @@ async function despejar(query) {
 async function exportarDados(householdId, solicitadoPor) {
   const dados = escopoDe(householdId);
 
-  const [familia, membros, transacoes, categorias, subcategorias, formas, logs, config, orcamentos, contasFixas, faturas, importacoes, conversas] = await Promise.all([
+  const [familia, membros, transacoes, categorias, subcategorias, formas, logs, config, orcamentos, contasFixas, faturas, importacoes, conversas, memoriaDeDescricao] = await Promise.all([
     householdService.buscarHousehold(householdId),
     householdService.listarMembros(householdId),
     despejar(dados.consultar('transactions')),
@@ -62,6 +62,7 @@ async function exportarDados(householdId, solicitadoPor) {
     despejar(dados.consultar('creditCardInvoices')),
     despejar(dados.consultar('importBatches')),
     despejar(dados.consultar('chatSessions')),
+    despejar(dados.consultar('memoriaDeDescricao')),
   ]);
 
   const configLimpa = Object.fromEntries(
@@ -86,6 +87,8 @@ async function exportarDados(householdId, solicitadoPor) {
     faturasDeCartao: faturas,
     importacoesDeExtrato: importacoes,
     conversasComOConsultor: conversas,
+    // O que o sistema aprendeu sobre como esta família descreve os gastos.
+    memoriaDeDescricoes: memoriaDeDescricao,
     configuracaoDoCanal: paraJson(configLimpa),
     totais: {
       lancamentos: transacoes.length,
@@ -144,7 +147,7 @@ async function apagarHousehold(householdId) {
   for (const colecao of [
     'transactions', 'whatsappLogs', 'categories', 'subcategories', 'paymentMethods',
     'budgets', 'recurringBills', 'creditCardInvoices', 'pendingSubcategoryConfirmations',
-    'importBatches', 'importMemoria', 'chatSessions',
+    'importBatches', 'importMemoria', 'chatSessions', 'memoriaDeDescricao',
   ]) {
     contagem[colecao] = await apagarEmLote(dados.consultar(colecao));
   }

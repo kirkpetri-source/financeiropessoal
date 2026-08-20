@@ -34,6 +34,10 @@ const COLECOES_ESCOPADAS = new Set([
   // Guarda texto financeiro em linguagem natural, então entra no export e no
   // apagar da LGPD junto com o resto.
   'chatSessions',
+  // O que a família ensinou sobre uma descrição de gasto: quantas vezes ela
+  // apareceu, a subcategoria aprendida e a recusa de sugerir. Guarda descrição
+  // de gasto, então entra no export e no apagar da LGPD.
+  'memoriaDeDescricao',
 ]);
 
 // Coleções que misturam registros globais (isDefault) com registros da família.
