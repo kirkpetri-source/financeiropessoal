@@ -10,6 +10,7 @@ const { listSubcategories } = require('./subcategoryService');
 const householdService = require('./householdService');
 const { situacaoDaAssinatura, mensagemDaSituacao } = require('../assinatura/estado');
 const { telefoneDe, montarPerguntaSubcategoria, resolverRespostaConfirmacao } = require('../utils/subcategoriaConfirmacao');
+const { identificarNoVocabulario } = require('../utils/vocabularioDaFamilia');
 const { mensagemLimiteIA } = require('../utils/mensagensDeLimite');
 
 
@@ -179,6 +180,29 @@ async function telefoneEfetivo(senderJid, householdId) {
  * Estourar o teto diário de IA aqui não bloqueia nada: o lançamento já foi
  * criado antes desta função ser chamada, só fica sem subcategoria.
  */
+/**
+ * Categorias e subcategorias da família, no formato que
+ * `identificarNoVocabulario` espera.
+ *
+ * Devolve vazio quando não há subcategoria nenhuma cadastrada: sem elas, nada
+ * muda em relação ao comportamento antigo e não vale gastar a leitura.
+ */
+async function carregarVocabulario(dados) {
+  const subcategorias = await listSubcategories(dados);
+  if (!subcategorias.length) return { categorias: [], subcategorias: [] };
+
+  const [padrao, daFamilia] = await Promise.all([
+    dados.consultarPadroes('categories').get(),
+    dados.consultar('categories').get(),
+  ]);
+
+  const categorias = [...padrao.docs, ...daFamilia.docs]
+    .map((d) => ({ id: d.id, name: d.data().name }))
+    .filter((c) => c.name);
+
+  return { categorias, subcategorias };
+}
+
 async function resolverOuPerguntarSubcategoria({ dados, householdId, transacao, categoryId, categoryName, senderJid }) {
   const subcategorias = await listSubcategories(dados, categoryId);
   if (!subcategorias.length) return null;
@@ -312,6 +336,14 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
     };
   }
 
+  // VOCABULÁRIO DA FAMÍLIA — o que conserta o lançamento em subcategoria.
+  //
+  // Sem isto o parser só conhecia CATEGORIA, e "gastei 45 na padaria" virava
+  // palpite da IA (que mandava para Alimentação ou Outros) porque "Padaria"
+  // existe apenas como subcategoria de Mercado. Uma leitura por mensagem,
+  // apenas quando a família tem subcategoria cadastrada.
+  const vocabulario = await carregarVocabulario(dados);
+
   const ids = [];
   // As transações completas (com categoria já resolvida) sobem junto: a
   // confirmação no WhatsApp precisa do nome da categoria, não só do ID.
@@ -322,10 +354,19 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
   let perguntaSubcategoria = null;
 
   for (const item of interpretados) {
-    const [categoryId, paymentMethodId] = await Promise.all([
-      resolverCategoriaId(dados, item.categoryName),
+    // Menção explícita vence o palpite do parser. Procura na descrição que a
+    // IA extraiu e, quando a mensagem tem um lançamento só, na frase inteira —
+    // "gastei 45 na padaria" pode virar descrição "45" dependendo do parser.
+    const ondeProcurar = interpretados.length === 1
+      ? `${item.description || ''} ${texto}`
+      : (item.description || '');
+    const explicito = identificarNoVocabulario(ondeProcurar, vocabulario);
+
+    const [categoryIdResolvido, paymentMethodId] = await Promise.all([
+      explicito.categoria ? explicito.categoria.id : resolverCategoriaId(dados, item.categoryName),
       resolverFormaPagamentoId(dados, item.paymentMethodName),
     ]);
+    const categoryId = categoryIdResolvido;
     if (!categoryId || !paymentMethodId) continue;
 
     const paidBy = await resolverPagador(householdId, item.paidBy, senderJid, pushName);
@@ -333,6 +374,8 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
     const comum = {
       type: item.type,
       categoryId,
+      // Escrita pela pessoa, então não há o que perguntar nem o que adivinhar.
+      subcategoryId: explicito.subcategoria ? explicito.subcategoria.id : null,
       paymentMethodId,
       notes: origin === 'WHATSAPP' ? `Via WhatsApp (${origem}).` : `Via WhatsApp (${origem}), ${ORIGEM_LABEL[origin] || origin}.`,
       origin,
@@ -381,7 +424,11 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
     ids.push(transacao.id);
     criadas.push(transacao);
 
-    if (!perguntaSubcategoria) {
+    // Pergunta só quando a pessoa NÃO disse. Citou a subcategoria, já está
+    // marcada; citou a categoria, ela escolheu o nível em que queria lançar —
+    // nos dois casos perguntar é atrito sem ganho. Pedido explícito do Kirk em
+    // 20/08/2026, depois de "gastei 80 no mercado" ainda perguntar.
+    if (!perguntaSubcategoria && !explicito.categoria && !explicito.subcategoria) {
       perguntaSubcategoria = await resolverOuPerguntarSubcategoria({
         dados, householdId, transacao, categoryId, categoryName: item.categoryName, senderJid,
       });
