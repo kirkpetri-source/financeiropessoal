@@ -56,6 +56,14 @@ ALVO=staging node tools/testar-audio-assistente.js        # audio pergunta, nao 
 ALVO=staging node tools/testar-criar-subcategoria.js      # ciclo de criacao sob demanda (17)
 ALVO=staging node tools/testar-lancamento-subcategoria.js # lancar direto na subcategoria (9)
 ALVO=staging node tools/medir-composicao-do-prompt.js     # de que e feito o prompt, token a token
+ALVO=staging node tools/testar-conta-fixa-assistente.js   # a Nina cadastra conta fixa (15)
+
+# Painel local: SEMPRE contra homologacao. Producao recusa localhost duas
+# vezes — CORS (lista fixa de origens) e App Check (reCAPTCHA so valida em
+# revelacash.com.br). Preview da Vercel falha pelos mesmos dois motivos.
+cd frontend && npm run dev -- --mode staging --port 5173 --strictPort
+#   conta de teste: teste@revelacash.invalid / teste-da-nina-123
+#   (criada por tools/criar-conta-de-teste-staging.js)
 node tools/marcar-conta-interna.js <id> --confirmar  # cortesia vitalícia
 node tools/apagar-familia.js <id> --confirmar        # limpa conta de teste
 node tools/criar-login-operador.js --confirmar       # cria/reseta a senha do painel gestor (/plataforma)
@@ -293,8 +301,30 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     base, comparando julho com agosto quando pediram junho. Os dois entregaram
     número errado com cara de exato, que é o pior resultado possível aqui.
 
+21. **A camada sem IA só responde o que reconhece por INTEIRO.** O resumo
+    devolve o total da família LOGADA, então qualquer palavra estranha na
+    frase — nome de pessoa, de outra família, assunto novo — manda a pergunta
+    para a IA (`temPalavraEstranha`). A defesa é por lista do que é ACEITO, e
+    não do que é proibido: foi assim que "e quanto a família do Vinicius
+    gastou?" deixou de responder os números da casa. Bloquear caso a caso
+    depende de alguém ter previsto o caso; aceitar caso a caso, não.
+
+22. **Feature que existe nos dois canais precisa ser testada nos DOIS.** O
+    cadastro de conta fixa funcionava no painel e, no WhatsApp, virava
+    lançamento sempre que faltava o nome da assistente — a mensagem caía no
+    parser, que via o valor e criava a despesa. A ferramenta ser compartilhada
+    não garante que o CAMINHO até ela seja. Testar pelo `processarMensagemRecebida`
+    (ver `tools/testar-webhook-ponta-a-ponta.js`), não só pelo service.
+
 ## Armadilhas já pagas (não repetir)
 
+- **Preview da Vercel não fala com a API de produção, e nunca vai falar.**
+  São duas barreiras independentes: o CORS tem lista fixa de origens (preview
+  tem hash aleatório a cada deploy) e o App Check exige token de reCAPTCHA,
+  que só valida em `revelacash.com.br`. Liberar só o CORS não resolve — o App
+  Check recusa em seguida. Para testar painel, rodar local contra
+  HOMOLOGAÇÃO, que tem `APP_CHECK_ENFORCE=false` permanente e `localhost:5173`
+  em `ALLOWED_ORIGINS`. A porta importa: 5174 não está na lista.
 - **Correção que arruma um lado e esquece o outro passa despercebida quando o
   caso comum acerta por coincidência.** O comparativo foi corrigido no roteador
   (passou a devolver `mesA` e `mesB`), mas o executor continuou repassando só

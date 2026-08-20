@@ -1,140 +1,145 @@
-# Estado do projeto — 20/08/2026 (assistente em teste com 1 família)
+# Estado do projeto — 20/08/2026 (backend completo em produção, frontend pendente)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
-## RETOMAR AQUI — assistente quase pronta, falta Fase 4 (20/08/2026)
+## RETOMAR AQUI — falta a Fase 4 e publicar o frontend (20/08/2026)
 
-### O que está NO AR agora
+### O que está NO AR
 
-**Backend em produção**, com a assistente liberada só para a Família Vinicius
-(`ASSISTENTE_FAMILIAS=bgo6KJKTgCqC1HN2Jqzh`). As outras 12 famílias seguem
-exatamente como antes.
+**Backend em PRODUÇÃO**, com tudo desta sessão. Assistente liberada só para a
+Família Vinicius (`ASSISTENTE_FAMILIAS=bgo6KJKTgCqC1HN2Jqzh`) — conferido após
+o deploy: **1 família com assistente, 12 intocadas**.
 
-**Frontend NÃO está em produção.** `main` não tem a assistente. A branch
-`feature/chat-ia` está ~40 commits à frente. O painel foi publicado num
-**preview da Vercel** para o Kirk testar:
-`https://financeiropessoal-hsdsvntvu-lion-techs-projects-a92f3d16.vercel.app`
+**Frontend NÃO está em produção.** `main` não tem a tela da assistente nem o
+menu condicional. A branch `feature/chat-ia` está ~45 commits à frente.
+Testado local contra homologação e aprovado pelo Kirk.
+
+### O PRÓXIMO PASSO — decisão do Kirk
+
+**Publicar o frontend** (`git push origin main`). Está pronto e testado, mas
+não foi feito porque **push para `main` é deploy de produção na hora** para as
+13 famílias, e isso precisa de autorização explícita.
+
+Quando publicar, o painel ganha a aba "Assistente" — e ela **só aparece para
+quem tem acesso liberado** (o menu pergunta `GET /assistente/uso` e obedece).
+Para as outras 12 famílias o painel fica idêntico ao que já usam.
 
 ### QUANDO FOR LIBERAR PARA TODAS AS FAMÍLIAS — pedido do Kirk
 
 Basta **esvaziar `ASSISTENTE_FAMILIAS`** no `.env` de produção e deployar o
-backend. O menu "Assistente" aparece sozinho para todo mundo: o frontend
-pergunta ao servidor (`GET /assistente/uso`) e obedece, então **não é preciso
-publicar o site de novo**. Ver `AssistenteContext.jsx` e a regra 18.
+BACKEND. O menu aparece sozinho: o frontend pergunta ao servidor e obedece,
+então **não é preciso publicar o site de novo**. Ver regra 18.
 
-Antes de liberar, decidir também:
-- a cota diária (hoje 20 conversas/família)
-- se troca o modelo (ver "Custo" abaixo)
+Antes de liberar, decidir: a cota diária (hoje 20 conversas) e se troca o
+modelo (ver "Custo").
 
-### O que foi feito nesta sessão (20/08)
+### O que a assistente faz hoje
 
-**Camada de consulta SEM IA.** Pergunta de consulta não passa mais pelo modelo:
-o número sai das mesmas agregações que a IA usaria. Custo zero, resposta em
-menos de 1s, número exato. Medido: 80% das perguntas reais respondidas sem IA.
-Não consome cota — o teto existe para conter gasto de IA, e aqui não há.
+| | painel | WhatsApp |
+|---|---|---|
+| consultar gastos | sim, **sem IA** | sim, **sem IA** |
+| relatório por pessoa (mês/semana/dia) | sim, sem IA | sim, sem IA |
+| conselho | sim | sim |
+| lançar | sim | sim |
+| alterar/apagar (2 etapas) | sim | sim |
+| **cadastrar conta fixa** | sim | sim |
+| perguntar por **áudio** | — | sim |
+| foto de cupom | — | sim (lança) |
+
+### Trabalho desta sessão (20/08)
+
+**Camada de consulta SEM IA.** Consulta não passa pelo modelo: o número sai
+das mesmas agregações que a IA usaria. Custo zero, resposta em menos de 1s,
+número exato. 80% das perguntas reais respondidas assim. **Não consome cota.**
 
 **Relatório por pessoa** (`gastoPorPessoa`) com recorte em dias no fuso do
-Brasil. "Quanto cada um gastou essa semana/hoje" responde sem IA e sem o teto
-de 40 lançamentos que fazia a soma sair menor que a real.
+Brasil, sem o teto de 40 lançamentos que fazia a soma sair menor que a real.
 
-**Lançamento em subcategoria** — bug real de produção, relatado por usuários.
-"gastei 45 na padaria" caía em Alimentação porque o parser nunca via as
-subcategorias da família. Agora menção explícita vence palpite, e a confirmação
-diz "Mercado > Padaria" (antes dizia só "Mercado", e parecia não ter
-funcionado).
+**Lançamento em subcategoria** — bug relatado por usuários. "gastei 45 na
+padaria" caía em Alimentação. Agora vai para Mercado > Padaria e a confirmação
+diz isso.
 
 **Criar subcategoria sob demanda.** Na 2ª vez que uma descrição se repete, a
-Nina oferece criar; aceita "sim", outro nome, ou "Pet em Casa". A memória
-guarda o vínculo descrição → subcategoria, então o 3º lançamento vai direto.
-"não" cala a sugestão para sempre.
+Nina oferece criar. A memória guarda o vínculo, então o 3º lançamento vai
+direto. "não" cala a sugestão para sempre.
 
-**Fase 3 — áudio.** O áudio era o único canal onde perguntar não funcionava.
-Agora é transcrito primeiro e passa pelo MESMO roteador do texto. A transcrição
-fica no log (antes áudio era registro cego) e é reaproveitada, para não pagar a
-chamada multimodal duas vezes.
+**Fase 3 — áudio.** Perguntar por áudio funciona: é transcrito e passa pelo
+MESMO roteador do texto. A transcrição fica no log e é reaproveitada.
 
-**Menu condicional** — o item "Assistente" só aparece para quem tem acesso.
+**Conta fixa pela conversa.** A Nina cadastra contas fixas recorrentes — antes
+mandava o cliente abrir o painel.
 
-### Bugs corrigidos nesta sessão
+**Menu condicional** no painel.
 
-1. **Confirmação omitia a subcategoria** — registrava certo e informava errado.
-2. **Comparativo comparava um mês com ele mesmo.** Corrigido no roteador... e
-   o EXECUTOR continuou descartando o `mesA`. "Compare com junho" comparava
-   julho com agosto em silêncio. Só apareceu quando o teste de unidade da
-   camada foi escrito.
-3. **Resposta sobre outra família começava pelo número.** "Quanto a família
-   Kadu gastou?" respondia R$ 6.609,35 — o total da PRÓPRIA família, sem
-   ressalva. Não houve vazamento (o isolamento técnico funcionou), mas quem lê
-   conclui que está vendo dado alheio. Agora a ressalva vem primeiro.
-4. **Consulta sobre cripto virava sermão.** A regra do prompt disparava na
-   PALAVRA, não na intenção.
-5. **"Sim"/"Confirmo" caíam no vazio** — alteração ficava pendente para sempre.
-6. **Vocativo com pontuação/saudação antes** — ", Nina, gastei 200" virou
-   lançamento de R$ 200 em vez de conversa.
+### Bugs corrigidos (todos com teste que os prende)
 
-### Custo — medido, não estimado
+1. Confirmação omitia a subcategoria — registrava certo e informava errado.
+2. Comparativo comparava um mês com ele mesmo. Corrigido no roteador e **o
+   executor continuou descartando o `mesA`** — "compare com junho" comparava
+   julho com agosto em silêncio.
+3. **Pergunta sobre OUTRA família virava o total da família logada.** "e quanto
+   a família do Vinicius gastou?" respondeu os números da casa, sem ressalva e
+   sem passar pela IA. A defesa agora é invertida: o resumo só responde quando
+   reconhece TODAS as palavras da frase.
+4. **Pedido de conta fixa virava lançamento** quando faltava o nome da Nina —
+   criava despesa fantasma e nenhuma conta fixa.
+5. Consulta sobre cripto virava sermão (a regra disparava na palavra).
+6. "Sim"/"Confirmo" caíam no vazio.
+7. Vocativo com pontuação/saudação antes.
+
+### Custo — medido
 
 | | `gemini-3.6-flash` (atual) | `gemini-3.5-flash-lite` |
 |---|---|---|
 | por pergunta | R$ 0,0453 | R$ 0,0123 |
 | 20/dia (teto) | R$ 27,19/mês = 109% da mensalidade | R$ 7,37 = 30% |
 
-**O cache do Gemini não funciona com function calling** — medido 0% e
-confirmado na documentação. Essa saída está fechada.
+**Cache do Gemini não funciona com function calling** (medido 0%). 96,5% do
+que se paga é estrutura fixa do prompt reenviada a cada rodada — por isso a
+camada sem IA é a alavanca certa, e ela já corta 80% do volume.
 
-96,5% do que se paga é estrutura fixa do prompt (instrução 1.035 + catálogo
-1.355 + vocabulário 282 = 2.672 tokens) reenviada a cada uma das ~2,8 rodadas.
-O dado financeiro são ~271 tokens. Por isso a camada sem IA é a alavanca certa.
-
-**BYOK (cliente usa a chave dele) foi avaliado e recusado:** o free tier do
-Gemini usa os dados para TREINAR, e os termos avisam contra dado financeiro.
-Só serviria chave paga, e aí acabou a economia. Além de bater na regra 9.
-
-Alternativas medidas, se um dia precisar: Groq Llama 3.1 8B e DeepSeek V4 saem
-~24x mais baratos que o modelo atual.
+**BYOK recusado:** free tier do Gemini TREINA com os dados, e os termos avisam
+contra dado financeiro. Alternativas medidas: Groq e DeepSeek ~24x mais
+baratos que o atual.
 
 ### Varredura de segurança (20/08)
 
-Sem nada crítico: nenhuma rota sem autenticação, nenhum segredo rastreado ou
-hardcoded, isolamento com 16 testes, sem ciclos de dependência. As duas queries
-sem tenant encontradas são legítimas (job agendado que re-escopa, e
-enriquecimento de IDs já validados).
-
-**8 vulnerabilidades moderadas = 1 real** (`uuid` v3/v5/v6 com buffer),
-transitiva do firebase-admin. O projeto não usa `uuid` diretamente. Corrigir
-exige pular firebase-admin 12→14 (breaking) em produção com 13 famílias —
-**decisão: não mexer agora**, reavaliar quando for atualizar de propósito.
+Nada crítico. Nenhuma rota sem autenticação, nenhum segredo rastreado,
+isolamento com 16 testes, sem ciclos. **8 vulnerabilidades moderadas = 1 real**
+(`uuid`, transitiva do firebase-admin, não exercitada aqui). Corrigir exige
+firebase-admin 12→14 (breaking) — **decisão: não mexer agora**.
 
 ### PENDÊNCIAS
 
-1. **Kirk testar o preview** e aprovar antes de publicar em `main`.
-   **`git push` para `main` é deploy de produção na hora.**
-2. **Fase 4** — nada começou: central de ajuda `/ajuda`, termos com aviso de
-   persona de IA, privacidade (dados agregados no Gemini), seção na landing,
-   mensagem de apresentação aos clientes.
-3. **`memoriaDeDescricaoService` sem teste de unidade** — o outro buraco que a
-   varredura achou.
+1. **Publicar o frontend** (`main`) — pronto e testado, falta a autorização.
+2. **Fase 4** — nada começou: `/ajuda`, termos com aviso de persona de IA,
+   privacidade (dados agregados no Gemini), landing, mensagem de apresentação.
+3. **`memoriaDeDescricaoService` sem teste de unidade.**
 4. **Decidir cota e modelo** antes de liberar para todos.
 5. **4 famílias com trial vencido**: Weider e Aline, Lucas, Raquel, claudio.
-6. Corrida entre `jaProcessada()` e a gravação: real, nunca observada (0 em 96).
+6. Corrida entre `jaProcessada()` e a gravação: real, nunca observada.
 
-### Ferramentas desta fase
+### Como testar
+
+```bash
+# painel local contra HOMOLOGAÇÃO (produção bloqueia por CORS + App Check)
+cd frontend && npm run dev -- --mode staging --port 5173 --strictPort
+#   teste@revelacash.invalid / teste-da-nina-123
+```
 
 ```bash
 node tools/acompanhar-whatsapp.js <id>                    # assiste ao teste ao vivo
-node tools/zerar-limite-do-dia.js <id> --confirmar        # destrava teste na cota
-node tools/diagnostico-duplicidade-whatsapp.js            # separa causas de duplicidade
-node tools/diagnostico-conta-sem-familia.js               # login que nao abre o painel
-ALVO=staging node tools/testar-consulta-direta.js         # 21 verificacoes
-ALVO=staging node tools/testar-audio-assistente.js        # 14 — Fase 3
-ALVO=staging node tools/testar-criar-subcategoria.js      # 17 — ciclo completo
-ALVO=staging node tools/testar-lancamento-subcategoria.js # 9
+node tools/zerar-limite-do-dia.js <id> --confirmar        # destrava a cota
+ALVO=staging node tools/testar-consulta-direta.js         # 21
+ALVO=staging node tools/testar-conta-fixa-assistente.js   # 15
+ALVO=staging node tools/testar-audio-assistente.js        # 14
+ALVO=staging node tools/testar-criar-subcategoria.js      # 17
 ALVO=staging node tools/testar-webhook-ponta-a-ponta.js   # 18
-ALVO=staging node tools/medir-custo-assistente.js         # custo real, em reais
-ALVO=staging node tools/medir-composicao-do-prompt.js     # de que e feito o prompt
+ALVO=staging node tools/testar-roteador-whatsapp.js       # 17
+ALVO=staging node tools/medir-custo-assistente.js         # custo real
 ```
 
-**931 testes de unidade** + 79 verificações de ponta a ponta.
+**941 testes de unidade** + 102 verificações de ponta a ponta.
 
 ---
 
