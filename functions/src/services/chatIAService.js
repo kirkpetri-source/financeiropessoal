@@ -229,6 +229,23 @@ const FERRAMENTAS = [
     exigePermissao: 'lancar',
   },
   {
+    name: 'criarContaFixa',
+    description: 'Cadastra uma CONTA FIXA recorrente (aluguel, energia, internet, mensalidade) — a que se repete todo mês. Diferente de registrarLancamento, que anota um gasto que já aconteceu. Use quando a pessoa falar em "conta fixa", "todo mês", "mensalidade", "recorrente" ou pedir para cadastrar na aba de contas fixas. Se faltar valor, dia do vencimento ou categoria, PERGUNTE antes de chamar — cadastrar errado repete o erro todo mês.',
+    exigePermissao: 'lancar',
+    parameters: {
+      type: 'object',
+      properties: {
+        descricao: { type: 'string', description: 'Do que é a conta. Ex.: "energia", "aluguel", "internet".' },
+        valor: { type: 'number', description: 'Valor em REAIS (ex.: 150.50), não em centavos.' },
+        diaDeVencimento: { type: 'number', description: 'Dia do mês em que vence, de 1 a 31.' },
+        categoria: { type: 'string', description: 'Nome de uma categoria que a família tem, do vocabulário.' },
+        formaDePagamento: { type: 'string', description: 'Opcional. Omita se a pessoa não disser.' },
+        tipo: { type: 'string', description: 'EXPENSE (padrão) ou INCOME para receita recorrente, como salário.' },
+      },
+      required: ['descricao', 'valor', 'diaDeVencimento', 'categoria'],
+    },
+  },
+  {
     name: 'prepararAlteracao',
     description: 'PROPÕE alterar um lançamento — não altera nada ainda. Devolve o que mudaria para você mostrar à pessoa e pedir confirmação. Só depois do "sim" dela chame confirmarAcaoPendente.',
     parameters: {
@@ -318,6 +335,7 @@ O QUE VOCÊ PODE FAZER
 
 REGISTRAR, ALTERAR E APAGAR
 - **Registrar** é direto: chame registrarLancamento e confirme o que foi feito. Não pergunte antes.
+- **Conta fixa é outra coisa que lançamento.** registrarLancamento anota um gasto que JÁ aconteceu; criarContaFixa cadastra a conta que se repete todo mês. "Paguei a luz" é lançamento; "minha luz vence dia 10 e é uns 150" é conta fixa. Na dúvida, pergunte qual dos dois. E antes de criar a conta fixa você precisa de três coisas — valor, dia do vencimento e categoria: se faltar alguma, PERGUNTE, porque cadastrar errado repete o erro todo mês.
 - **Alterar e apagar são em DUAS ETAPAS, sempre.** Primeiro prepararAlteracao ou prepararExclusao, que só PROPÕEM. Mostre à pessoa exatamente o que vai mudar e pergunte se confirma. Só quando ela disser sim é que você chama confirmarAcaoPendente. Nunca chame a confirmação sem ter proposto antes na mesma conversa — mexer no lançamento errado é fácil de fazer e difícil de perceber depois.
 - Se a ferramenta devolver "precisaEscolher", há mais de um lançamento parecido: liste os candidatos e pergunte qual, sem escolher por conta própria.
 - Você altera um lançamento por vez. Se pedirem para apagar tudo ou mexer em vários de uma vez, explique que faz um de cada vez, e que o painel tem a lista completa para isso.
@@ -326,6 +344,7 @@ O QUE VOCÊ NÃO FAZ
 - Não recomenda investimento, corretora, banco, seguro, criptomoeda nem produto financeiro específico. Se PEDIREM RECOMENDAÇÃO, diga que isso exige um profissional certificado e ofereça ajudar a organizar o orçamento.
 - Mas CONSULTA é consulta, seja qual for o assunto. "Quanto gastei em criptomoeda?" é a mesma pergunta que "quanto gastei em pet shop?": procure nas categorias, subcategorias e descrições e responda o que achou — ou que não achou nada. Não emita opinião sobre o mérito do gasto, não avise que não analisa aquilo, não mude de assunto. A pessoa perguntou quanto ela gastou do próprio dinheiro; a resposta é um número, ou a ausência dele.
 - Não diz nem sugere que o que você faz é consultoria, assessoria ou análise de investimentos.
+- Não cadastra orçamento, categoria nem forma de pagamento — isso é no painel. Conta fixa VOCÊ cadastra, com criarContaFixa.
 - Não responde sobre o funcionamento interno do sistema, sobre outras famílias, sobre quantos clientes existem ou sobre custos de operação. Você não tem acesso a nada disso. Se perguntarem, diga que só enxerga as finanças desta família e volte ao assunto.
 - **Pergunta que cita OUTRA família ou pessoa de fora da casa começa pela ressalva, nunca pelo número.** "Quanto a família Kadu gastou?" não se responde com o total desta família — quem lê entende que está vendo o gasto dos outros, e a confiança no produto morre ali. Diga primeiro que você só enxerga esta família; só depois, se fizer sentido, ofereça o dado daqui deixando claro que é daqui. Vale para qualquer nome que não seja de um membro desta casa.
 - Não promete resultado financeiro nem garante economia.

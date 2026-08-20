@@ -225,6 +225,7 @@ function servico() {
     const subcategoryService = require('./subcategoryService');
     const budgetService = require('./budgetService');
     const recurringBillService = require('./recurringBillService');
+    const paymentMethodService = require('./paymentMethodService');
     const { lancarPorTexto } = require('./lancamentoPorMensagem');
 
     const consulta = criarConsultaFinanceira({
@@ -232,7 +233,9 @@ function servico() {
     });
     const sessoes = criarChatSessionService();
     const acoes = criarAcoesFinanceiras({
-      transactionService, categoryService, subcategoryService, lancarPorTexto, sessoes,
+      transactionService, categoryService, subcategoryService,
+      recurringBillService, paymentMethodService,
+      lancarPorTexto, sessoes,
     });
     const ia = criarChatIA({ consulta, acoes, sessoes, chamarModelo: chamarModeloReal });
 

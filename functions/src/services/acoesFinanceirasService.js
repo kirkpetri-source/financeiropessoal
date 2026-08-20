@@ -45,6 +45,8 @@ function criarAcoesFinanceiras({
   transactionService,
   categoryService,
   subcategoryService,
+  recurringBillService,
+  paymentMethodService,
   lancarPorTexto,
   sessoes,
   agora = () => new Date(),
@@ -272,8 +274,87 @@ function criarAcoesFinanceiras({
     return { cancelado: true, resumo: pendente.resumo };
   }
 
+  /**
+   * Cadastra uma conta fixa recorrente.
+   *
+   * A Nina sabia registrar o PAGAMENTO de uma conta fixa (vira lançamento
+   * comum), mas não sabia cadastrar a conta em si — e dizia isso ao cliente,
+   * mandando ele abrir o painel. Pedido do Kirk em 20/08/2026 depois de ouvir
+   * essa recusa num teste real.
+   *
+   * Diferente de alterar e apagar, criar é DIRETO, pelo mesmo motivo de
+   * `registrarLancamento`: o que foi criado aparece na tela na hora e é fácil
+   * de apagar. Pedir confirmação seria atrito sem ganho.
+   *
+   * O valor chega em REAIS (é como a pessoa fala) e é gravado em centavos, que
+   * é como a coleção guarda. Converter no lugar errado aqui vira conta 100x
+   * maior ou menor todo mês, para sempre.
+   */
+  async function criarContaFixa(dados, args = {}, _ctx = {}) {
+    const { descricao, valor, diaDeVencimento, categoria, formaDePagamento, tipo } = args;
+
+    if (!descricao || !String(descricao).trim()) {
+      return { erro: 'Preciso saber do que é a conta (ex.: "energia", "aluguel").' };
+    }
+
+    const valorEmReais = Number(valor);
+    if (!Number.isFinite(valorEmReais) || valorEmReais <= 0) {
+      return { erro: 'Preciso do valor da conta, maior que zero.' };
+    }
+
+    const dia = Number(diaDeVencimento);
+    if (!Number.isInteger(dia) || dia < 1 || dia > 31) {
+      return { erro: 'Preciso do dia do vencimento, de 1 a 31.' };
+    }
+
+    const ehReceita = String(tipo || '').toUpperCase() === 'INCOME';
+
+    const categorias = await categoryService.listCategories(dados);
+    const alvoCategoria = categorias.find((c) => normalizar(c.name) === normalizar(categoria || ''));
+    if (!alvoCategoria) {
+      return {
+        erro: `Não encontrei a categoria "${categoria || ''}".`,
+        categoriasDisponiveis: categorias
+          .filter((c) => !c.type || c.type === (ehReceita ? 'INCOME' : 'EXPENSE') || c.type === 'BOTH')
+          .map((c) => c.name),
+      };
+    }
+
+    const formas = await paymentMethodService.listPaymentMethods(dados);
+    // Forma de pagamento é obrigatória na coleção, mas quem fala raramente
+    // diz — cai na primeira disponível em vez de travar a criação por um
+    // campo que a pessoa não sabe que existe.
+    const alvoForma = formas.find((f) => normalizar(f.name) === normalizar(formaDePagamento || ''))
+      || formas[0];
+    if (!alvoForma) {
+      return { erro: 'A família ainda não tem forma de pagamento cadastrada.' };
+    }
+
+    const criada = await recurringBillService.createRecurringBill(dados, {
+      description: String(descricao).trim(),
+      amountCents: Math.round(valorEmReais * 100),
+      type: ehReceita ? 'INCOME' : 'EXPENSE',
+      dueDay: dia,
+      categoryId: alvoCategoria.id,
+      paymentMethodId: alvoForma.id,
+      active: true,
+    });
+
+    return {
+      criada: {
+        descricao: criada.description,
+        valor: moeda(valorEmReais),
+        diaDeVencimento: dia,
+        categoria: alvoCategoria.name,
+        formaDePagamento: alvoForma.name,
+        tipo: ehReceita ? 'receita' : 'despesa',
+      },
+    };
+  }
+
   return {
     registrarLancamento,
+    criarContaFixa,
     prepararAlteracao,
     prepararExclusao,
     confirmarAcaoPendente,
