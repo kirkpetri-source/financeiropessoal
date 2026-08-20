@@ -87,6 +87,45 @@ function pareceperguntaOuPedido(texto) {
 }
 
 /**
+ * A pessoa está pedindo para CADASTRAR uma conta fixa?
+ *
+ * Exige DOIS sinais juntos — um verbo de cadastro e um termo de recorrência —
+ * e essa combinação é o que separa os dois casos que vivem na mesma frase:
+ *
+ *   "cadastra minha conta fixa de água, 90 reais"  -> conta fixa
+ *   "paguei a mensalidade da academia"             -> lançamento
+ *
+ * Sem isso, o pedido caía no parser de lançamento, que vê "90 reais" e cria
+ * uma despesa avulsa — a conta fixa nunca nascia e ainda aparecia um gasto
+ * fantasma. Achado testando o webhook em 20/08/2026: com o nome da assistente
+ * na frente funcionava, sem o nome virava lançamento.
+ *
+ * Fica DEPOIS da regra de lançamento na ordem de decisão, então nada do fluxo
+ * que já funcionava muda de caminho.
+ */
+const VERBO_DE_CADASTRO = [
+  'cadastr', 'adicion', 'registra como', 'criar', 'cria uma', 'cria a',
+  'inclui', 'incluir', 'coloca como', 'salva como', 'quero cadastrar',
+  'anota como', 'poe como', 'poe na aba', 'na aba de',
+];
+
+const TERMO_DE_RECORRENCIA = [
+  'conta fixa', 'contas fixas', 'despesa fixa', 'despesas fixas',
+  'receita fixa', 'gasto fixo', 'gastos fixos', 'recorrente', 'recorrentes',
+  'todo mes', 'todos os meses', 'mensalmente', 'mensalidade fixa',
+];
+
+function pedeCadastroDeContaFixa(texto) {
+  const limpo = String(texto || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  const temVerbo = VERBO_DE_CADASTRO.some((v) => limpo.includes(v));
+  const temRecorrencia = TERMO_DE_RECORRENCIA.some((t) => limpo.includes(t));
+
+  return temVerbo && temRecorrencia;
+}
+
+/**
  * Decisão que não precisa de IA. É o que o webhook consulta ANTES de gastar
  * qualquer coisa.
  *
@@ -128,7 +167,14 @@ function decidirSemIA({ texto, nomeDaAssistente, ehComando, casouRegra, assisten
     return { destino: DESTINO.LANCAMENTO, texto: mensagem, motivo: 'REGRA_DE_LANCAMENTO' };
   }
 
-  // 4. Precisa da IA para saber o que é. Quem chama decide se vale o custo.
+  // 4. Pedido de cadastro de conta fixa. Vem DEPOIS da regra de lançamento
+  //    para não mudar nada do que já funcionava, e antes do indefinido porque
+  //    o parser de lançamento levaria "90 reais" para uma despesa avulsa.
+  if (assistenteAtiva && pedeCadastroDeContaFixa(mensagem)) {
+    return { destino: DESTINO.CHAT, texto: mensagem, motivo: 'CADASTRO_DE_CONTA_FIXA' };
+  }
+
+  // 5. Precisa da IA para saber o que é. Quem chama decide se vale o custo.
   return { destino: null, texto: mensagem, motivo: 'INDEFINIDO' };
 }
 
@@ -195,4 +241,4 @@ function decidirComIntencao({ texto, intencao, assistenteAtiva = true, temLancam
   return { destino: DESTINO.LANCAMENTO, texto: mensagem, motivo: 'IA_DISSE_LANCAMENTO' };
 }
 
-module.exports = { decidirSemIA, decidirComIntencao, pareceperguntaOuPedido, DESTINO };
+module.exports = { decidirSemIA, decidirComIntencao, pareceperguntaOuPedido, pedeCadastroDeContaFixa, DESTINO };

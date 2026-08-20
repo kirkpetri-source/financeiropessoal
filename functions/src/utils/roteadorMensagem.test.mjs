@@ -292,3 +292,54 @@ describe('decidirComIntencao — OUTRO que na verdade era pergunta', () => {
     expect(r.destino).toBe(DESTINO.LANCAMENTO);
   });
 });
+
+/**
+ * Pedido de cadastro de conta fixa não pode virar lançamento.
+ *
+ * Testado pelo webhook em 20/08/2026: "cadastra minha conta fixa de água, 90
+ * reais" criava uma DESPESA de R$ 90 e nenhuma conta fixa. Com o nome da
+ * assistente na frente funcionava (passo 1 resolvia), sem o nome o parser de
+ * lançamento via o valor e criava a transação — a conta fixa nunca nascia e
+ * ainda sobrava um gasto fantasma.
+ */
+describe('pedido de conta fixa vai para a assistente', () => {
+  const rotear = (texto, extra = {}) => decidirSemIA({
+    texto, nomeDaAssistente: 'Nina', ehComando: false, assistenteAtiva: true, ...extra,
+  });
+
+  it('reconhece o pedido em várias formas', () => {
+    for (const t of [
+      'cadastra minha conta fixa de agua, 90 reais, vence dia 20',
+      'cadastra minha internet como conta fixa',
+      'quero cadastrar uma despesa fixa de 200',
+      'adiciona o aluguel nas contas fixas',
+      'poe na aba de contas fixas o aluguel de 1200',
+    ]) {
+      expect(rotear(t).destino).toBe(DESTINO.CHAT);
+    }
+  });
+
+  // Exige os DOIS sinais: verbo de cadastro E termo de recorrência. É isso que
+  // separa o pedido de cadastro de um pagamento comum.
+  it('pagamento de conta que por acaso é fixa continua lançamento', () => {
+    expect(rotear('paguei a mensalidade da academia').destino).toBeNull();
+    expect(rotear('gastei 150 de luz').destino).toBeNull();
+    expect(rotear('paguei o aluguel hoje').destino).toBeNull();
+  });
+
+  it('só o termo de recorrência, sem verbo, não desvia', () => {
+    expect(rotear('minhas contas fixas somam quanto?').destino).toBeNull();
+  });
+
+  // A regra 3 continua tendo prioridade: o que o parser entende vira
+  // lançamento antes de qualquer outra coisa.
+  it('não passa na frente da regra de lançamento', () => {
+    const r = rotear('cadastra conta fixa de luz', { casouRegra: true });
+    expect(r.destino).toBe(DESTINO.LANCAMENTO);
+  });
+
+  it('sem assistente ligada, segue o fluxo antigo', () => {
+    const r = rotear('cadastra minha conta fixa de agua', { assistenteAtiva: false });
+    expect(r.destino).toBeNull();
+  });
+});
