@@ -24,6 +24,10 @@ const { hojeNoBrasil } = require('../utils/fusoBrasil');
 const MAX_MESES_RETRATO = 6;
 const MAX_LANCAMENTOS = 40;
 
+// Teto do recorte em dias. Mais que isso é pergunta de mês, e a agregação
+// mensal já responde sem varrer dois meses de documentos.
+const MAX_DIAS_RECORTE = 62;
+
 function mesAtual(agora = new Date()) {
   return hojeNoBrasil(agora).slice(0, 7);
 }
@@ -45,6 +49,24 @@ function confirmadas(lista) {
 
 function despesas(lista) {
   return confirmadas(lista).filter((t) => t.type === 'EXPENSE');
+}
+
+const NOMES_DOS_MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+/** Como a pessoa chamaria essa janela: "hoje" soa melhor que "últimos 1 dia". */
+function nomeDaJanela(dias) {
+  if (dias === 1) return 'hoje';
+  if (dias === 7) return 'os últimos 7 dias';
+  return `os últimos ${dias} dias`;
+}
+
+function mesPorExtensoCurto(mes) {
+  const [ano, m] = String(mes || '').split('-');
+  const nome = NOMES_DOS_MESES[Number(m) - 1];
+  return nome ? `${nome} de ${ano}` : mes;
 }
 
 function criarConsultaFinanceira({ transactionService, categoryService, subcategoryService, budgetService, recurringBillService }) {
@@ -281,6 +303,86 @@ function criarConsultaFinanceira({ transactionService, categoryService, subcateg
     };
   }
 
+  /**
+   * Quanto CADA PESSOA da família gastou num recorte de tempo.
+   *
+   * Existe porque relatório por pessoa em recorte menor que o mês só era
+   * possível pedindo a lista crua para a IA e deixando ela somar. Isso quebrava
+   * de duas formas: `listarLancamentos` corta em 40 itens, então numa família
+   * ativa a soma da semana sairia MENOR que a real, sem avisar; e somar é
+   * justamente o que a IA não deve fazer (ver o cabeçalho deste arquivo).
+   *
+   * Aqui a conta é do banco e o recorte é explícito. `dias` conta a partir de
+   * HOJE no fuso do Brasil — o Cloud Run roda em UTC, e sem isso "hoje"
+   * começaria três horas cedo e pegaria gasto do dia anterior.
+   *
+   * @param {{mes?: string, dias?: number, categoria?: string}} p
+   *   `dias` vence `mes`: quem pede "essa semana" não quer o mês inteiro.
+   */
+  async function gastoPorPessoa(dados, { mes, dias, categoria } = {}) {
+    const janela = Number(dias) > 0 ? Math.min(Number(dias), MAX_DIAS_RECORTE) : null;
+
+    // Um recorte em dias pode cruzar a virada do mês ("últimos 15 dias" no dia
+    // 10). Buscar os dois meses e filtrar por data cobre isso.
+    const mesBase = mes || mesAtual();
+    const meses = janela ? [deslocarMes(mesBase, -1), mesBase] : [mesBase];
+
+    const listas = await Promise.all(meses.map((m) => lancamentosDoMes(dados, m)));
+    let lista = despesas(listas.flat());
+
+    let desde = null;
+    if (janela) {
+      // `dias: 1` é hoje; `dias: 7` é hoje e os seis anteriores.
+      const hoje = hojeNoBrasil(new Date());
+      const [ano, m, d] = hoje.split('-').map(Number);
+      desde = new Date(Date.UTC(ano, m - 1, d - (janela - 1)));
+
+      lista = lista.filter((t) => {
+        const data = t.date instanceof Date ? t.date : new Date(t.date);
+        if (Number.isNaN(data.getTime())) return false;
+        return data >= desde;
+      });
+    }
+
+    if (categoria) {
+      const alvo = normalizar(categoria);
+      lista = lista.filter((t) => normalizar(t.category?.name || '') === alvo);
+    }
+
+    const porPessoa = new Map();
+    for (const t of lista) {
+      const quem = t.paidBy || 'sem identificação';
+      if (!porPessoa.has(quem)) {
+        porPessoa.set(quem, { pessoa: quem, total: 0, quantidade: 0, categorias: {} });
+      }
+      const item = porPessoa.get(quem);
+      item.total += Number(t.amount) || 0;
+      item.quantidade += 1;
+
+      const nomeCat = t.category?.name || 'Outros';
+      item.categorias[nomeCat] = (item.categorias[nomeCat] || 0) + (Number(t.amount) || 0);
+    }
+
+    const total = [...porPessoa.values()].reduce((s, p) => s + p.total, 0);
+
+    return {
+      periodo: janela ? nomeDaJanela(janela) : mesPorExtensoCurto(mesBase),
+      desde: desde ? desde.toISOString().slice(0, 10) : null,
+      mes: janela ? null : mesBase,
+      categoria: categoria || null,
+      total,
+      pessoas: [...porPessoa.values()]
+        .map((p) => ({
+          ...p,
+          fatia: total > 0 ? Math.round((p.total / total) * 100) : 0,
+          categorias: Object.entries(p.categorias)
+            .map(([nome, valor]) => ({ categoria: nome, total: valor }))
+            .sort((a, b) => b.total - a.total),
+        }))
+        .sort((a, b) => b.total - a.total),
+    };
+  }
+
   async function listarCategorias(dados, { tipo } = {}) {
     const categorias = await categoryService.listCategories(dados);
     const filtradas = tipo
@@ -373,6 +475,7 @@ function criarConsultaFinanceira({ transactionService, categoryService, subcateg
 
   return {
     montarVocabulario,
+    gastoPorPessoa,
     resumoDoMes,
     gastoPorCategoria,
     gastoPorSubcategoria,

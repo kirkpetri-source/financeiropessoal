@@ -210,3 +210,54 @@ describe('comparativo aponta para os meses certos', () => {
     expect(rotear('compare junho com julho')).toBeNull();
   });
 });
+
+/**
+ * Relatório por pessoa — a única intenção que aceita recorte em dias, porque é
+ * a única com agregação que sabe fazer isso (`gastoPorPessoa`).
+ *
+ * Antes disso, "quanto cada um gastou essa semana" ia para a IA somar a lista
+ * crua — que vem cortada em 40 itens, então numa família ativa a soma sairia
+ * MENOR que a real, sem avisar.
+ */
+describe('relatório por pessoa', () => {
+  it('reconhece as várias formas de pedir', () => {
+    for (const t of ['quanto cada um gastou esse mês', 'relatório separado por pessoa',
+      'quem gastou mais', 'quanto cada pessoa gastou', 'gastos por usuário']) {
+      expect(rotear(t)?.intencao).toBe(INTENCAO.POR_PESSOA);
+    }
+  });
+
+  it('traduz o recorte em dias', () => {
+    expect(rotear('quanto cada um gastou hoje').parametros.dias).toBe(1);
+    expect(rotear('quanto cada um gastou essa semana').parametros.dias).toBe(7);
+    expect(rotear('quanto cada um gastou nos últimos 15 dias').parametros.dias).toBe(15);
+    expect(rotear('quanto cada um gastou nos últimos 20 dias').parametros.dias).toBe(20);
+  });
+
+  it('sem recorte em dias, usa o mês', () => {
+    const r = rotear('me dá um relatório do mês separado por pessoa');
+    expect(r.parametros.dias).toBeUndefined();
+    expect(r.parametros.mes).toBeUndefined(); // mês corrente
+  });
+
+  it('filtra por categoria quando citada', () => {
+    expect(rotear('quem gastou mais em mercado esse mês').parametros.categoria).toBe('Mercado');
+  });
+
+  // "Ontem" é UM dia, não uma janela até hoje. Responder "últimos 2 dias"
+  // incluiria hoje — número errado com cara de certo.
+  it('"ontem" continua indo para a IA', () => {
+    expect(rotear('quanto cada um gastou ontem')).toBeNull();
+  });
+
+  it('recorte que não sei traduzir vai para a IA', () => {
+    expect(rotear('quanto cada um gastou esse ano')).toBeNull();
+    expect(rotear('quanto cada um gastou no trimestre')).toBeNull();
+  });
+
+  // A barreira das OUTRAS intenções continua de pé: elas só fazem mês.
+  it('não afrouxa o recorte das outras perguntas', () => {
+    expect(rotear('quanto gastei essa semana')).toBeNull();
+    expect(rotear('quanto gastei no mercado essa semana')).toBeNull();
+  });
+});

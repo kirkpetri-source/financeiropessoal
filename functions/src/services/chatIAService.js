@@ -177,6 +177,18 @@ const FERRAMENTAS = [
     },
   },
   {
+    name: 'gastoPorPessoa',
+    description: 'Quanto CADA PESSOA da família gastou, com a quebra por categoria de cada uma. Aceita recorte em DIAS (1 = hoje, 7 = essa semana, 30 = último mês) ou um mês inteiro. Use SEMPRE que a pergunta for "quem gastou", "cada um", "por pessoa", "separado por usuário" — e principalmente quando houver recorte de dias, porque somar lançamento a lançamento sai errado quando a lista é cortada.',
+    parameters: {
+      type: 'object',
+      properties: {
+        dias: { type: 'number', description: 'Recorte a partir de hoje: 1 = hoje, 7 = últimos 7 dias. Vence o parâmetro mes.' },
+        mes: { type: 'string', description: 'Mês AAAA-MM. Use quando a pergunta for do mês inteiro. Omita para o mês atual.' },
+        categoria: { type: 'string', description: 'Filtra por uma categoria. Omita para todas.' },
+      },
+    },
+  },
+  {
     name: 'contasFixasEOrcamento',
     description: 'Contas fixas recorrentes cadastradas e os orçamentos por categoria, com quanto já foi consumido. Use para conselhos sobre corte de gasto e para "quanto tenho de conta fixa".',
     parameters: { type: 'object', properties: {} },

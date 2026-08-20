@@ -39,6 +39,7 @@ const INTENCAO = {
   COMPARATIVO: 'COMPARATIVO',
   MAIOR_GASTO: 'MAIOR_GASTO',
   LISTAR_LANCAMENTOS: 'LISTAR_LANCAMENTOS',
+  POR_PESSOA: 'POR_PESSOA',
 };
 
 const MESES = [
@@ -157,6 +158,48 @@ function extrairCategoria(texto, categorias) {
 }
 
 /**
+ * A pergunta é sobre QUEM gastou?
+ *
+ * Só esta intenção aceita recorte em dias, porque só ela tem agregação que
+ * sabe fazer isso (`gastoPorPessoa`). As outras continuam sendo mensais, e a
+ * barreira de recorte segue valendo para elas.
+ */
+function pedePorPessoa(texto) {
+  return contem(texto, [
+    'por pessoa', 'por usuario', 'por membro', 'cada pessoa', 'cada um',
+    'cada membro', 'quem gastou', 'quem mais gastou', 'quem gasta',
+    'separado por pessoa', 'separado por usuario', 'separado por membro',
+    'de cada um', 'por integrante', 'entre nos', 'quem foi que gastou',
+  ]);
+}
+
+/**
+ * Recorte em dias a partir de HOJE.
+ *
+ * Só formas que se traduzem sem ambiguidade em "os últimos N dias". "Ontem"
+ * fica de fora de propósito: é UM dia específico, não uma janela até hoje, e
+ * responder "últimos 2 dias" a quem pediu ontem incluiria hoje — número errado
+ * com cara de certo, que é o erro que esta camada existe para não cometer.
+ *
+ * @returns {number|null} null = sem recorte em dias (usa o mês)
+ */
+function extrairDias(texto) {
+  if (contem(texto, ['hoje', 'do dia de hoje'])) return 1;
+  if (contem(texto, ['essa semana', 'esta semana', 'na semana', 'da semana',
+    'ultimos 7 dias', 'ultima semana', 'semana atual'])) return 7;
+  if (contem(texto, ['ultimos 15 dias', 'ultimos quinze dias', 'quinzena'])) return 15;
+  if (contem(texto, ['ultimos 30 dias', 'ultimos trinta dias'])) return 30;
+
+  const explicito = texto.match(/ultimos?\s+(\d{1,2})\s+dias?/);
+  if (explicito) {
+    const n = Number(explicito[1]);
+    if (n >= 1 && n <= 62) return n;
+  }
+
+  return null;
+}
+
+/**
  * Quantos meses distintos a frase cita?
  *
  * "compara agosto com julho" cita dois, e aí decidir qual é a base e qual é o
@@ -236,6 +279,27 @@ function rotearConsulta(texto, { categorias = [], mesCorrente, nomeDaIA = 'Nina'
   // Daqui para baixo é número. Conselho e aritmética são da IA.
   if (contem(limpo, PEDE_CONSELHO)) return null;
   if (contem(limpo, PEDE_CONTA)) return null;
+
+  // "Quem gastou" vem ANTES da barreira de recorte: é a única intenção com
+  // agregação que sabe recortar em dias.
+  if (pedePorPessoa(limpo)) {
+    const dias = extrairDias(limpo);
+    const mesPedido = extrairMes(limpo, mesCorrente);
+    if (mesPedido === null) return null;
+
+    // Sem recorte em dias e com palavra de tempo que não sei traduzir
+    // ("ontem", "esse ano"), a pergunta inteira vai para a IA.
+    if (!dias && contem(limpo, RECORTE_QUE_NAO_SEI_FAZER)) return null;
+
+    const categoria = extrairCategoria(limpo, categorias);
+    return {
+      intencao: INTENCAO.POR_PESSOA,
+      parametros: dias
+        ? { dias, categoria: categoria || undefined }
+        : { mes: mesPedido, categoria: categoria || undefined },
+    };
+  }
+
   if (contem(limpo, RECORTE_QUE_NAO_SEI_FAZER)) return null;
 
   const mes = extrairMes(limpo, mesCorrente);
@@ -321,6 +385,8 @@ module.exports = {
   extrairMes,
   extrairCategoria,
   temAlvoDesconhecido,
+  extrairDias,
+  pedePorPessoa,
   RECORTE_QUE_NAO_SEI_FAZER,
   PEDE_CONSELHO,
 };

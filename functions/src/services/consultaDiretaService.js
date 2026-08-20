@@ -151,6 +151,43 @@ function criarConsultaDireta({ consulta }) {
         return { intencao, consultasUsadas: ['gastoPorCategoria'], texto: linhas.join('\n') };
       }
 
+      case INTENCAO.POR_PESSOA: {
+        const r = await consulta.gastoPorPessoa(dados, parametros);
+
+        if (!r.pessoas.length) {
+          const onde = parametros.categoria ? ` em ${parametros.categoria}` : '';
+          return { intencao, consultasUsadas: ['gastoPorPessoa'],
+            texto: `Não há gastos${onde} registrados em ${r.periodo}.` };
+        }
+
+        const alvo = parametros.categoria
+          ? ` em ${negrito(parametros.categoria, canal)}` : '';
+
+        const linhas = [
+          `Gastos por pessoa — ${negrito(r.periodo, canal)}${alvo}:`,
+          '',
+        ];
+
+        for (const p of r.pessoas) {
+          linhas.push(`• ${negrito(p.pessoa, canal)}: ${negrito(moeda(p.total), canal)}`
+            + ` (${p.fatia}%, ${p.quantidade} lançamento${p.quantidade === 1 ? '' : 's'})`);
+
+          // A quebra por categoria só aparece quando há poucas pessoas — com
+          // cinco membros isso viraria um muro de texto no WhatsApp. E some
+          // quando a pergunta já filtrou uma categoria: repetir "Mercado" sob
+          // cada pessoa numa resposta que só fala de Mercado é ruído.
+          if (r.pessoas.length <= 3 && !parametros.categoria) {
+            for (const c of p.categorias.slice(0, 3)) {
+              linhas.push(`   ${c.categoria}: ${moeda(c.total)}`);
+            }
+          }
+        }
+
+        linhas.push('', `Total: ${negrito(moeda(r.total), canal)}`);
+
+        return { intencao, consultasUsadas: ['gastoPorPessoa'], texto: linhas.join('\n') };
+      }
+
       case INTENCAO.COMPARATIVO: {
         const r = await consulta.compararPeriodos(dados, { mesB: parametros.mesB });
         const subiram = r.porCategoria.filter((c) => c.variacao > 0).slice(0, 5);
