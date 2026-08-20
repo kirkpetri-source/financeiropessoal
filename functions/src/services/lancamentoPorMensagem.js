@@ -377,9 +377,12 @@ async function responderOfertaDeCriacao({ dados, householdId, pendencia, texto }
     if (!alvo) {
       return {
         tratado: true,
-        resposta: `Não encontrei a categoria *${decisao.categoria}*. `
-          + `Se quiser, responda de novo com o nome de uma categoria que já existe, `
-          + `ou crie *${decisao.nome}* em *${categoryName}* mandando *sim*.`,
+        resposta: `Não encontrei nenhuma categoria chamada *${decisao.categoria}*.
+
+`
+          + `Responda de novo com o nome de uma categoria que já existe, `
+          + `ou mande *sim* para criar a subcategoria *${decisao.nome}* `
+          + `dentro da categoria *${categoryName}*.`,
       };
     }
     categoryId = alvo;

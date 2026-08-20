@@ -119,13 +119,20 @@ function interpretarResposta(texto, nomeProposto) {
   return null;
 }
 
-/** A pergunta que sai no WhatsApp. */
+/**
+ * A pergunta que sai no WhatsApp.
+ *
+ * Diz "subcategoria X dentro da categoria Y" com todas as letras. "Criei Pet
+ * em Casa" é ambíguo para quem lê no celular — não dá para saber se Casa é uma
+ * categoria, outra subcategoria ou um lugar. Nomear os dois níveis custa três
+ * palavras e elimina a dúvida.
+ */
 function montarOfertaDeCriacao({ descricao, nome, categoriaNome, vezes }) {
   return `💡 Notei que *${descricao}* já apareceu ${vezes}x.\n\n`
-    + `Quer criar a subcategoria *${nome}* em *${categoriaNome}*?\n\n`
+    + `Quer criar a subcategoria *${nome}* dentro da categoria *${categoriaNome}*?\n\n`
     + '• *sim* para criar\n'
     + `• outro nome (ex.: *${nome === 'Pet' ? 'Animais' : 'Pet'}*)\n`
-    + `• *${nome} em Casa* para mudar a categoria também\n`
+    + '• *NomeDaSub em NomeDaCategoria* para escolher as duas coisas\n'
     + '• *não* para eu parar de sugerir isso';
 }
 
@@ -139,7 +146,7 @@ function montarOfertaDeCriacao({ descricao, nome, categoriaNome, vezes }) {
  * mais barato que a pessoa descobrir sozinha achando que quebrou.
  */
 function montarConfirmacaoDeCriacao({ nome, categoriaNome, descricao }) {
-  return `✅ Pronto! Criei *${nome}* em *${categoriaNome}*.\n\n`
+  return `✅ Pronto! Criei a subcategoria *${nome}* dentro da categoria *${categoriaNome}*.\n\n`
     + `Lançamentos escritos como *${descricao}* já vão direto pra lá. `
     + `Escrevendo *${nome.toLowerCase()}* na mensagem também funciona.\n\n`
     + '_Se escrever de um jeito bem diferente, eu não reconheço e volto a perguntar._';

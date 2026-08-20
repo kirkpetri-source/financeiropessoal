@@ -80,8 +80,8 @@ describe('as mensagens', () => {
       descricao: 'ração cachorro', nome: 'Ração', categoriaNome: 'Outros', vezes: 2,
     });
     expect(texto).toContain('ração cachorro');
-    expect(texto).toContain('Ração');
-    expect(texto).toContain('Outros');
+    expect(texto).toContain('subcategoria *Ração*');
+    expect(texto).toContain('categoria *Outros*');
     expect(texto).toContain('2x');
     expect(texto).toContain('não');
   });
@@ -90,7 +90,9 @@ describe('as mensagens', () => {
     const texto = montarConfirmacaoDeCriacao({
       nome: 'Pet', categoriaNome: 'Casa', descricao: 'ração cachorro',
     });
-    expect(texto).toContain('Criei *Pet* em *Casa*');
+    // Nomear os dois níveis: "Criei Pet em Casa" não diz que Casa é categoria.
+    expect(texto).toContain('subcategoria *Pet*');
+    expect(texto).toContain('categoria *Casa*');
     expect(texto).toContain('ração cachorro');
     // O aviso que evita a pessoa achar que quebrou ao escrever diferente.
     expect(texto.toLowerCase()).toContain('diferente');
