@@ -157,6 +157,21 @@ function extrairCategoria(texto, categorias) {
 }
 
 /**
+ * Quantos meses distintos a frase cita?
+ *
+ * "compara agosto com julho" cita dois, e aí decidir qual é a base e qual é o
+ * alvo exige entender a frase — trabalho de IA, não de regra.
+ */
+function contarMesesCitados(texto) {
+  const nomeados = MESES.filter((m) => texto.includes(m)).length;
+  const explicitos = (texto.match(/\b20\d{2}[-/](0?[1-9]|1[0-2])\b/g) || []).length;
+  const relativos = ['mes passado', 'mes anterior', 'mes retrasado', 'ultimo mes']
+    .filter((t) => texto.includes(t)).length;
+
+  return nomeados + explicitos + relativos;
+}
+
+/**
  * Palavras que podem seguir "em/no/na/com" sem serem um alvo de gasto.
  * Tudo que NÃO estiver aqui e não for categoria conhecida é assunto que eu
  * não sei tratar.
@@ -230,9 +245,24 @@ function rotearConsulta(texto, { categorias = [], mesCorrente, nomeDaIA = 'Nina'
   const perguntaValor = contem(limpo, ['quanto', 'total', 'somei', 'soma ', 'gastei', 'gasto', 'gastos', 'gastamos']);
 
   // Comparação entre dois meses.
+  //
+  // O mês citado é o de REFERÊNCIA (`mesA`), e o comparado é o corrente:
+  // "compare com o mês passado" = julho contra agosto, não julho contra julho.
+  // A primeira versão passava o mês citado como `mesB`, e como `mesA` cai no
+  // padrão "mês anterior ao corrente", o resultado em produção foi "julho de
+  // 2026 contra julho de 2026 — diferença R$ 0,00". Achado no teste ao vivo
+  // de 20/08/2026.
+  //
+  // Frase com DOIS meses ("compara agosto com julho") vai para a IA: saber
+  // qual é a base e qual é o alvo exige entender a frase, não achar palavras.
   if (contem(limpo, ['compar', 'versus', ' vs ', 'diferenca entre', 'em relacao ao mes',
     'subiu', 'aumentou', 'diminuiu', 'caiu', 'que mes gastei mais'])) {
-    return { intencao: INTENCAO.COMPARATIVO, parametros: { mesB: mes } };
+    if (contarMesesCitados(limpo) > 1) return null;
+    // Sem mês citado, compara com o anterior — que é o que "compare" sozinho
+    // quer dizer.
+    const referencia = mes === undefined ? deslocarMes(mesCorrente, -1) : mes;
+    if (referencia === mesCorrente) return null;
+    return { intencao: INTENCAO.COMPARATIVO, parametros: { mesA: referencia, mesB: mesCorrente } };
   }
 
   // Onde o dinheiro está indo.

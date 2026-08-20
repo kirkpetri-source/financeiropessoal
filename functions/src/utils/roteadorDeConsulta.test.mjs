@@ -171,3 +171,42 @@ describe('deslocarMes', () => {
     expect(deslocarMes('2026-08', -3)).toBe('2026-05');
   });
 });
+
+/**
+ * Comparativo — dois bugs reais do teste ao vivo de 20/08/2026.
+ *
+ * "Compare com o mês passado" respondeu "julho de 2026 contra julho de 2026,
+ * diferença R$ 0,00": o mês citado ia como `mesB`, e `mesA` caía no padrão
+ * "anterior ao corrente", que era o MESMO mês.
+ */
+describe('comparativo aponta para os meses certos', () => {
+  it('"mês passado" compara o anterior com o corrente', () => {
+    const r = rotear('Compare com o mês passado');
+    expect(r.intencao).toBe(INTENCAO.COMPARATIVO);
+    expect(r.parametros.mesA).toBe('2026-07');
+    expect(r.parametros.mesB).toBe('2026-08');
+  });
+
+  it('"compare" sozinho também usa o mês anterior', () => {
+    const r = rotear('compare meus gastos');
+    expect(r.parametros.mesA).toBe('2026-07');
+    expect(r.parametros.mesB).toBe('2026-08');
+  });
+
+  it('mês nomeado vira a base da comparação', () => {
+    const r = rotear('compare com junho');
+    expect(r.parametros.mesA).toBe('2026-06');
+    expect(r.parametros.mesB).toBe('2026-08');
+  });
+
+  it('nunca compara um mês com ele mesmo', () => {
+    // "compare com agosto" estando em agosto não tem o que comparar.
+    expect(rotear('compare com agosto')).toBeNull();
+  });
+
+  it('frase com DOIS meses vai para a IA', () => {
+    // Saber qual é base e qual é alvo exige entender a frase, não achar palavra.
+    expect(rotear('compara agosto com julho')).toBeNull();
+    expect(rotear('compare junho com julho')).toBeNull();
+  });
+});

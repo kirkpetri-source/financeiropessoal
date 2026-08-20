@@ -177,28 +177,52 @@ function criarConsultaDireta({ consulta }) {
       }
 
       case INTENCAO.LISTAR_LANCAMENTOS: {
-        const r = await consulta.listarLancamentos(dados, { ...parametros, limite: 12 });
-        const lista = r.lancamentos || r.itens || [];
+        const LIMITE = 12;
+
+        // O total vem da AGREGAÇÃO, nunca da soma da lista exibida.
+        //
+        // A primeira versão somava os `lancamentos` devolvidos — que vêm
+        // truncados no limite. Em produção isso respondeu "Mercado — R$ 903,17"
+        // quando o total do mês era R$ 1.369,31, porque havia mais de 12
+        // lançamentos: número errado, com cara de exato, ao lado de uma lista
+        // que parecia completa. Achado no teste ao vivo de 20/08/2026.
+        const [r, agregado] = await Promise.all([
+          consulta.listarLancamentos(dados, { ...parametros, limite: LIMITE }),
+          consulta.gastoPorCategoria(dados, parametros),
+        ]);
+
+        const lista = r.lancamentos || [];
+        const mesDaResposta = mesPorExtenso(parametros.mes || r.mes);
 
         if (!lista.length) {
           return { intencao, consultasUsadas: ['listarLancamentos'],
             texto: `Não encontrei lançamentos de ${negrito(parametros.categoria, canal)} `
-              + `em ${mesPorExtenso(parametros.mes || r.mes)}.` };
+              + `em ${mesDaResposta}.` };
         }
 
-        const total = lista.reduce((s, t) => s + Number(t.valor ?? t.amount ?? 0), 0);
+        const total = agregado.categorias[0]?.total
+          ?? lista.reduce((s, t) => s + Number(t.valor || 0), 0);
+
         const linhas = [
-          `${negrito(parametros.categoria, canal)} em `
-          + `${mesPorExtenso(parametros.mes || r.mes)} — ${negrito(moeda(total), canal)}:`,
+          `${negrito(parametros.categoria, canal)} em ${mesDaResposta} — `
+          + `${negrito(moeda(total), canal)}:`,
           '',
         ];
         for (const t of lista) {
-          const desc = t.descricao || t.description || 'sem descrição';
-          const valor = moeda(t.valor ?? t.amount);
-          const dia = String(t.data || t.date || '').slice(8, 10);
-          linhas.push(dia ? `• dia ${dia} — ${desc}: ${valor}` : `• ${desc}: ${valor}`);
+          const dia = String(t.data || '').slice(8, 10);
+          const desc = t.descricao || 'sem descrição';
+          linhas.push(dia ? `• dia ${dia} — ${desc}: ${moeda(t.valor)}`
+            : `• ${desc}: ${moeda(t.valor)}`);
         }
-        return { intencao, consultasUsadas: ['listarLancamentos'], texto: linhas.join('\n') };
+
+        // Lista truncada precisa DIZER que está truncada, senão a pessoa soma
+        // o que vê e não fecha com o total.
+        if (r.quantidadeTotal > lista.length) {
+          linhas.push('', `_Mostrando ${lista.length} de ${r.quantidadeTotal} lançamentos._`);
+        }
+
+        return { intencao, consultasUsadas: ['listarLancamentos', 'gastoPorCategoria'],
+          texto: linhas.join('\n') };
       }
 
       default:
