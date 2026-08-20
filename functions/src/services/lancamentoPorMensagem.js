@@ -608,21 +608,48 @@ async function lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaM
  * caminho do texto digitado — mesma resolução de categoria, forma de
  * pagamento e pagador, e mesmo bloqueio por assinatura vencida.
  */
-async function lancarPorAudio({ householdId, base64, mimeType, senderJid, pushName, dataDaMensagem, origem }) {
+/**
+ * Áudio -> texto, com as mesmas travas de um lançamento.
+ *
+ * Separado de `lancarPorAudio` porque a transcrição deixou de levar sempre a um
+ * lançamento: o webhook precisa do TEXTO antes de decidir, para poder mandar
+ * uma pergunta falada para a assistente em vez de tentar lançá-la. Antes disso,
+ * quem gravava "Nina, quanto gastei em mercado?" recebia "Não entendi..." com
+ * a lição de como escrever um gasto.
+ *
+ * As verificações (rajada, assinatura, cota de IA) moram aqui e não em quem
+ * chama, para não existirem em duas cópias que possam divergir.
+ *
+ * @returns {{texto: string|null, erro: string|null, silencioso?: boolean, bloqueado?: boolean}}
+ */
+async function transcreverAudioDaMensagem({ householdId, base64, mimeType }) {
   if (!permitirMensagem(householdId)) {
     console.warn(`[LimiteMensagens] Família ${householdId} passou de ${limiteMensagens} mensagens/min — descartada.`);
-    return { transacoes: [], criadas: [], erro: 'Muitas mensagens em pouco tempo.', silencioso: true };
+    return { texto: null, erro: 'Muitas mensagens em pouco tempo.', silencioso: true };
   }
 
   const bloqueio = await bloqueioPorAssinatura(householdId);
-  if (bloqueio) return { transacoes: [], criadas: [], erro: bloqueio, bloqueado: true };
+  if (bloqueio) return { texto: null, erro: bloqueio, bloqueado: true };
 
   const permitido = await verificarLimiteDeIA(householdId);
-  if (!permitido) return { transacoes: [], criadas: [], erro: mensagemLimiteIA() };
+  if (!permitido) return { texto: null, erro: mensagemLimiteIA() };
 
   const { transcreverAudio } = require('./midiaParserService');
-  const { texto, erro } = await transcreverAudio(base64, mimeType);
-  if (erro) return { transacoes: [], criadas: [], erro };
+  return transcreverAudio(base64, mimeType);
+}
+
+async function lancarPorAudio({ householdId, base64, mimeType, senderJid, pushName, dataDaMensagem, origem, textoTranscrito }) {
+  // O webhook já transcreveu para poder rotear — não transcrever de novo
+  // economiza uma chamada de IA multimodal, que é a mais cara do produto.
+  let texto = textoTranscrito;
+
+  if (!texto) {
+    const r = await transcreverAudioDaMensagem({ householdId, base64, mimeType });
+    if (r.erro) {
+      return { transacoes: [], criadas: [], erro: r.erro, silencioso: r.silencioso, bloqueado: r.bloqueado };
+    }
+    texto = r.texto;
+  }
 
   return lancarPorTexto({ householdId, texto, senderJid, pushName, dataDaMensagem, origem, origin: 'AUDIO' });
 }
@@ -660,6 +687,7 @@ module.exports = {
   lancarPorTexto,
   lancarPorAudio,
   lancarPorCupom,
+  transcreverAudioDaMensagem,
   jaProcessada,
   resolverPagador,
   looksLikeFinancialMessage,

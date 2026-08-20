@@ -5,6 +5,7 @@ const {
   lancarPorTexto,
   lancarPorAudio,
   lancarPorCupom,
+  transcreverAudioDaMensagem,
   jaProcessada,
   looksLikeFinancialMessage,
   tentarResolverConfirmacaoPendente,
@@ -202,8 +203,54 @@ async function processarMensagemRecebida(req) {
       ? new Date(msg.timestamp * 1000).toISOString()
       : new Date().toISOString();
 
+    // ÁUDIO PASSA PELO MESMO ROTEADOR DO TEXTO.
+    //
+    // Transcreve primeiro e decide depois, em vez de assumir que todo áudio é
+    // lançamento. Sem isto, gravar "Nina, quanto gastei em mercado?" devolvia
+    // "Não entendi..." com a lição de como escrever um gasto — o áudio era o
+    // único canal onde perguntar não funcionava. Achado no teste ao vivo de
+    // 19/08/2026, quando um áudio pedindo alteração de categoria virou erro.
+    //
+    // A transcrição é reaproveitada nos dois caminhos: transcrever de novo
+    // gastaria a chamada de IA mais cara do produto duas vezes na mesma
+    // mensagem.
+    let textoTranscrito = null;
+
+    if (msg.messageType === 'AUDIO') {
+      const t = await transcreverAudioDaMensagem({
+        householdId, base64: midia.base64, mimeType: midia.mimetype,
+      });
+
+      if (t.erro) {
+        await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: t.erro });
+        if (!t.silencioso) await responder(householdId, config, msg.remoteJid, `⚠️ ${t.erro}`);
+        return;
+      }
+
+      textoTranscrito = t.texto;
+      // O que a pessoa falou fica no log: sem isso, áudio vira registro cego e
+      // não dá para depurar nada do que aconteceu depois.
+      await updateLog(dados, log.id, { content: textoTranscrito });
+
+      const nomeDaAssistenteAudio = config?.nomeDaAssistente || NOME_PADRAO;
+      const rotaDoAudio = decidirSemIA({
+        texto: textoTranscrito,
+        nomeDaAssistente: nomeDaAssistenteAudio,
+        ehComando: false,
+        assistenteAtiva: assistenteService.ativa(householdId),
+      });
+
+      if (rotaDoAudio.destino === DESTINO.CHAT) {
+        await conversarComAssistente({
+          householdId, config, msg, texto: rotaDoAudio.texto,
+          nomeDaAssistente: nomeDaAssistenteAudio, logExistente: log,
+        });
+        return;
+      }
+    }
+
     const lancar = msg.messageType === 'AUDIO' ? lancarPorAudio : lancarPorCupom;
-    const { transacoes, criadas, erro, silencioso } = await lancar({
+    const { transacoes, criadas, erro, silencioso, intencaoDaIA, perguntaSubcategoria } = await lancar({
       householdId,
       base64: midia.base64,
       mimeType: midia.mimetype,
@@ -211,7 +258,30 @@ async function processarMensagemRecebida(req) {
       pushName: msg.pushName,
       dataDaMensagem,
       origem,
+      textoTranscrito,
     });
+
+    // Pergunta falada SEM o nome da assistente: o roteador não tinha como
+    // saber, mas a IA que tentou interpretar já classificou de graça. Mesmo
+    // caminho de fallback do texto — sem isto, quem grava "quanto gastei em
+    // mercado?" ouve "Não entendi" mesmo com a assistente ligada.
+    if (msg.messageType === 'AUDIO' && !transacoes.length && intencaoDaIA) {
+      const nomeDaAssistenteAudio = config?.nomeDaAssistente || NOME_PADRAO;
+      const rotaFinalDoAudio = decidirComIntencao({
+        texto: textoTranscrito,
+        intencao: intencaoDaIA,
+        assistenteAtiva: assistenteService.ativa(householdId),
+        temLancamentos: false,
+      });
+
+      if (rotaFinalDoAudio.destino === DESTINO.CHAT) {
+        await conversarComAssistente({
+          householdId, config, msg, texto: textoTranscrito,
+          nomeDaAssistente: nomeDaAssistenteAudio, logExistente: log,
+        });
+        return;
+      }
+    }
 
     if (erro) {
       await updateLog(dados, log.id, { processingStatus: 'ERROR', errorMessage: erro });
@@ -223,6 +293,11 @@ async function processarMensagemRecebida(req) {
 
     await updateLog(dados, log.id, { processingStatus: 'PROCESSED', transactionId: transacoes[0] });
     await confirmarLancamentos(householdId, config, msg.remoteJid, criadas);
+
+    // Subcategoria: mesma pergunta que o texto faz, no mesmo lugar do fluxo.
+    if (perguntaSubcategoria) {
+      await responder(householdId, config, msg.remoteJid, perguntaSubcategoria);
+    }
     return;
   }
 
