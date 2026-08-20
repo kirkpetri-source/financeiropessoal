@@ -189,7 +189,14 @@ function criarConsultaDireta({ consulta }) {
       }
 
       case INTENCAO.COMPARATIVO: {
-        const r = await consulta.compararPeriodos(dados, { mesB: parametros.mesB });
+        // Os DOIS meses vão para a agregação. Passando só `mesB`, a base cai no
+        // padrão "mês anterior ao atual" e "compare com junho" viraria julho
+        // contra agosto — o mesmo bug que o roteador já corrigiu de um lado e
+        // que continuava vivo aqui. Achado pelo teste desta camada.
+        const r = await consulta.compararPeriodos(dados, {
+          mesA: parametros.mesA,
+          mesB: parametros.mesB,
+        });
         const subiram = r.porCategoria.filter((c) => c.variacao > 0).slice(0, 5);
         const cairam = r.porCategoria.filter((c) => c.variacao < 0).slice(0, 3);
 
