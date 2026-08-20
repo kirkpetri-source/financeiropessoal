@@ -261,3 +261,52 @@ describe('relatório por pessoa', () => {
     expect(rotear('quanto gastei no mercado essa semana')).toBeNull();
   });
 });
+
+/**
+ * O caso mais perigoso desta camada: responder o total da família LOGADA a
+ * uma pergunta sobre OUTRA família ou pessoa.
+ *
+ * Aconteceu no teste do Kirk em 20/08/2026. "e quanto a família do Vinicius
+ * gastou esse mês?" foi respondida com Receitas R$ 5.000 / Despesas R$ 1.000
+ * da família de teste — número exato, conclusão errada, e sem passar pela IA,
+ * onde a ressalva mora. `temAlvoDesconhecido` só olhava depois de
+ * "em/no/na/com", e "família DO Vinicius" passava batido.
+ *
+ * A defesa é invertida: o resumo só responde quando reconhece TODAS as
+ * palavras da frase. Nome que ninguém previu cai fora por construção.
+ */
+describe('pergunta sobre outra família ou pessoa nunca vira resumo', () => {
+  const vaiParaIA = (t) => expect(rotear(t)).toBeNull();
+
+  it('família nomeada, em várias formas', () => {
+    vaiParaIA('e quanto a família do Vinicius gastou esse mês?');
+    vaiParaIA('quanto a família Kadu gastou?');
+    vaiParaIA('quanto a família Silva gastou no total');
+    vaiParaIA('quanto gastou a família do João esse mês');
+  });
+
+  it('pessoa de fora da casa', () => {
+    vaiParaIA('quanto o Joao gastou esse mês');
+    vaiParaIA('quanto a Maria gastou no total');
+  });
+
+  it('assunto que a camada não conhece', () => {
+    vaiParaIA('quanto gastei com criptomoeda esse mês');
+    vaiParaIA('quanto gastei em petshop no total');
+  });
+
+  // E o que NÃO pode ter quebrado junto: a pergunta legítima sobre a própria
+  // casa continua respondendo direto.
+  it('a pergunta sobre a própria família continua sem IA', () => {
+    expect(rotear('quanto gastei esse mês no total').intencao).toBe(INTENCAO.RESUMO_MES);
+    expect(rotear('quanto gastamos esse mês').intencao).toBe(INTENCAO.RESUMO_MES);
+    expect(rotear('qual o saldo do mês').intencao).toBe(INTENCAO.RESUMO_MES);
+    expect(rotear('quanto nossa família gastou esse mês').intencao).toBe(INTENCAO.RESUMO_MES);
+    expect(rotear('quanto sobrou esse mês').intencao).toBe(INTENCAO.RESUMO_MES);
+  });
+
+  it('categoria da família não é palavra estranha', () => {
+    expect(rotear('quanto gastei no mercado esse mês').intencao).toBe(INTENCAO.GASTO_CATEGORIA);
+    expect(rotear('quanto gastei em cartão de crédito').intencao).toBe(INTENCAO.GASTO_CATEGORIA);
+  });
+});

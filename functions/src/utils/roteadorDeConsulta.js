@@ -215,6 +215,64 @@ function contarMesesCitados(texto) {
 }
 
 /**
+ * O vocabulário de uma pergunta sobre o TOTAL da própria família.
+ *
+ * Serve para uma checagem invertida: se sobrar na frase qualquer palavra que
+ * não esteja aqui nem seja categoria conhecida, a pergunta fala de algo que
+ * esta camada não entende — e vai para a IA.
+ *
+ * Nasceu de um acerto pela metade. `temAlvoDesconhecido` só olhava depois de
+ * "em/no/na/com", então "e quanto a família DO Vinicius gastou esse mês?"
+ * passava batido e era respondida com o total da família LOGADA, com número
+ * exato e conclusão errada — a mesma falha da "família Kadu", agora numa
+ * camada que nem chega ao prompt onde a ressalva mora. Achado no teste do
+ * Kirk em 20/08/2026.
+ *
+ * Listar o que é aceito, e não o que é proibido, é o que fecha esse buraco:
+ * nome de pessoa, de família ou de assunto que ninguém previu cai fora por
+ * construção, em vez de depender de alguém ter lembrado de bloquear.
+ */
+const PALAVRAS_DE_TOTAL = new Set([
+  // a pergunta
+  'quanto', 'quanta', 'quantos', 'qual', 'quais', 'me', 'da', 'diz', 'fala',
+  'mostra', 'traz', 'ver', 'saber', 'foi', 'ficou', 'deu', 'temos', 'tenho',
+  // o que se pergunta
+  'gastei', 'gastamos', 'gasto', 'gastos', 'gastou', 'total', 'totais',
+  'saldo', 'sobrou', 'sobra', 'resumo', 'balanco', 'despesa', 'despesas',
+  'receita', 'receitas', 'entrou', 'saiu', 'movimentei',
+  // tempo
+  'esse', 'este', 'mes', 'atual', 'passado', 'anterior', 'ultimo', 'retrasado',
+  'mensal', 'ate', 'agora', 'todo', 'todos', 'toda',
+  // ligação
+  'e', 'o', 'a', 'os', 'as', 'de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na',
+  'nos', 'nas', 'um', 'uma', 'ao', 'aos', 'com', 'por', 'para', 'pra', 'que',
+  'meu', 'minha', 'meus', 'minhas', 'nosso', 'nossa', 'nossos', 'nossas',
+  'eu', 'nos', 'gente', 'casa', 'familia', 'gerais', 'geral',
+  ...MESES,
+]);
+
+/**
+ * Sobrou alguma palavra que esta camada não reconhece?
+ *
+ * `true` significa "a frase fala de algo que eu não sei o que é" — e aí a
+ * pergunta inteira vai para a IA, que sabe recusar com a ressalva certa.
+ */
+function temPalavraEstranha(texto, categorias = []) {
+  const conhecidasDaFamilia = new Set();
+  for (const nome of categorias) {
+    for (const parte of normalizar(nome).split(/\s+/)) {
+      if (parte) conhecidasDaFamilia.add(parte);
+    }
+  }
+
+  return texto.split(/\s+/).filter(Boolean).some((bruta) => {
+    const palavra = bruta.replace(/[^\p{L}]/gu, '');
+    if (!palavra || palavra.length < 3) return false;
+    return !PALAVRAS_DE_TOTAL.has(palavra) && !conhecidasDaFamilia.has(palavra);
+  });
+}
+
+/**
  * Palavras que podem seguir "em/no/na/com" sem serem um alvo de gasto.
  * Tudo que NÃO estiver aqui e não for categoria conhecida é assunto que eu
  * não sei tratar.
@@ -365,6 +423,12 @@ function rotearConsulta(texto, { categorias = [], mesCorrente, nomeDaIA = 'Nina'
   // conclusão errada. Nesse caso é a IA que atende.
   if (temAlvoDesconhecido(limpo)) return null;
 
+  // Checagem invertida, e é ela que segura o caso perigoso: o resumo responde
+  // o total da FAMÍLIA LOGADA, então qualquer palavra estranha na frase — um
+  // nome de pessoa, de outra família, um assunto qualquer — significa que a
+  // pergunta talvez não seja sobre esta casa. Vai para a IA.
+  if (temPalavraEstranha(limpo, categorias)) return null;
+
   if (perguntaValor && contem(limpo, ['esse mes', 'este mes', 'do mes', 'no mes',
     'mes passado', 'mes atual', 'no total', 'ao todo', 'total'])) {
     return { intencao: INTENCAO.RESUMO_MES, parametros: { mes } };
@@ -385,6 +449,7 @@ module.exports = {
   extrairMes,
   extrairCategoria,
   temAlvoDesconhecido,
+  temPalavraEstranha,
   extrairDias,
   pedePorPessoa,
   RECORTE_QUE_NAO_SEI_FAZER,
