@@ -48,6 +48,14 @@ STAGING_WEB_API_KEY=<chave> ALVO=staging node tools/testar-rota-assistente.js  #
 ALVO=staging node tools/testar-webhook-ponta-a-ponta.js     # webhook inteiro: payload cru -> Firestore
 ALVO=staging node tools/medir-custo-assistente.js           # custo real por pergunta, em reais
 node tools/diagnostico-duplicidade-whatsapp.js [householdId]  # SO LEITURA: mensagem que virou 2 logs
+node tools/diagnostico-conta-sem-familia.js           # login que nao abre o painel
+node tools/acompanhar-whatsapp.js <id>                # assiste ao teste ao vivo, so leitura
+node tools/zerar-limite-do-dia.js <id> --confirmar    # destrava teste que bateu a cota
+ALVO=staging node tools/testar-consulta-direta.js         # camada sem IA (21)
+ALVO=staging node tools/testar-audio-assistente.js        # audio pergunta, nao so lanca (14)
+ALVO=staging node tools/testar-criar-subcategoria.js      # ciclo de criacao sob demanda (17)
+ALVO=staging node tools/testar-lancamento-subcategoria.js # lancar direto na subcategoria (9)
+ALVO=staging node tools/medir-composicao-do-prompt.js     # de que e feito o prompt, token a token
 node tools/marcar-conta-interna.js <id> --confirmar  # cortesia vitalícia
 node tools/apagar-familia.js <id> --confirmar        # limpa conta de teste
 node tools/criar-login-operador.js --confirmar       # cria/reseta a senha do painel gestor (/plataforma)
@@ -265,8 +273,50 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     deploy e vence a lista. Com lista configurada, chamada SEM householdId
     fica de fora — liberar por omissão seria o erro mais caro aqui.
 
+    **PARA LIBERAR PARA TODOS basta esvaziar a variável e deployar o BACKEND.**
+    O menu "Assistente" do painel aparece sozinho: o frontend pergunta ao
+    servidor (`GET /assistente/uso` → `{ativa}`) e obedece, via
+    `AssistenteContext.jsx`. Não é preciso publicar o site de novo, e a lista
+    de quem tem acesso nunca chega ao navegador.
+
+19. **Consulta responde SEM IA, e o número vem do banco.** `roteadorDeConsulta`
+    classifica a pergunta e `consultaDiretaService` executa, chamando as mesmas
+    agregações que a IA chamaria. A regra de ouro é devolver `null` na dúvida —
+    `null` manda para a IA, que é o comportamento antigo e portanto nunca é
+    regressão. Conselho, aritmética e recorte que as agregações não fazem vão
+    sempre para a IA. Consulta **não consome cota**: o teto existe para conter
+    gasto de IA, e aqui não há gasto.
+
+20. **Total exibido vem da AGREGAÇÃO, nunca da soma da lista mostrada.** Já
+    errou duas vezes: a listagem somava os 12 itens exibidos e respondia
+    R$ 903,17 onde o mês tinha R$ 1.369,31; e o comparativo descartava o mês
+    base, comparando julho com agosto quando pediram junho. Os dois entregaram
+    número errado com cara de exato, que é o pior resultado possível aqui.
+
 ## Armadilhas já pagas (não repetir)
 
+- **Correção que arruma um lado e esquece o outro passa despercebida quando o
+  caso comum acerta por coincidência.** O comparativo foi corrigido no roteador
+  (passou a devolver `mesA` e `mesB`), mas o executor continuou repassando só
+  `mesB`. Como o padrão da agregação para `mesA` é "mês anterior ao atual",
+  "compare com o mês passado" acertava — e "compare com junho" comparava JULHO
+  com agosto, em silêncio. Só apareceu quando o teste de unidade da camada foi
+  escrito. Ao corrigir um fluxo, conferir a ponta que CONSOME, não só a que
+  decide.
+- **Registrar certo e informar errado é, para o usuário, a mesma coisa que
+  errar.** O lançamento em subcategoria já funcionava (o banco provava:
+  Mercado > Padaria), mas a confirmação dizia só "em Mercado". O teste conferia
+  o BANCO e passava; quem lia o WhatsApp concluía que a correção não tinha
+  funcionado. Teste de feature de mensagem precisa verificar a MENSAGEM.
+- **Resposta que começa pelo número responde a pergunta errada.** "Quanto a
+  família Kadu gastou?" devolvia o total da PRÓPRIA família sem ressalva. Não
+  era vazamento — o isolamento técnico funcionou — mas quem lê conclui que está
+  vendo dado alheio, e a confiança morre ali com o sistema correto. Pergunta
+  sobre terceiro começa pela ressalva.
+- **Frase com " em " no meio vira nome de subcategoria se ninguém limitar o
+  tamanho.** "quanto gastei esse mês em mercado" casava no separador de
+  "Pet em Casa" e viraria a subcategoria "Quanto Gastei Esse M". Resposta a
+  pergunta curta precisa de teto de palavras.
 - **Diagnóstico escrito numa sessão anterior pode estar errado — conferir
   contra o banco ANTES de aplicar a correção prescrita.** O `ESTADO.md`
   registrava que a duplicidade de mensagens vinha de corrida entre

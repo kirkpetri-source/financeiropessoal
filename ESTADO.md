@@ -1,132 +1,140 @@
-# Estado do projeto — 18/08/2026 (assistente de IA em teste com 1 família)
+# Estado do projeto — 20/08/2026 (assistente em teste com 1 família)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
-## RETOMAR AQUI — custo da IA, decisão pendente (19/08/2026)
+## RETOMAR AQUI — assistente quase pronta, falta Fase 4 (20/08/2026)
 
-### A pergunta em aberto (é do Kirk)
+### O que está NO AR agora
 
-A cota de 20 conversas/dia é apertada e o custo por pergunta é alto demais no
-modelo atual. **Nada foi trocado ainda** — o que existe é medição e pesquisa.
-A decisão é qual caminho seguir (ver "Recomendação" abaixo).
+**Backend em produção**, com a assistente liberada só para a Família Vinicius
+(`ASSISTENTE_FAMILIAS=bgo6KJKTgCqC1HN2Jqzh`). As outras 12 famílias seguem
+exatamente como antes.
 
-### Custo real, medido — e a conta anterior estava ERRADA
+**Frontend NÃO está em produção.** `main` não tem a assistente. A branch
+`feature/chat-ia` está ~40 commits à frente. O painel foi publicado num
+**preview da Vercel** para o Kirk testar:
+`https://financeiropessoal-hsdsvntvu-lion-techs-projects-a92f3d16.vercel.app`
 
-A primeira medição desta sessão (R$ 0,0177/pergunta) usava a tabela de preço
-do **Flash-Lite** aplicada ao **3.6-flash**, que é 2,5x mais caro na entrada.
-Corrigido e remedido contra o Gemini real:
+### QUANDO FOR LIBERAR PARA TODAS AS FAMÍLIAS — pedido do Kirk
+
+Basta **esvaziar `ASSISTENTE_FAMILIAS`** no `.env` de produção e deployar o
+backend. O menu "Assistente" aparece sozinho para todo mundo: o frontend
+pergunta ao servidor (`GET /assistente/uso`) e obedece, então **não é preciso
+publicar o site de novo**. Ver `AssistenteContext.jsx` e a regra 18.
+
+Antes de liberar, decidir também:
+- a cota diária (hoje 20 conversas/família)
+- se troca o modelo (ver "Custo" abaixo)
+
+### O que foi feito nesta sessão (20/08)
+
+**Camada de consulta SEM IA.** Pergunta de consulta não passa mais pelo modelo:
+o número sai das mesmas agregações que a IA usaria. Custo zero, resposta em
+menos de 1s, número exato. Medido: 80% das perguntas reais respondidas sem IA.
+Não consome cota — o teto existe para conter gasto de IA, e aqui não há.
+
+**Relatório por pessoa** (`gastoPorPessoa`) com recorte em dias no fuso do
+Brasil. "Quanto cada um gastou essa semana/hoje" responde sem IA e sem o teto
+de 40 lançamentos que fazia a soma sair menor que a real.
+
+**Lançamento em subcategoria** — bug real de produção, relatado por usuários.
+"gastei 45 na padaria" caía em Alimentação porque o parser nunca via as
+subcategorias da família. Agora menção explícita vence palpite, e a confirmação
+diz "Mercado > Padaria" (antes dizia só "Mercado", e parecia não ter
+funcionado).
+
+**Criar subcategoria sob demanda.** Na 2ª vez que uma descrição se repete, a
+Nina oferece criar; aceita "sim", outro nome, ou "Pet em Casa". A memória
+guarda o vínculo descrição → subcategoria, então o 3º lançamento vai direto.
+"não" cala a sugestão para sempre.
+
+**Fase 3 — áudio.** O áudio era o único canal onde perguntar não funcionava.
+Agora é transcrito primeiro e passa pelo MESMO roteador do texto. A transcrição
+fica no log (antes áudio era registro cego) e é reaproveitada, para não pagar a
+chamada multimodal duas vezes.
+
+**Menu condicional** — o item "Assistente" só aparece para quem tem acesso.
+
+### Bugs corrigidos nesta sessão
+
+1. **Confirmação omitia a subcategoria** — registrava certo e informava errado.
+2. **Comparativo comparava um mês com ele mesmo.** Corrigido no roteador... e
+   o EXECUTOR continuou descartando o `mesA`. "Compare com junho" comparava
+   julho com agosto em silêncio. Só apareceu quando o teste de unidade da
+   camada foi escrito.
+3. **Resposta sobre outra família começava pelo número.** "Quanto a família
+   Kadu gastou?" respondia R$ 6.609,35 — o total da PRÓPRIA família, sem
+   ressalva. Não houve vazamento (o isolamento técnico funcionou), mas quem lê
+   conclui que está vendo dado alheio. Agora a ressalva vem primeiro.
+4. **Consulta sobre cripto virava sermão.** A regra do prompt disparava na
+   PALAVRA, não na intenção.
+5. **"Sim"/"Confirmo" caíam no vazio** — alteração ficava pendente para sempre.
+6. **Vocativo com pontuação/saudação antes** — ", Nina, gastei 200" virou
+   lançamento de R$ 200 em vez de conversa.
+
+### Custo — medido, não estimado
 
 | | `gemini-3.6-flash` (atual) | `gemini-3.5-flash-lite` |
 |---|---|---|
-| custo por pergunta | **R$ 0,0453** | **R$ 0,0123** |
-| entrada (tokens) | 7.753 | 6.304 |
-| saída (tokens) | 687 (552 de raciocínio) | 152 (51) |
-| chamadas ao modelo | 2,8 | 2,4 |
-| **20/dia (teto)** | **R$ 27,19/mês = 109% da mensalidade** | R$ 7,37/mês = 30% |
-| 3/dia (uso real) | R$ 4,08/mês = 16% | R$ 1,11/mês = 4% |
+| por pergunta | R$ 0,0453 | R$ 0,0123 |
+| 20/dia (teto) | R$ 27,19/mês = 109% da mensalidade | R$ 7,37 = 30% |
 
-No modelo de hoje, uma família que usasse o teto todo dia **daria prejuízo**:
-R$ 27,19 de custo para R$ 24,90 de receita.
+**O cache do Gemini não funciona com function calling** — medido 0% e
+confirmado na documentação. Essa saída está fechada.
 
-### O cache NÃO é saída — está fechado por limitação do Gemini
+96,5% do que se paga é estrutura fixa do prompt (instrução 1.035 + catálogo
+1.355 + vocabulário 282 = 2.672 tokens) reenviada a cada uma das ~2,8 rodadas.
+O dado financeiro são ~271 tokens. Por isso a camada sem IA é a alavanca certa.
 
-Era a solução óbvia (entrada é ~92% do volume, e token cacheado custa 10x
-menos). **Medido: 0% de aproveitamento em todas as chamadas.**
+**BYOK (cliente usa a chave dele) foi avaliado e recusado:** o free tier do
+Gemini usa os dados para TREINAR, e os termos avisam contra dado financeiro.
+Só serviria chave paga, e aí acabou a economia. Além de bater na regra 9.
 
-Motivo, confirmado na documentação e em issues abertas: **o cache do Gemini
-não funciona junto com function calling.** O explícito recusa com todas as
-letras ("CachedContent cannot be used with GenerateContent request setting
-system_instruction, tools or tool_config") e o implícito simplesmente devolve
-zero, sem erro. Como a Nina é inteiramente construída sobre ferramentas, não
-há como usar cache sem desmontar o desenho.
+Alternativas medidas, se um dia precisar: Groq Llama 3.1 8B e DeepSeek V4 saem
+~24x mais baratos que o modelo atual.
 
-`chatIAService` agora mede e loga o aproveitamento (`cache=0/0%`) — se o
-Google liberar isso um dia, aparece sozinho no log.
+### Varredura de segurança (20/08)
 
-### BYOK (a ideia do Kirk: cliente usa a conta de IA dele)
+Sem nada crítico: nenhuma rota sem autenticação, nenhum segredo rastreado ou
+hardcoded, isolamento com 16 testes, sem ciclos de dependência. As duas queries
+sem tenant encontradas são legítimas (job agendado que re-escopa, e
+enriquecimento de IDs já validados).
 
-**Funciona tecnicamente, mas é o caminho errado para ESTE produto.**
+**8 vulnerabilidades moderadas = 1 real** (`uuid` v3/v5/v6 com buffer),
+transitiva do firebase-admin. O projeto não usa `uuid` diretamente. Corrigir
+exige pular firebase-admin 12→14 (breaking) em produção com 13 famílias —
+**decisão: não mexer agora**, reavaliar quando for atualizar de propósito.
 
-- Os dados continuariam vindo do nosso Firestore pelas nossas ferramentas. A
-  chave do cliente só paga a conta — ela **não** faz a IA dele "enxergar" o
-  sistema, nem exige nada disso.
-- O free tier do Gemini dá 1.500 requisições/dia, o que cobriria ~500
-  conversas/dia por família. De graça.
-- **Mas** exige que a pessoa crie conta no Google AI Studio, gere uma API key
-  e cole no sistema. Isso é infraestrutura — e bate de frente com a **regra 9**
-  ("O cliente nunca configura infraestrutura"), que existe porque um formulário
-  de config já apagou o canal de um cliente em produção.
-- A pesquisa de mercado é unânime: BYOK é padrão de **ferramenta de
-  desenvolvedor** (Warp, Kilo, Cline). Em produto para família, o passo de
-  colar a chave é onde se perde mais assinante do que se economiza em margem.
+### PENDÊNCIAS
 
-Vale como **opção avançada futura** (quem quiser, liga), nunca como padrão.
+1. **Kirk testar o preview** e aprovar antes de publicar em `main`.
+   **`git push` para `main` é deploy de produção na hora.**
+2. **Fase 4** — nada começou: central de ajuda `/ajuda`, termos com aviso de
+   persona de IA, privacidade (dados agregados no Gemini), seção na landing,
+   mensagem de apresentação aos clientes.
+3. **`memoriaDeDescricaoService` sem teste de unidade** — o outro buraco que a
+   varredura achou.
+4. **Decidir cota e modelo** antes de liberar para todos.
+5. **4 famílias com trial vencido**: Weider e Aline, Lucas, Raquel, claudio.
+6. Corrida entre `jaProcessada()` e a gravação: real, nunca observada (0 em 96).
 
-### Recomendação
-
-1. **Trocar para `gemini-3.5-flash-lite`** — 3,7x mais barato, resposta mais
-   rápida (menos raciocínio) e qualidade equivalente nas consultas. A perda
-   aparece só em pergunta de CONSELHO aberta, onde ele se sai pior. Já dá
-   para medir os dois com `GEMINI_MODELO_CHAT=<modelo>`.
-2. **Encolher a entrada.** São ~2.600 tokens de prompt + catálogo + vocabulário
-   reenviados a CADA rodada, e são 2,8 rodadas por pergunta. Cortar o catálogo
-   de 12 ferramentas e enxugar o prompt derruba o custo em qualquer modelo, sem
-   depender de cache.
-3. **Só então rever a cota.** Com o Lite, 20/dia custa 30% da mensalidade —
-   caberia até subir o teto.
-
-Modelo híbrido (Lite para consulta, Flash para conselho) é possível e junta o
-melhor dos dois, ao custo de decidir qual usar antes de saber o que a pergunta
-é. Fica como terceira opção.
-
-### O que JÁ está em produção e funcionando (sessão de 18-19/08)
-
-Backend deployado, assistente liberada só para a Família Vinicius
-(`ASSISTENTE_FAMILIAS`). Quatro bugs achados em teste ao vivo e corrigidos:
-
-1. **Log duplicado** — o caminho de fallback abria um segundo registro da mesma
-   mensagem (12 de 12 perguntas). O diagnóstico anterior culpava corrida entre
-   `jaProcessada()` e a gravação; os dados de produção mostraram zero corridas.
-   Corrigido reaproveitando o log.
-2. **"Sim"/"Confirmo" caíam no vazio** — alteração e exclusão em duas etapas
-   ficavam pendentes para sempre. "Sim" morria na lista de conversa fiada,
-   "Confirmo" era classificado como OUTRO e ignorado.
-3. **Vocativo com pontuação ou saudação antes** — ", Nina, gastei 200 no
-   mercado tá muito?" virou LANÇAMENTO de R$ 200 em vez de conversa, porque o
-   reconhecimento olhava só a primeira palavra. "Oi Nina, ..." falhava igual.
-4. **"Qual seu nome?" descartada em silêncio** — classificada como OUTRO. Agora
-   OUTRO só ignora se a mensagem também for curta e sem "?".
-
-Também nesta sessão: a **chave privada de produção estava sendo empacotada no
-deploy** (sem `ignore` no `firebase.json`), indo parar no container de
-homologação. Corrigido; pacote caiu de 474,74 KB para 347,35 KB.
-
-### Ferramentas novas
+### Ferramentas desta fase
 
 ```bash
-node tools/acompanhar-whatsapp.js <id>            # assiste ao teste ao vivo
-node tools/diagnostico-duplicidade-whatsapp.js    # separa as causas de duplicidade
-node tools/diagnostico-conta-sem-familia.js       # login que nao abre o painel
-node tools/zerar-limite-do-dia.js <id> --confirmar # destrava teste que bateu a cota
-ALVO=staging node tools/testar-webhook-ponta-a-ponta.js   # 18 verificacoes
+node tools/acompanhar-whatsapp.js <id>                    # assiste ao teste ao vivo
+node tools/zerar-limite-do-dia.js <id> --confirmar        # destrava teste na cota
+node tools/diagnostico-duplicidade-whatsapp.js            # separa causas de duplicidade
+node tools/diagnostico-conta-sem-familia.js               # login que nao abre o painel
+ALVO=staging node tools/testar-consulta-direta.js         # 21 verificacoes
+ALVO=staging node tools/testar-audio-assistente.js        # 14 — Fase 3
+ALVO=staging node tools/testar-criar-subcategoria.js      # 17 — ciclo completo
+ALVO=staging node tools/testar-lancamento-subcategoria.js # 9
+ALVO=staging node tools/testar-webhook-ponta-a-ponta.js   # 18
 ALVO=staging node tools/medir-custo-assistente.js         # custo real, em reais
-GEMINI_MODELO_CHAT=gemini-3.5-flash-lite ALVO=staging node tools/medir-custo-assistente.js
+ALVO=staging node tools/medir-composicao-do-prompt.js     # de que e feito o prompt
 ```
 
-### Pendências
-
-1. **Decidir o caminho de custo** (acima) — é a que trava as outras.
-2. **Limite de 20/dia**: com o modelo atual, 20 conversas somem em 15 minutos de
-   teste. Depende da decisão 1.
-3. A Nina **calcula** quando pedem porcentagem ("15% do que gastei" → ela
-   multiplicou). O número base veio da ferramenta, mas a propriedade declarada
-   é "a IA nunca calcula". Decidir se trava.
-4. **Corrida entre `jaProcessada()` e a gravação**: real, nunca observada (0 em
-   96 registros). Mudar o ID de `whatsappLogs` mexe em coleção com dado de
-   produção — decisão do Kirk.
-5. Fase 3 (áudio na assistente — hoje áudio só LANÇA, perguntar por áudio
-   devolve "não entendi") e Fase 4 (central de ajuda, landing, termos).
-6. **4 famílias com trial vencido**: Weider e Aline, Lucas, Raquel, claudio.
+**931 testes de unidade** + 79 verificações de ponta a ponta.
 
 ---
 
