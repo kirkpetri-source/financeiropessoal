@@ -37,8 +37,26 @@ function formatarValor(valor) {
 }
 
 /**
+ * Onde o lançamento foi parar, incluindo a subcategoria quando existe.
+ *
+ * A confirmação dizia só "em Mercado" mesmo quando o lançamento tinha ido para
+ * Mercado > Padaria. Em 20/08/2026 isso fez o teste ao vivo parecer que a
+ * correção de subcategoria não tinha funcionado — ela tinha, e o banco provava,
+ * mas a mensagem não contava. Registrar certo e informar errado é, para quem
+ * lê, a mesma coisa que errar.
+ */
+function destinoDoLancamento(transacao) {
+  const categoria = transacao.category?.name || 'Outros';
+  const subcategoria = transacao.subcategory?.name;
+  return subcategoria ? `${categoria} > ${subcategoria}` : categoria;
+}
+
+/**
  * Monta a confirmação a partir do modelo da família.
  * Variáveis aceitas: {tipo} {valor} {categoria} {descricao} {pagador}
+ *
+ * `{categoria}` traz a subcategoria junto quando há uma — assim o modelo que a
+ * família já configurou continua valendo, sem precisar de variável nova.
  */
 function montarConfirmacao(modelo, transacao) {
   const padrao = '✅ {tipo} de R$ {valor} em {categoria}';
@@ -47,7 +65,7 @@ function montarConfirmacao(modelo, transacao) {
   const base = texto
     .replace(/\{tipo\}/gi, RÓTULO_TIPO[transacao.type] || 'lançamento')
     .replace(/\{valor\}/gi, formatarValor(transacao.amount))
-    .replace(/\{categoria\}/gi, transacao.category?.name || 'Outros')
+    .replace(/\{categoria\}/gi, destinoDoLancamento(transacao))
     .replace(/\{descricao\}/gi, transacao.description || '')
     .replace(/\{pagador\}/gi, transacao.paidBy || '');
 

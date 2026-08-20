@@ -114,6 +114,11 @@ async function lancar(texto) {
 
   if (!r.transacoes.length) return { erro: r.erro, perguntou: r.perguntaSubcategoria };
 
+  // A confirmação que a pessoa REALMENTE lê no WhatsApp — registrar certo e
+  // informar errado é, para quem lê, a mesma coisa que errar.
+  const { montarConfirmacaoMultipla } = require('../src/services/respostaTexto');
+  const confirmacao = montarConfirmacaoMultipla(null, r.criadas);
+
   const doc = await db.collection('transactions').doc(r.transacoes[0]).get();
   const t = doc.data();
 
@@ -126,6 +131,7 @@ async function lancar(texto) {
     subcategoria: sub?.name || null,
     valor: t.amount,
     perguntou: r.perguntaSubcategoria || null,
+    confirmacao,
   };
 }
 
@@ -140,6 +146,10 @@ async function principal() {
 
   const padaria = await lancar('gastei 45 na padaria');
   console.log(`   -> categoria=${padaria.categoria} subcategoria=${padaria.subcategoria}`);
+  console.log(`   -> a pessoa lê: "${padaria.confirmacao}"`);
+  checar('a confirmação DIZ a subcategoria',
+    (padaria.confirmacao || '').includes('Padaria'),
+    `a mensagem foi "${padaria.confirmacao}"`);
   checar('caiu em Mercado (e não em Outros)', padaria.categoria === 'Mercado',
     `caiu em ${padaria.categoria}`);
   checar('marcou a subcategoria Padaria', padaria.subcategoria === 'Padaria',
@@ -164,6 +174,7 @@ async function principal() {
 
   const mercado = await lancar('gastei 80 no mercado');
   console.log(`   -> categoria=${mercado.categoria} subcategoria=${mercado.subcategoria}`);
+  console.log(`   -> a pessoa lê: "${mercado.confirmacao}"`);
   checar('caiu em Mercado', mercado.categoria === 'Mercado', `caiu em ${mercado.categoria}`);
   checar('NÃO perguntou a subcategoria', !mercado.perguntou,
     mercado.perguntou ? 'perguntou apesar de a categoria ser explícita' : '');

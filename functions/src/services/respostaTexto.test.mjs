@@ -95,3 +95,43 @@ describe('montarConfirmacao', () => {
     expect(texto).not.toContain('undefined');
   });
 });
+
+/**
+ * A confirmação precisa dizer para ONDE o lançamento foi, inteiro.
+ *
+ * Ela dizia só "em Mercado" mesmo quando o lançamento tinha ido para
+ * Mercado > Padaria. No teste ao vivo de 20/08/2026 isso fez parecer que a
+ * correção de lançamento por subcategoria não funcionava — funcionava, e o
+ * banco provava, mas a mensagem não contava.
+ */
+describe('confirmação mostra a subcategoria', () => {
+  const lancamento = (extra = {}) => ({
+    type: 'EXPENSE',
+    amount: 45,
+    description: 'padaria',
+    category: { name: 'Mercado' },
+    ...extra,
+  });
+
+  it('mostra categoria > subcategoria quando há subcategoria', () => {
+    const texto = montarConfirmacao(null, lancamento({ subcategory: { name: 'Padaria' } }));
+    expect(texto).toContain('Mercado > Padaria');
+  });
+
+  it('mostra só a categoria quando não há subcategoria', () => {
+    const texto = montarConfirmacao(null, lancamento());
+    expect(texto).toContain('em Mercado');
+    expect(texto).not.toContain('>');
+  });
+
+  it('respeita o modelo da família, com a subcategoria dentro de {categoria}', () => {
+    const texto = montarConfirmacao('Anotei {valor} em {categoria}',
+      lancamento({ subcategory: { name: 'Açougue' } }));
+    expect(texto).toBe('Anotei 45,00 em Mercado > Açougue');
+  });
+
+  it('sem categoria nenhuma continua caindo em Outros', () => {
+    const texto = montarConfirmacao(null, { type: 'EXPENSE', amount: 10 });
+    expect(texto).toContain('Outros');
+  });
+});
