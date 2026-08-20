@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { AssinaturaProvider } from './contexts/AssinaturaContext';
+import { AssistenteProvider } from './contexts/AssistenteContext';
 import PrivateRoute from './routes/PrivateRoute';
 import AppLayout from './components/layout/AppLayout';
 
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <AuthProvider>
       <AssinaturaProvider>
+        <AssistenteProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />
@@ -71,6 +73,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        </AssistenteProvider>
       </AssinaturaProvider>
     </AuthProvider>
   );

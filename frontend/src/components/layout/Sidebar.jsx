@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAssistenteDisponivel } from '../../contexts/AssistenteContext';
 import { useAssinatura } from '../../contexts/AssinaturaContext';
 import Logo from '../brand/Logo';
 
@@ -28,7 +29,13 @@ const NAV_ITEMS = [
   // "Assistente", e nao "Consultor": consultoria e assessoria de valores
   // mobiliarios sao atividades REGULADAS pela CVM. O nome nao pode sugerir
   // que a familia esta recebendo servico de profissional habilitado.
-  { to: '/assistente', icon: Sparkles, label: 'Assistente', novo: true },
+  //
+  // `soSeDisponivel` esconde o item de quem ainda nao tem a feature liberada.
+  // Quem decide e o BACKEND (ASSISTENTE_FAMILIAS) — o navegador so pergunta.
+  // Sem isso, as familias sem acesso veriam um item marcado como NOVO, com
+  // selo chamando atencao, que ao ser clicado responde "assistente
+  // indisponivel": anunciar novidade que nao funciona e pior que nao anunciar.
+  { to: '/assistente', icon: Sparkles, label: 'Assistente', novo: true, soSeDisponivel: true },
   { to: '/whatsapp-logs', icon: MessageSquare, label: 'WhatsApp' },
   { to: '/assinatura', icon: CreditCard, label: 'Assinatura' },
   { to: '/settings', icon: Settings, label: 'Configurações' },
@@ -41,6 +48,14 @@ export default function Sidebar({ open, onClose }) {
   // Pastilha no menu quando a assinatura pede atenção — o cliente que ignorou o
   // banner ainda vê que existe algo pendente.
   const alertaDeAssinatura = assinatura && (!assinatura.podeLancar || assinatura.emCarencia);
+
+  const { disponivel: assistenteDisponivel } = useAssistenteDisponivel();
+
+  // Itens marcados com `soSeDisponivel` dependem de a feature estar liberada
+  // para esta família. Todo o resto do menu é igual para todo mundo.
+  const itensVisiveis = NAV_ITEMS.filter(
+    (item) => !item.soSeDisponivel || assistenteDisponivel,
+  );
 
   return (
     <aside
@@ -63,7 +78,7 @@ export default function Sidebar({ open, onClose }) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map(({ to, icon: Icon, label, novo }) => (
+        {itensVisiveis.map(({ to, icon: Icon, label, novo }) => (
           <NavLink
             key={to}
             to={to}
