@@ -309,12 +309,20 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     gastou?" deixou de responder os números da casa. Bloquear caso a caso
     depende de alguém ter previsto o caso; aceitar caso a caso, não.
 
-22. **Feature que existe nos dois canais precisa ser testada nos DOIS.** O
-    cadastro de conta fixa funcionava no painel e, no WhatsApp, virava
-    lançamento sempre que faltava o nome da assistente — a mensagem caía no
-    parser, que via o valor e criava a despesa. A ferramenta ser compartilhada
-    não garante que o CAMINHO até ela seja. Testar pelo `processarMensagemRecebida`
-    (ver `tools/testar-webhook-ponta-a-ponta.js`), não só pelo service.
+22. **Feature que existe nos dois canais precisa ser testada nos DOIS — e no
+    WhatsApp isso inclui TEXTO e ÁUDIO.** O cadastro de conta fixa funcionava
+    no painel e, no WhatsApp, virava lançamento sempre que faltava o nome da
+    assistente — a mensagem caía no parser, que via o valor e criava a despesa.
+    A ferramenta ser compartilhada não garante que o CAMINHO até ela seja.
+    Testar pelo `processarMensagemRecebida` (ver
+    `tools/testar-webhook-ponta-a-ponta.js`), não só pelo service.
+
+    O áudio é um terceiro caminho, não uma variação do texto: ele entra em
+    outro ramo do webhook e precisa das MESMAS defesas. Em 20/08/2026 um "Sim"
+    falado, que devia confirmar uma exclusão já proposta, voltou «Não entendi
+    "Sim". Comece dizendo se gastou ou recebeu» — no texto funcionava. O mesmo
+    com "Bom dia". Ao mexer no roteamento de texto, conferir o bloco de mídia
+    (`tools/testar-audio-assistente.js`).
 
 23. **Log de mensagem recebida nasce ATÔMICO, e só por
     `logDeMensagem.criarLogUnico`.** O log é a marca de "esta mensagem já foi
@@ -369,6 +377,23 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   testados ANTES dela, porque ali eles são resposta. Achado pelo rastro de um
   `[Resposta]` a mais no teste ponta a ponta — o número de checagens passava,
   o efeito colateral só aparecia no log.
+- **Resposta a uma PERGUNTA da assistente caía no parser e virava despesa.**
+  "cadastra minha internet como conta fixa" → a Nina pede valor e dia → a
+  pessoa responde "139,90 dia 10" → o parser via um valor e criou uma despesa
+  de R$ 139,90 em Outros. A conta fixa nunca era cadastrada e ainda sobrava um
+  lançamento fantasma. O sistema não tinha o conceito de "a assistente está
+  esperando uma resposta": agora a sessão guarda `esperandoRespostaAte` (10
+  min, gravado quando a resposta da IA contém "?") e o roteador tem a regra 5.
+  Ela vem DEPOIS da regra de lançamento de propósito — com pergunta no ar,
+  "gastei 45 no mercado" continua sendo lançamento, e o banco só é consultado
+  quando o parser por regra não entendeu a mensagem.
+- **Input `disabled` enquanto a resposta não chega PERDE O FOCO, e ele não
+  volta.** No chat do painel, o campo tinha `disabled={pensando}`: a cada
+  Enter o navegador tirava o foco e a pessoa precisava clicar no campo de novo
+  para escrever a pergunta seguinte. Desabilitar durante o carregamento parece
+  proteção, mas o envio já estava barrado por código. A regra: não desabilitar
+  campo de texto em fluxo de conversa; se desabilitar, devolver o foco quando
+  reabilitar.
 - **Diagnóstico escrito numa sessão anterior pode estar errado — conferir
   contra o banco ANTES de aplicar a correção prescrita.** O `ESTADO.md`
   registrava que a duplicidade de mensagens vinha de corrida entre

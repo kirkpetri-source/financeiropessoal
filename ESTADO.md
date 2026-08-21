@@ -54,6 +54,38 @@ modelo (ver "Custo").
 | perguntar por **áudio** | — | sim |
 | foto de cupom | — | sim (lança) |
 
+### Teste ao vivo do Kirk (21/08, madrugada) — 4 bugs achados e corrigidos
+
+O Kirk testou pelo WhatsApp (áudio e texto) e pelo painel, com o
+`acompanhar-whatsapp.js` ligado do outro lado. O rastro no banco mostrou o que
+a tela do celular não mostra.
+
+**1. Resposta a uma pergunta da Nina virava despesa.** "cadastra minha internet
+como conta fixa" → ela pede valor e dia → "139,90 dia 10" virou uma despesa de
+R$ 139,90 em Outros. Aconteceu duas vezes, com meses de diferença no relógio e
+zero diferença no resultado. Agora a sessão guarda `esperandoRespostaAte` (10
+min, marcado quando a resposta da IA tem "?") e o roteador ganhou a regra 5 —
+depois da regra de lançamento, para "gastei 45 no mercado" não regredir.
+
+**2. "Sim" falado não confirmava nada.** A Nina propôs excluir o lançamento de
+óculos e perguntou "Confirma?"; o "Sim" por ÁUDIO voltou «Não entendi "Sim".
+Comece dizendo se gastou ou recebeu». No texto isso já funcionava: o áudio
+entra por outro ramo do webhook e não tinha as mesmas defesas.
+
+**3. "Bom dia" falado respondia "não entendi".** Mesma raiz do 2 — no texto
+morre em silêncio, no áudio ia para o parser.
+
+**4. O campo de texto do chat perdia o foco a cada Enter.** `disabled={pensando}`
+no input: o navegador tira o foco de um campo desabilitado e não devolve.
+Tinha que clicar no campo a cada pergunta.
+
+Os dois ramos (texto e áudio) agora compartilham as MESMAS quatro defesas, na
+mesma ordem: confirmação pendente → chamado pelo nome → conta fixa → resposta a
+pergunta → conversa fiada.
+
+Provas: 993 testes de unidade (era 981) e, contra o Firestore de homologação,
+webhook 25/25, áudio 19/19, roteador 17/17, criar subcategoria 20/20.
+
 ### Pendências técnicas fechadas (20/08, noite) — falta deployar
 
 **A corrida do log de mensagem acabou.** `jaProcessada()` perguntava e a
