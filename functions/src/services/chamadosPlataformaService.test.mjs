@@ -17,6 +17,7 @@ let duble;
 let chamados;
 let plataforma;
 let auditoria;
+let avisos;
 
 beforeEach(() => {
   duble = criarDuble({
@@ -27,12 +28,17 @@ beforeEach(() => {
 
   chamados = criarChamadoService({ db: duble.db, admin: duble.admin });
   auditoria = [];
+  avisos = [];
 
   plataforma = criarChamadosPlataformaService({
     db: duble.db,
     escopoDe: duble.escopoDe,
     chamadoService: chamados,
     auditar: async (registro) => { auditoria.push(registro); },
+    notificar: {
+      suporteRespondeu: async (d) => { avisos.push({ evento: 'suporteRespondeu', ...d }); },
+      chamadoEncaminhado: async (d) => { avisos.push({ evento: 'chamadoEncaminhado', ...d }); },
+    },
   });
 });
 
@@ -191,6 +197,40 @@ describe('responderComoSuporte', () => {
     await expect(plataforma.responderComoSuporte(999, { texto: 'oi' }, KIRK, AGORA))
       .rejects.toMatchObject({ statusCode: 404 });
   });
+
+  it('avisa o dono da conta, com o uid de quem abriu', async () => {
+    await plataforma.responderComoSuporte(1, { texto: 'oi' }, KIRK, AGORA);
+
+    expect(avisos).toEqual([{
+      evento: 'suporteRespondeu', numero: 1, householdId: FAMILIA_A, ownerId: 'uid-cliente',
+    }]);
+  });
+
+  it('avisa DEPOIS de gravar — nunca antes', async () => {
+    let mensagensQuandoAvisou = null;
+    plataforma = criarChamadosPlataformaService({
+      db: duble.db,
+      escopoDe: duble.escopoDe,
+      chamadoService: chamados,
+      auditar: async () => {},
+      notificar: {
+        suporteRespondeu: async () => { mensagensQuandoAvisou = doc(1).mensagens.length; },
+        chamadoEncaminhado: async () => {},
+      },
+    });
+
+    await plataforma.responderComoSuporte(1, { texto: 'oi' }, KIRK, AGORA);
+
+    // Envio externo antes da persistência é o jeito de avisar sobre uma
+    // resposta que não existe — e, dentro de transação, de perder a escrita.
+    expect(mensagensQuandoAvisou).toBe(2);
+  });
+
+  it('chamado que não existe não gera aviso nenhum', async () => {
+    await plataforma.responderComoSuporte(999, { texto: 'oi' }, KIRK, AGORA).catch(() => {});
+
+    expect(avisos).toEqual([]);
+  });
 });
 
 describe('encaminhar', () => {
@@ -235,6 +275,29 @@ describe('encaminhar', () => {
       acao: 'CHAMADO_ENCAMINHADO',
       detalhes: { numero: 1, para: 'uid-maria', paraNome: 'Maria' },
     });
+  });
+
+  it('avisa o novo responsável, com nome e e-mail real', async () => {
+    duble.estado.documentos['operadores/uid-maria'] = { ...MARIA, email: 'maria@empresa.com' };
+
+    await plataforma.encaminhar(1, 'uid-maria', KIRK);
+
+    expect(avisos).toEqual([{
+      evento: 'chamadoEncaminhado', numero: 1, householdId: FAMILIA_A,
+      para: { nome: 'Maria', email: 'maria@empresa.com' },
+    }]);
+  });
+
+  it('operador sem e-mail real vira email null — quem decide o destino é o notificador', async () => {
+    await plataforma.encaminhar(1, 'uid-maria', KIRK);
+
+    expect(avisos[0].para).toEqual({ nome: 'Maria', email: null });
+  });
+
+  it('encaminhamento recusado não avisa ninguém', async () => {
+    await plataforma.encaminhar(1, 'uid-ex', KIRK).catch(() => {});
+
+    expect(avisos).toEqual([]);
   });
 
   it('encaminhar de novo para o mesmo não reescreve', async () => {

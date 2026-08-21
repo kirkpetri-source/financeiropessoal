@@ -47,44 +47,54 @@ function destinoDe(config, forcado = null) {
 
 function criarNotificador({ getRawConfig, enviarWhatsapp, householdIdDoOperador, destinoForcado = null }) {
   /**
-   * Nunca lança. Um cadastro não pode falhar porque o WhatsApp do operador está
-   * fora do ar — o cliente entrando é o que importa; o aviso é conveniência.
+   * Manda um texto qualquer para a auto-conversa do operador. Nunca lança.
+   *
+   * Generalizado a partir do aviso de cadastro porque os chamados de suporte
+   * precisam exatamente do mesmo caminho: mesmo canal, mesmo destino, mesma
+   * regra de "falhar não pode derrubar quem chamou". Uma segunda cópia disso
+   * divergiria — e a que divergisse seria justamente a que ninguém olha.
+   *
+   * `motivo` no retorno é o que o chamador grava em `notificacoesNaoEntregues`,
+   * então precisa dizer QUAL foi o problema, não só que houve um.
    */
-  async function notificarCadastro({ nome, telefone }) {
+  async function avisarOperador(texto, rotulo = 'aviso') {
     if (!householdIdDoOperador) return { enviado: false, motivo: 'desligado' };
 
     try {
       const config = await getRawConfig(householdIdDoOperador);
       if (!config || !config.enabled) {
-        console.warn('[NotificacaoOperador] Canal do operador desativado ou inexistente; aviso de cadastro não enviado.');
+        console.warn(`[NotificacaoOperador] Canal do operador desativado ou inexistente; ${rotulo} não enviado.`);
         return { enviado: false, motivo: 'canal-inativo' };
       }
 
       const destino = destinoDe(config, destinoForcado);
       if (!destino) {
-        console.warn('[NotificacaoOperador] Canal do operador sem número/grupo vinculado; aviso de cadastro não enviado.');
+        console.warn(`[NotificacaoOperador] Canal do operador sem número/grupo vinculado; ${rotulo} não enviado.`);
         return { enviado: false, motivo: 'sem-destino' };
       }
 
-      const envio = await enviarWhatsapp(
-        householdIdDoOperador,
-        config,
-        destino,
-        montarAvisoDeCadastro({ nome, telefone }),
-      );
+      const envio = await enviarWhatsapp(householdIdDoOperador, config, destino, texto);
 
       if (!envio?.enviado) {
-        console.warn('[NotificacaoOperador] Falha ao enviar aviso de cadastro:', envio?.erro || 'motivo desconhecido');
+        console.warn(`[NotificacaoOperador] Falha ao enviar ${rotulo}:`, envio?.erro || 'motivo desconhecido');
         return { enviado: false, motivo: 'falha-envio', erro: envio?.erro || null };
       }
       return { enviado: true, messageId: envio.messageId || null };
     } catch (err) {
-      console.error('[NotificacaoOperador] Erro inesperado ao avisar cadastro:', err.message);
+      console.error(`[NotificacaoOperador] Erro inesperado ao enviar ${rotulo}:`, err.message);
       return { enviado: false, motivo: 'erro', erro: err.message };
     }
   }
 
-  return { notificarCadastro };
+  /**
+   * Nunca lança. Um cadastro não pode falhar porque o WhatsApp do operador está
+   * fora do ar — o cliente entrando é o que importa; o aviso é conveniência.
+   */
+  function notificarCadastro({ nome, telefone }) {
+    return avisarOperador(montarAvisoDeCadastro({ nome, telefone }), 'aviso de cadastro');
+  }
+
+  return { notificarCadastro, avisarOperador };
 }
 
 let _padrao = null;
@@ -107,4 +117,5 @@ module.exports = {
   montarAvisoDeCadastro,
   destinoDe,
   notificarCadastro: (...args) => servico().notificarCadastro(...args),
+  avisarOperador: (...args) => servico().avisarOperador(...args),
 };

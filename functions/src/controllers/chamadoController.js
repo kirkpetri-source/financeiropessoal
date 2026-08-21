@@ -1,6 +1,19 @@
 const chamadoService = require('../services/chamadoService');
 const anexoService = require('../services/anexoService');
+const notificacao = require('../services/notificacaoChamadoService');
 const { AUTORES } = require('../chamados/estado');
+
+/**
+ * A notificação é AGUARDADA, nunca disparada e esquecida.
+ *
+ * No Cloud Run a CPU congela assim que a resposta HTTP sai, e uma promessa
+ * pendente morre no meio sem deixar erro — foi assim que a primeira versão do
+ * webhook do WhatsApp perdia o processamento. Como o serviço de notificação
+ * nunca lança, esperar não arrisca virar 500 num chamado já gravado.
+ *
+ * E ela vem SEMPRE depois da persistência: envio externo dentro de transação é
+ * o jeito de perder escrita no Firestore.
+ */
 
 /**
  * O nome de quem escreve sai do token e da família resolvida, nunca do corpo.
@@ -45,6 +58,8 @@ async function abrir(req, res, next) {
       ...quemEstaFalando(req),
     });
 
+    await notificacao.chamadoNovo({ numero: criado.numero, householdId: req.householdId });
+
     res.status(201).json(criado);
   } catch (err) { next(err); }
 }
@@ -71,6 +86,13 @@ async function responder(req, res, next) {
       anexos: await anexosDoCorpo(req),
       ...quemEstaFalando(req),
     });
+
+    // Resposta fora da janela de reabertura vira chamado NOVO, e o aviso à
+    // equipe precisa dizer isso — senão ela procura a resposta no chamado
+    // antigo, que continua fechado.
+    await (resultado.chamadoNovo
+      ? notificacao.chamadoNovo({ numero: resultado.numero, householdId: req.householdId })
+      : notificacao.clienteRespondeu({ numero: resultado.numero, householdId: req.householdId }));
 
     res.status(201).json(resultado);
   } catch (err) { next(err); }

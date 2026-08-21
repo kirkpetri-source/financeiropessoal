@@ -47,7 +47,7 @@ const CAMPOS_DA_FILA = [
   'reaberturaDe', 'resolvidoEm', 'motivoResolucao',
 ];
 
-function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar }) {
+function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar, notificar }) {
   function serializar(valor) {
     if (valor == null) return valor;
     if (typeof valor.toDate === 'function') return valor.toDate().toISOString();
@@ -228,6 +228,14 @@ function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar 
       detalhes: { numero: Number(numero) },
     });
 
+    // Aguardado, nunca disparado e esquecido: no Cloud Run a CPU congela
+    // quando a resposta HTTP sai e a promessa pendente morre no meio.
+    await notificar.suporteRespondeu({
+      numero: Number(numero),
+      householdId: chamado.householdId,
+      ownerId: chamado.abertoPor?.uid || null,
+    });
+
     return resultado;
   }
 
@@ -258,6 +266,15 @@ function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar 
       acao: 'CHAMADO_ENCAMINHADO',
       householdId: chamado.householdId,
       detalhes: { numero: Number(numero), para: paraUid, paraNome: destino.nome || null },
+    });
+
+    await notificar.chamadoEncaminhado({
+      numero: Number(numero),
+      householdId: chamado.householdId,
+      // `email` é o endereço REAL, opcional no cadastro do operador. O login
+      // dele é um e-mail interno que ninguém lê, então sem este campo o aviso
+      // cai na caixa da equipe.
+      para: { nome: destino.nome || null, email: destino.email || null },
     });
 
     return { ...resultado, paraNome: destino.nome || null };
@@ -308,6 +325,7 @@ function servico() {
       escopoDe,
       chamadoService,
       auditar: adminAuditService.registrar,
+      notificar: require('./notificacaoChamadoService'),
     });
   }
   return _padrao;

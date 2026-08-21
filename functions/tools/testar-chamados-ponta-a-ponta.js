@@ -49,6 +49,8 @@ const lgpdService = require('../src/services/lgpdService');
 const chamadoService = require('../src/services/chamadoService');
 const anexoService = require('../src/services/anexoService');
 const plataforma = require('../src/services/chamadosPlataformaService');
+const notificacao = require('../src/services/notificacaoChamadoService');
+const { criarNotificacaoChamadoService } = notificacao;
 const { STATUS, AUTORES, MOTIVOS_RESOLUCAO, LIMITES, DIAS_PARA_REABRIR } = require('../src/chamados/estado');
 
 let verificacoes = 0;
@@ -390,6 +392,51 @@ async function main() {
       'resolver pelo painel marca motivo OPERADOR',
       (await plataforma.buscarPorNumero(alvo.numero)).motivoResolucao === MOTIVOS_RESOLUCAO.OPERADOR,
     );
+
+    console.log('\n11) Notificações — envio real e registro de falha');
+    const antesDasFalhas = (await db.collection('notificacoesNaoEntregues').get()).size;
+
+    // Envio DE VERDADE, pelo Resend. Chega um e-mail em SUPORTE_EMAIL_DESTINO.
+    await notificacao.chamadoNovo({ numero: alvo.numero, householdId: alvo.householdId });
+
+    const depoisDoEnvio = (await db.collection('notificacoesNaoEntregues').get()).size;
+    conferir(
+      'e-mail real aceito pelo Resend, sem registrar falha',
+      depoisDoEnvio === antesDasFalhas,
+      `${process.env.SUPORTE_EMAIL_DESTINO}`,
+    );
+
+    // Agora o contrário: um provedor que falha precisa deixar rastro no
+    // Firestore de verdade, e não só no log. Monta uma instância com o e-mail
+    // quebrado de propósito, mas com a gravação REAL.
+    const comEmailQuebrado = criarNotificacaoChamadoService({
+      emailService: { enviar: async () => ({ enviado: false, motivo: 'falha-envio', erro: '403 domain not verified' }) },
+      avisarOperador: async () => ({ enviado: false, motivo: 'desligado' }),
+      getRawConfig: async () => null,
+      enviarWhatsapp: async () => ({ enviado: true }),
+      buscarEmailDoDono: async () => null,
+      registrarFalha: async (dados) => {
+        await db.collection('notificacoesNaoEntregues').add({
+          ...dados, resolvida: false, criadoEm: new Date(),
+        });
+      },
+      emailDaEquipe: 'equipe@example.invalid',
+      urlBase: 'https://revelacash.com.br',
+    });
+
+    await comEmailQuebrado.chamadoNovo({ numero: alvo.numero, householdId: alvo.householdId });
+
+    const registradas = await db.collection('notificacoesNaoEntregues')
+      .where('numero', '==', alvo.numero).get();
+
+    conferir('falha de envio vira registro no Firestore', registradas.size === 1);
+
+    const falha = registradas.docs[0]?.data();
+    conferir('o registro diz o tipo, o canal e o erro',
+      falha?.tipo === 'CHAMADO_NOVO' && falha?.canal === 'EMAIL' && String(falha?.erro).includes('403'));
+    conferir('e nasce como não resolvida, para o operador dar baixa', falha?.resolvida === false);
+
+    for (const d of registradas.docs) await d.ref.delete();
   } finally {
     console.log('\nLimpando...');
 
