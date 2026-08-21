@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Bucket PADRÃO dos projetos (financeiropessoal-29b32.firebasestorage.app e
+// revelacash-staging.firebasestorage.app). Ninguém entra pelo SDK do navegador.
+//
+// Sem este arquivo publicado, o padrão do Firebase é liberar leitura e escrita
+// para qualquer usuário AUTENTICADO — e todo cliente do RevelaCash é
+// autenticado. Seria acesso irrestrito ao bucket de um sistema financeiro.
+//
+// Os anexos de chamado NÃO moram aqui: eles vão para um bucket dedicado
+// (`revelacash-anexos` / `revelacash-staging-anexos`), em southamerica-east1,
+// que nem sequer é registrado no Firebase Storage — o SDK do navegador não
+// tem como alcançá-lo, e o único caminho é o Admin SDK dentro da API, que
+// passa por cima destas regras de propósito.
+//
+// O bucket padrão fica em US-EAST1 (nasceu assim nos dois projetos) e por isso
+// não pode receber dado de cliente: a Política de Privacidade publicada promete
+// southamerica-east1.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
