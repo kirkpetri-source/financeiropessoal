@@ -6,9 +6,13 @@ Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
 ### O que está NO AR
 
-**Backend em PRODUÇÃO**, com tudo desta sessão. Assistente liberada só para a
-Família Vinicius (`ASSISTENTE_FAMILIAS=bgo6KJKTgCqC1HN2Jqzh`) — conferido após
-o deploy: **1 família com assistente, 12 intocadas**.
+**Backend em PRODUÇÃO**, com tudo da sessão de dia. Assistente liberada só para
+a Família Vinicius (`ASSISTENTE_FAMILIAS=bgo6KJKTgCqC1HN2Jqzh`) — conferido
+após o deploy: **1 família com assistente, 12 intocadas**.
+
+O que produção **ainda não tem** são as correções da noite de 20/08 (corrida do
+log e saudação virando subcategoria): estão na branch, verdes na suíte e
+verificadas contra homologação, esperando um `firebase deploy`.
 
 **Frontend NÃO está em produção.** `main` não tem a tela da assistente nem o
 menu condicional. A branch `feature/chat-ia` está ~45 commits à frente.
@@ -45,6 +49,42 @@ modelo (ver "Custo").
 | **cadastrar conta fixa** | sim | sim |
 | perguntar por **áudio** | — | sim |
 | foto de cupom | — | sim (lança) |
+
+### Pendências técnicas fechadas (20/08, noite) — falta deployar
+
+**A corrida do log de mensagem acabou.** `jaProcessada()` perguntava e a
+gravação vinha depois; entre as duas cabia uma segunda entrega da mesma
+mensagem (reenvio do Evolution, ou o polling caindo em cima do webhook) —
+duas passavam pela pergunta e as duas lançavam. Agora o log nasce com id
+`<householdId>__<messageId>` e `create()`, que o Firestore recusa quando o id
+existe: o perdedor para antes de lançar e antes de responder. `jaProcessada()`
+continua ANTES, só que agora como economia (não baixar mídia, não chamar IA),
+não como garantia. Ver regra 23.
+
+**Compatível com o que já está gravado**: log antigo tem id automático, log
+novo tem id derivado — os dois têm o campo `messageId`, que é por onde a
+consulta procura. Nada a migrar. `whatsappLogService.createLog` foi removido
+para não sobrar um caminho curto sem trava.
+
+**Prova**: teste de unidade novo (`logDeMensagem.test.mjs`, 14 casos, um deles
+mostrando que a conferência em dois tempos duplicaria no MESMO dublê) e um caso
+novo no ponta a ponta contra o Firestore de homologação — duas entregas
+simultâneas de verdade, um log e um lançamento só. Dublê não prova
+atomicidade; o banco prova.
+
+**`memoriaDeDescricaoService` ganhou teste de unidade** (23 casos): a memória
+de uma família não vaza para a outra, "Ração Cachorro" e "racao cachorro" são a
+mesma entrada, a 2ª aparição é o gatilho da oferta, aprender desfaz a recusa.
+
+**Bug achado no caminho: saudação virava subcategoria.** Com a oferta aberta,
+"bom dia" casava na regra de "palavra solta vira o nome" e criava a
+subcategoria *Bom Dia*, com direito a "Criei...". Apareceu como um `[Resposta]`
+a mais no ponta a ponta — todas as checagens passavam. A lista de conversa
+fiada virou um módulo só (`utils/conversaFiada.js`), usada pelo roteador e pela
+oferta.
+
+Suíte em 981 (era 941). Ponta a ponta: webhook 20/20, criar subcategoria 20/20,
+roteador 17/17.
 
 ### Trabalho desta sessão (20/08)
 
@@ -112,12 +152,13 @@ firebase-admin 12→14 (breaking) — **decisão: não mexer agora**.
 ### PENDÊNCIAS
 
 1. **Publicar o frontend** (`main`) — pronto e testado, falta a autorização.
-2. **Fase 4** — nada começou: `/ajuda`, termos com aviso de persona de IA,
+2. **Deployar o backend** com as correções de 20/08 (noite): a corrida do log e
+   a saudação virando subcategoria. Só `firebase deploy --only functions:api`;
+   nada disso muda o que já está no ar até o deploy acontecer.
+3. **Fase 4** — nada começou: `/ajuda`, termos com aviso de persona de IA,
    privacidade (dados agregados no Gemini), landing, mensagem de apresentação.
-3. **`memoriaDeDescricaoService` sem teste de unidade.**
 4. **Decidir cota e modelo** antes de liberar para todos.
 5. **4 famílias com trial vencido**: Weider e Aline, Lucas, Raquel, claudio.
-6. Corrida entre `jaProcessada()` e a gravação: real, nunca observada.
 
 ### Como testar
 
@@ -139,7 +180,7 @@ ALVO=staging node tools/testar-roteador-whatsapp.js       # 17
 ALVO=staging node tools/medir-custo-assistente.js         # custo real
 ```
 
-**941 testes de unidade** + 102 verificações de ponta a ponta.
+**981 testes de unidade** + 107 verificações de ponta a ponta.
 
 ---
 

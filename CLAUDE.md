@@ -26,7 +26,7 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 810 testes (vitest)
+npm test                 # 981 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed              # só categorias e formas de pagamento padrão
@@ -316,6 +316,18 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     não garante que o CAMINHO até ela seja. Testar pelo `processarMensagemRecebida`
     (ver `tools/testar-webhook-ponta-a-ponta.js`), não só pelo service.
 
+23. **Log de mensagem recebida nasce ATÔMICO, e só por
+    `logDeMensagem.criarLogUnico`.** O log é a marca de "esta mensagem já foi
+    tratada" — é ele que impede o webhook e o polling de lançarem o mesmo gasto
+    duas vezes. Perguntar `jaProcessada()` e gravar depois deixa uma janela: as
+    duas entregas passam pela pergunta antes de qualquer uma gravar. O id do
+    documento é `<householdId>__<messageId>` e a gravação usa `create()`, que o
+    Firestore recusa quando o id existe — mesma trava da regra 15, mesmo motivo.
+    `jaProcessada()` continua ANTES, mas só para evitar trabalho caro (IA,
+    baixar mídia); quem garante é a gravação. `whatsappLogService.createLog`
+    foi removido de propósito: um caminho curto sem trava é o que a próxima
+    pessoa usaria sem perceber.
+
 ## Armadilhas já pagas (não repetir)
 
 - **Preview da Vercel não fala com a API de produção, e nunca vai falar.**
@@ -347,6 +359,16 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   tamanho.** "quanto gastei esse mês em mercado" casava no separador de
   "Pet em Casa" e viraria a subcategoria "Quanto Gastei Esse M". Resposta a
   pergunta curta precisa de teto de palavras.
+- **"Palavra solta vira o nome" também transforma SAUDAÇÃO em subcategoria.**
+  Mesmo bug da linha acima pelo outro lado: com a oferta aberta, um "bom dia"
+  virava a subcategoria *Bom Dia* — e a pessoa ainda recebia "Criei...".
+  Lançar de manhã, o sistema oferecer e a pessoa cumprimentar é a sequência
+  mais comum do canal. A lista de conversa fiada agora é uma só
+  (`utils/conversaFiada.js`), usada pelo roteador E pela oferta; duas cópias
+  divergiriam. A ordem importa: "sim"/"não" estão nessa lista e precisam ser
+  testados ANTES dela, porque ali eles são resposta. Achado pelo rastro de um
+  `[Resposta]` a mais no teste ponta a ponta — o número de checagens passava,
+  o efeito colateral só aparecia no log.
 - **Diagnóstico escrito numa sessão anterior pode estar errado — conferir
   contra o banco ANTES de aplicar a correção prescrita.** O `ESTADO.md`
   registrava que a duplicidade de mensagens vinha de corrida entre
