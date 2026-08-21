@@ -1,5 +1,6 @@
 const { escopoDe } = require('../data/escopo');
-const { createLog, updateLog } = require('../services/whatsappLogService');
+const { updateLog } = require('../services/whatsappLogService');
+const { criarLogUnico } = require('../services/logDeMensagem');
 const {
   acharHouseholdPorOrigem,
   lancarPorTexto,
@@ -40,14 +41,23 @@ async function conversarComAssistente({
 }) {
   const dados = escopoDe(householdId);
 
-  const log = logExistente || await createLog(dados, {
-    messageId: msg.messageId,
-    groupId: msg.remoteJid,
-    sender: msg.pushName || 'você',
-    messageType: 'TEXT',
-    content: msg.content,
-    processingStatus: 'PENDING',
-  });
+  let log = logExistente;
+
+  if (!log) {
+    const registro = await criarLogUnico(dados, {
+      messageId: msg.messageId,
+      groupId: msg.remoteJid,
+      sender: msg.pushName || 'você',
+      messageType: 'TEXT',
+      content: msg.content,
+      processingStatus: 'PENDING',
+    });
+
+    // Outra execução chegou primeiro com esta mesma mensagem — ela é que
+    // responde. Duas respostas para a mesma pergunta é pior que uma.
+    if (!registro.criado) return;
+    log = registro.log;
+  }
 
   try {
     // Quem está falando: no modo individual `senderJid` nunca vem preenchido
@@ -175,7 +185,7 @@ async function processarMensagemRecebida(req) {
   if (msg.messageType === 'AUDIO' || msg.messageType === 'IMAGE') {
     if (await jaProcessada(msg.messageId)) return;
 
-    const log = await createLog(dados, {
+    const registro = await criarLogUnico(dados, {
       messageId: msg.messageId,
       groupId: msg.remoteJid,
       sender: msg.pushName || (msg.fromMe ? 'você' : 'desconhecido'),
@@ -184,6 +194,8 @@ async function processarMensagemRecebida(req) {
       processingStatus: 'PENDING',
       rawPayload: req.body,
     });
+    if (!registro.criado) return;
+    const log = registro.log;
 
     let midia = null;
     try {
@@ -305,7 +317,7 @@ async function processarMensagemRecebida(req) {
   // no grupo, para ficar visível na tela; no privado ignora em silêncio.
   if (msg.messageType === 'DOCUMENT') {
     if (!ehPrivado && !(await jaProcessada(msg.messageId))) {
-      const log = await createLog(dados, {
+      const registro = await criarLogUnico(dados, {
         messageId: msg.messageId,
         groupId: msg.remoteJid,
         sender: msg.pushName || 'desconhecido',
@@ -314,9 +326,11 @@ async function processarMensagemRecebida(req) {
         processingStatus: 'PENDING',
         rawPayload: req.body,
       });
-      await updateLog(dados, log.id, {
-        errorMessage: `Processamento de ${msg.messageType.toLowerCase()} ainda não implementado.`,
-      });
+      if (registro.criado) {
+        await updateLog(dados, registro.log.id, {
+          errorMessage: `Processamento de ${msg.messageType.toLowerCase()} ainda não implementado.`,
+        });
+      }
     }
     return;
   }
@@ -429,10 +443,12 @@ async function processarMensagemRecebida(req) {
   }
 
   // Deduplicação: a mesma mensagem pode chegar por reenvio do Evolution e
-  // também pelo polling.
+  // também pelo polling. A pergunta abaixo evita o trabalho caro (IA, mídia)
+  // quando a mensagem já foi tratada; quem garante que não duplica é a
+  // gravação do log, que é atômica (ver services/logDeMensagem.js).
   if (await jaProcessada(msg.messageId)) return;
 
-  const log = await createLog(dados, {
+  const registro = await criarLogUnico(dados, {
     messageId: msg.messageId,
     groupId: msg.remoteJid,
     sender: msg.pushName || (msg.fromMe ? 'você' : 'desconhecido'),
@@ -441,6 +457,8 @@ async function processarMensagemRecebida(req) {
     processingStatus: 'PENDING',
     rawPayload: req.body,
   });
+  if (!registro.criado) return;
+  const log = registro.log;
 
   const dataDaMensagem = msg.timestamp
     ? new Date(msg.timestamp * 1000).toISOString()

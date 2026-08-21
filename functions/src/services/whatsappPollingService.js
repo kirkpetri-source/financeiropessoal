@@ -3,6 +3,7 @@ const { escopoDe } = require('../data/escopo');
 const { provedorDe } = require('../canais');
 const { lancarPorTexto, jaProcessada, looksLikeFinancialMessage } = require('./lancamentoPorMensagem');
 const { responder, confirmarLancamentos, ehMensagemDoBot } = require('./respostaWhatsapp');
+const { criarLogUnico } = require('./logDeMensagem');
 
 /**
  * Polling agendado — rede de segurança do webhook.
@@ -55,7 +56,9 @@ async function processarMensagem(msg, householdId, config) {
 
     if (await jaProcessada(idDaLinha)) continue;
 
-    const log = await dados.criar('whatsappLogs', {
+    // O webhook pode estar tratando esta mesma mensagem agora: a gravação do
+    // log é que decide quem fica com ela (ver services/logDeMensagem.js).
+    const registro = await criarLogUnico(dados, {
       messageId: idDaLinha,
       groupId,
       sender: pushName || 'Você',
@@ -64,6 +67,8 @@ async function processarMensagem(msg, householdId, config) {
       processingStatus: 'PENDING',
       rawPayload: msg,
     });
+    if (!registro.criado) continue;
+    const log = registro.log;
 
     const { transacoes, criadas: transacoesCriadas, erro } = await lancarPorTexto({
       householdId,

@@ -230,6 +230,33 @@ async function principal() {
     .where('householdId', '==', FAMILIA).where('origin', '==', 'WHATSAPP').get();
   checar('não duplicou o lançamento', transacoes.size === 1, `${transacoes.size} lançamentos`);
 
+  // 4b. A CORRIDA — duas entregas ao MESMO tempo, não uma depois da outra.
+  //
+  // O reenvio acima é o caso fácil: a segunda chegada encontra o log da
+  // primeira. O caso difícil é o webhook e o polling pegarem a mesma mensagem
+  // no mesmo instante — os dois perguntam "já processada?" antes de qualquer
+  // um gravar, e os dois ouvem "não". Quem separa os dois é a gravação atômica
+  // do log (src/services/logDeMensagem.js): o Firestore recusa o segundo
+  // `create()` no mesmo id, e o perdedor para antes de lançar.
+  //
+  // Este caso só prova alguma coisa contra o Firestore de verdade — dublê de
+  // banco não reproduz a atomicidade que está sendo exercitada aqui.
+  console.log('\n4b. Duas entregas SIMULTÂNEAS da mesma mensagem (a corrida)');
+  const idCorrida = `TESTE-CORRIDA-${Date.now()}`;
+  await Promise.all([
+    processarMensagemRecebida(payload(idCorrida, 'gastei 12,30 no mercado')),
+    processarMensagemRecebida(payload(idCorrida, 'gastei 12,30 no mercado')),
+  ]);
+
+  const logsCorrida = await logsDe(idCorrida);
+  checar('gravou UM log só, mesmo chegando duas vezes ao mesmo tempo',
+    logsCorrida.length === 1, `gravou ${logsCorrida.length}`);
+
+  const aposCorrida = await db.collection('transactions')
+    .where('householdId', '==', FAMILIA).where('origin', '==', 'WHATSAPP').get();
+  checar('e UM lançamento só (2 no total, com o do caso 3)',
+    aposCorrida.size === 2, `${aposCorrida.size} lançamentos`);
+
   // 5. Conversa fiada não vira nada.
   console.log('\n5. Conversa fiada é ignorada');
   const idBomDia = `TESTE-BOM-DIA-${Date.now()}`;

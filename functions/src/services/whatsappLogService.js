@@ -48,9 +48,14 @@ async function enriquecerComTransacao(logs) {
   return logs.map((l) => ({ ...l, transaction: porId[l.transactionId] || null }));
 }
 
-async function createLog(dados, entrada) {
-  return dados.criar('whatsappLogs', entrada);
-}
+/**
+ * Criar log de mensagem recebida mora em `logDeMensagem.js`, não aqui.
+ *
+ * Ali a gravação é atômica por messageId, e é ela que impede o webhook e o
+ * polling de lançarem o mesmo gasto duas vezes. Um `createLog` genérico neste
+ * módulo seria um segundo caminho — mais curto e sem trava — para a próxima
+ * pessoa usar sem perceber o que está abrindo mão.
+ */
 
 async function updateLog(dados, logId, entrada) {
   await dados.atualizar('whatsappLogs', logId, entrada);
@@ -84,4 +89,4 @@ async function deleteLog(dados, logId) {
   ]);
 }
 
-module.exports = { listLogs, createLog, updateLog, deleteLog };
+module.exports = { listLogs, updateLog, deleteLog };
