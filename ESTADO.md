@@ -10,9 +10,13 @@ Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 a Família Vinicius (`ASSISTENTE_FAMILIAS=bgo6KJKTgCqC1HN2Jqzh`) — conferido
 após o deploy: **1 família com assistente, 12 intocadas**.
 
-O que produção **ainda não tem** são as correções da noite de 20/08 (corrida do
-log e saudação virando subcategoria): estão na branch, verdes na suíte e
-verificadas contra homologação, esperando um `firebase deploy`.
+As correções da noite de 20/08 (corrida do log e saudação virando subcategoria)
+também estão em produção — deploy das 5 functions em 21/08 às 01:57. Conferido
+depois: App Check continua exigido (`401 Verificação do aplicativo ausente.`),
+a `api` sem nenhum erro no log, e o polling rodou duas vezes na revisão nova
+(01:59 e 02:01) com os MESMOS números de antes do deploy — 451 mensagens
+conferidas nas 6 famílias com canal ativo, 0 reprocessadas, 0 erros. Se a
+deduplicação tivesse quebrado, o polling teria relançado o histórico inteiro.
 
 **Frontend NÃO está em produção.** `main` não tem a tela da assistente nem o
 menu condicional. A branch `feature/chat-ia` está ~45 commits à frente.
@@ -152,13 +156,11 @@ firebase-admin 12→14 (breaking) — **decisão: não mexer agora**.
 ### PENDÊNCIAS
 
 1. **Publicar o frontend** (`main`) — pronto e testado, falta a autorização.
-2. **Deployar o backend** com as correções de 20/08 (noite): a corrida do log e
-   a saudação virando subcategoria. Só `firebase deploy --only functions:api`;
-   nada disso muda o que já está no ar até o deploy acontecer.
-3. **Fase 4** — nada começou: `/ajuda`, termos com aviso de persona de IA,
+   É a ÚNICA coisa desta sessão que não está no ar; o backend está inteiro.
+2. **Fase 4** — nada começou: `/ajuda`, termos com aviso de persona de IA,
    privacidade (dados agregados no Gemini), landing, mensagem de apresentação.
-4. **Decidir cota e modelo** antes de liberar para todos.
-5. **4 famílias com trial vencido**: Weider e Aline, Lucas, Raquel, claudio.
+3. **Decidir cota e modelo** antes de liberar para todos.
+4. **4 famílias com trial vencido**: Weider e Aline, Lucas, Raquel, claudio.
 
 ### Como testar
 
