@@ -23,7 +23,9 @@
  * produção. Ordena em memória, com teto de registros.
  */
 
-const { STATUS, AUTORES, ABERTOS, MOTIVOS_RESOLUCAO, venceuPorInatividade } = require('../chamados/estado');
+const {
+  STATUS, AUTORES, ABERTOS, MOTIVOS_RESOLUCAO, RESOLVIDO_PELO_SISTEMA, venceuPorInatividade,
+} = require('../chamados/estado');
 
 const COLECAO = 'supportTickets';
 
@@ -299,12 +301,57 @@ function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar,
     return resultado;
   }
 
+  /**
+   * Encerra os chamados parados esperando o cliente. Corpo da varredura diária.
+   *
+   * Mora aqui, e não no `chamadoService`, porque a DESCOBERTA é cross-tenant —
+   * é o mesmo motivo de a fila estar neste arquivo. A escrita continua indo
+   * pelo `chamadoService` com `escopoDe`, uma família por vez.
+   *
+   * try/catch POR CHAMADO: um documento estranho não pode impedir os outros de
+   * serem encerrados, senão a fila do operador enche de chamado morto porque um
+   * único registro deu problema.
+   *
+   * Não avisa ninguém de propósito. Encerrar por silêncio é consequência de o
+   * cliente não ter respondido; mandar um aviso por isso seria cobrar dele a
+   * própria ausência. É a mesma razão de `camposDeResolucao` não acender o
+   * indicador de não lido neste caso.
+   */
+  async function resolverInativos(agora = new Date()) {
+    const vencidos = await vencidosPorInatividade(agora);
+
+    if (!vencidos.length) {
+      console.log('[Chamados] Nenhum chamado vencido por inatividade.');
+      return { encontrados: 0, resolvidos: 0, falhas: 0 };
+    }
+
+    let resolvidos = 0;
+    let falhas = 0;
+
+    for (const { numero, householdId } of vencidos) {
+      try {
+        await chamadoService.resolver(escopoDe(householdId), numero, {
+          motivo: MOTIVOS_RESOLUCAO.INATIVIDADE_CLIENTE,
+          porQuem: RESOLVIDO_PELO_SISTEMA,
+        }, agora);
+        resolvidos += 1;
+      } catch (err) {
+        falhas += 1;
+        console.error(`[Chamados] Falhou ao encerrar #${numero}:`, err.message);
+      }
+    }
+
+    console.log(`[Chamados] Encerrados por inatividade: ${resolvidos} de ${vencidos.length}.`);
+    return { encontrados: vencidos.length, resolvidos, falhas };
+  }
+
   return {
     listarFila,
     buscarPorNumero,
     listarOperadoresAtivos,
     buscarOperador,
     vencidosPorInatividade,
+    resolverInativos,
     abrirChamado,
     responderComoSuporte,
     encaminhar,
@@ -341,6 +388,7 @@ module.exports = {
   listarOperadoresAtivos: (...a) => servico().listarOperadoresAtivos(...a),
   buscarOperador: (...a) => servico().buscarOperador(...a),
   vencidosPorInatividade: (...a) => servico().vencidosPorInatividade(...a),
+  resolverInativos: (...a) => servico().resolverInativos(...a),
   abrirChamado: (...a) => servico().abrirChamado(...a),
   responderComoSuporte: (...a) => servico().responderComoSuporte(...a),
   encaminhar: (...a) => servico().encaminhar(...a),

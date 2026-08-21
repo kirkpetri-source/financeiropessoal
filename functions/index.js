@@ -5,7 +5,8 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const app = require('./src/app');
 const { pollAllHouseholds } = require('./src/services/whatsappPollingService');
-const { familiasParaApagar, apagarHousehold } = require('./src/services/lgpdService');
+const { executarExclusoesPendentes } = require('./src/services/lgpdService');
+const { resolverInativos } = require('./src/services/chamadosPlataformaService');
 const { gerarLancamentosDoDia } = require('./src/services/recurringBillService');
 const { fecharFaturasDoDia } = require('./src/services/invoiceService');
 
@@ -64,19 +65,31 @@ exports.pollWhatsapp = onSchedule(
 // isto, depois do prazo de arrependimento. Roda uma vez por dia — exclusão não
 // precisa ser instantânea, e um job diário deixa muito mais margem para
 // perceber um erro antes de ele virar perda irreversível.
+// A partir de 21/08/2026 ela também encerra chamado de suporte parado.
+//
+// O NOME EXPORTADO NÃO PODE MUDAR. O Cloud Scheduler identifica o job pelo
+// nome: renomear cria um agendamento NOVO e deixa o antigo vivo, rodando a
+// versão velha do código. Dois jobs apagando família é o pior resultado
+// possível aqui. Há um teste estático guardando isto (`__testes__/agendadas`).
+//
+// Duas tarefas independentes, cada uma com o seu try/catch: uma falhando não
+// pode impedir a outra. Antes o corpo da LGPD estava inline aqui e sem
+// try/catch por família — uma que falhasse derrubava as seguintes.
 exports.executarExclusoes = onSchedule(
   { schedule: 'every day 03:00', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 540, memory: '256MiB' },
   async () => {
-    const familias = await familiasParaApagar(new Date());
-
-    if (!familias.length) {
-      console.log('[LGPD] Nenhuma exclusão vencida.');
-      return;
+    try {
+      const resultado = await executarExclusoesPendentes(new Date());
+      console.log('[LGPD] Concluído:', JSON.stringify(resultado));
+    } catch (err) {
+      console.error('[LGPD] Varredura falhou por inteiro:', err.message);
     }
 
-    for (const householdId of familias) {
-      const contagem = await apagarHousehold(householdId);
-      console.warn(`[LGPD] Família ${householdId} eliminada:`, JSON.stringify(contagem));
+    try {
+      const resultado = await resolverInativos(new Date());
+      console.log('[Chamados] Concluído:', JSON.stringify(resultado));
+    } catch (err) {
+      console.error('[Chamados] Varredura falhou por inteiro:', err.message);
     }
   }
 );

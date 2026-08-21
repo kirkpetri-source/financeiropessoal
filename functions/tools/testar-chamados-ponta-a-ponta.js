@@ -437,6 +437,69 @@ async function main() {
     conferir('e nasce como não resolvida, para o operador dar baixa', falha?.resolvida === false);
 
     for (const d of registradas.docs) await d.ref.delete();
+
+    console.log('\n12) Rotina diária — as duas varreduras da agendada');
+
+    // Chamado parado esperando o cliente há mais de 15 dias.
+    const familiaParada = await criarFamilia('PARADA');
+    familias.push(familiaParada);
+    const dadosParada = escopoDe(familiaParada);
+
+    const haVinteDias = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    const parado = await chamadoService.abrirChamado(dadosParada, ABERTURA, haVinteDias);
+    abertos.push(parado.numero);
+    await chamadoService.responder(dadosParada, parado.numero, {
+      autor: AUTORES.SUPORTE, autorNome: 'Suporte', texto: 'e aí, deu certo?',
+    }, haVinteDias);
+
+    // E um recente, que NÃO pode ser encerrado junto.
+    const recente = await chamadoService.abrirChamado(dadosParada, ABERTURA, new Date());
+    abertos.push(recente.numero);
+    await chamadoService.responder(dadosParada, recente.numero, {
+      autor: AUTORES.SUPORTE, autorNome: 'Suporte', texto: 'respondi hoje',
+    });
+
+    const varredura = await plataforma.resolverInativos(new Date());
+    conferir('a varredura encerrou o chamado parado', varredura.resolvidos >= 1,
+      `${varredura.resolvidos} de ${varredura.encontrados}`);
+
+    const encerrado = await chamadoService.buscarChamado(dadosParada, parado.numero);
+    conferir('com motivo INATIVIDADE_CLIENTE e resolvidoPor SISTEMA',
+      encerrado.motivoResolucao === MOTIVOS_RESOLUCAO.INATIVIDADE_CLIENTE
+      && encerrado.resolvidoPor === 'SISTEMA');
+    conferir('sem acender o indicador do cliente', encerrado.naoLidoPeloCliente === false);
+
+    const aindaAberto = await chamadoService.buscarChamado(dadosParada, recente.numero);
+    conferir('e NÃO encerrou o recente', aindaAberto.status === STATUS.AGUARDANDO_CLIENTE);
+
+    conferir('rodar de novo não encontra nada',
+      (await plataforma.resolverInativos(new Date())).encontrados === 0);
+
+    // Exclusão vencida da LGPD, com trava: se a consulta trouxer qualquer
+    // família que não seja a de teste, a varredura NÃO roda. Em homologação
+    // existe a conta que o Kirk usa para abrir o painel, e apagá-la por
+    // descuido seria estragar o ambiente dele para provar um detalhe.
+    const familiaParaApagar = await criarFamilia('EXCLUSAO');
+    const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await db.collection('households').doc(familiaParaApagar).update({
+      deletion: { requestedAt: ontem, requestedBy: 'teste', scheduledFor: ontem, reason: 'teste' },
+    });
+
+    const vencidas = await lgpdService.familiasParaApagar(new Date());
+    const soAMinha = vencidas.length === 1 && vencidas[0] === familiaParaApagar;
+
+    if (!soAMinha) {
+      conferir('trava: a varredura da LGPD só roda com a família de teste sozinha na fila',
+        false, `apareceram ${vencidas.length}: ${vencidas.join(', ')}`);
+      familias.push(familiaParaApagar);
+    } else {
+      const exclusao = await lgpdService.executarExclusoesPendentes(new Date());
+      conferir('a varredura da LGPD apagou a família vencida',
+        exclusao.apagadas === 1 && exclusao.falhas === 0, JSON.stringify(exclusao));
+
+      const sumiu = await db.collection('households').doc(familiaParaApagar).get();
+      conferir('e a família não existe mais', !sumiu.exists);
+    }
   } finally {
     console.log('\nLimpando...');
 

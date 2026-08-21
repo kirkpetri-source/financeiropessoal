@@ -386,3 +386,91 @@ describe('vencidosPorInatividade', () => {
     expect(vencido.householdId).toBe(FAMILIA_A);
   });
 });
+
+describe('resolverInativos — a varredura diária', () => {
+  async function parado(familia, haQuantosDias) {
+    const { numero } = await abrirPara(familia, diasAtras(haQuantosDias + 1));
+    await plataforma.responderComoSuporte(numero, { texto: 'e aí?' }, KIRK, diasAtras(haQuantosDias));
+    return numero;
+  }
+
+  it('encerra com motivo INATIVIDADE_CLIENTE e resolvidoPor SISTEMA', async () => {
+    const numero = await parado(FAMILIA_A, 20);
+
+    const r = await plataforma.resolverInativos(AGORA);
+
+    expect(r).toEqual({ encontrados: 1, resolvidos: 1, falhas: 0 });
+    expect(doc(numero)).toMatchObject({
+      status: STATUS.RESOLVIDO,
+      motivoResolucao: MOTIVOS_RESOLUCAO.INATIVIDADE_CLIENTE,
+      resolvidoPor: 'SISTEMA',
+      aguardandoOperadorDesde: null,
+    });
+  });
+
+  it('não toca em quem está parado há menos de 15 dias', async () => {
+    const recente = await parado(FAMILIA_A, 5);
+
+    await plataforma.resolverInativos(AGORA);
+
+    expect(doc(recente).status).toBe(STATUS.AGUARDANDO_CLIENTE);
+  });
+
+  it('não acende o indicador do cliente — não se cobra dele a própria ausência', async () => {
+    const numero = await parado(FAMILIA_A, 20);
+
+    await plataforma.resolverInativos(AGORA);
+
+    expect(doc(numero).naoLidoPeloCliente).toBe(false);
+  });
+
+  it('encerra em famílias diferentes na mesma passada', async () => {
+    await parado(FAMILIA_A, 30);
+    await parado(FAMILIA_B, 40);
+
+    expect(await plataforma.resolverInativos(AGORA))
+      .toEqual({ encontrados: 2, resolvidos: 2, falhas: 0 });
+  });
+
+  it('um chamado com problema NÃO impede os outros', async () => {
+    await parado(FAMILIA_A, 20);
+    const segundo = await parado(FAMILIA_B, 20);
+
+    let primeiraChamada = true;
+    const chamadoServiceQuebrado = {
+      ...chamados,
+      resolver: async (...args) => {
+        if (primeiraChamada) { primeiraChamada = false; throw new Error('documento corrompido'); }
+        return chamados.resolver(...args);
+      },
+    };
+
+    const comFalha = criarChamadosPlataformaService({
+      db: duble.db,
+      escopoDe: duble.escopoDe,
+      chamadoService: chamadoServiceQuebrado,
+      auditar: async () => {},
+      notificar: { suporteRespondeu: async () => {}, chamadoEncaminhado: async () => {} },
+    });
+
+    const r = await comFalha.resolverInativos(AGORA);
+
+    expect(r).toEqual({ encontrados: 2, resolvidos: 1, falhas: 1 });
+    expect(doc(segundo).status).toBe(STATUS.RESOLVIDO);
+  });
+
+  it('rodar de novo não muda nada — já está resolvido', async () => {
+    await parado(FAMILIA_A, 20);
+    await plataforma.resolverInativos(AGORA);
+
+    expect(await plataforma.resolverInativos(AGORA))
+      .toEqual({ encontrados: 0, resolvidos: 0, falhas: 0 });
+  });
+
+  it('sem nada vencido, não escreve', async () => {
+    await abrirPara(FAMILIA_A);
+
+    expect(await plataforma.resolverInativos(AGORA))
+      .toEqual({ encontrados: 0, resolvidos: 0, falhas: 0 });
+  });
+});

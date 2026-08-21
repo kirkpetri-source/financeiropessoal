@@ -270,6 +270,43 @@ async function apagarEmLote(query, tamanho = 400) {
   }
 }
 
+/**
+ * Apaga todas as famílias cujo prazo venceu. É o corpo da agendada diária.
+ *
+ * Estava inline no `index.js` até 21/08/2026, sem try/catch por item: uma
+ * família que falhasse derrubava as seguintes, e elas ficariam esperando o dia
+ * seguinte sem ninguém saber. Agora cada uma é isolada — o resultado diz
+ * quantas foram e quantas falharam, e o log nomeia qual.
+ *
+ * Não é testável em vitest: `lgpdService` importa `firebaseAdmin` no topo e a
+ * trava da regra 2 derruba a suíte. A verificação é ponta a ponta, contra
+ * homologação (`tools/testar-chamados-ponta-a-ponta.js`).
+ */
+async function executarExclusoesPendentes(agora = new Date()) {
+  const familias = await familiasParaApagar(agora);
+
+  if (!familias.length) {
+    console.log('[LGPD] Nenhuma exclusão vencida.');
+    return { encontradas: 0, apagadas: 0, falhas: 0 };
+  }
+
+  let apagadas = 0;
+  let falhas = 0;
+
+  for (const householdId of familias) {
+    try {
+      const contagem = await apagarHousehold(householdId);
+      apagadas += 1;
+      console.warn(`[LGPD] Família ${householdId} eliminada:`, JSON.stringify(contagem));
+    } catch (err) {
+      falhas += 1;
+      console.error(`[LGPD] Falhou ao eliminar ${householdId}:`, err.message);
+    }
+  }
+
+  return { encontradas: familias.length, apagadas, falhas };
+}
+
 /** Famílias cujo prazo de arrependimento já venceu. */
 async function familiasParaApagar(agora = new Date()) {
   const snap = await db.collection('households')
@@ -308,5 +345,6 @@ module.exports = {
   apagarFamiliaAgora,
   apagarEmLote,
   familiasParaApagar,
+  executarExclusoesPendentes,
   sairDaFamilia,
 };
