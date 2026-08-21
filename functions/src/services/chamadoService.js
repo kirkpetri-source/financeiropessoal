@@ -222,6 +222,30 @@ function criarChamadoService({ db, admin }) {
   }
 
   /**
+   * Encaminha para outro operador.
+   *
+   * Guarda só o uid. O nome sai da coleção `operadores` na hora de mostrar —
+   * gravar o nome aqui congelaria como a pessoa se chamava naquele dia, e
+   * operador desligado continua existindo (`ativo: false` preserva o histórico
+   * de quem atendeu), então nunca falta de onde ler.
+   *
+   * Nesta etapa `atribuidoA` é informativo: qualquer operador ativo continua
+   * podendo responder qualquer chamado. Quem pode o quê é a etapa 2 da Fase 4.
+   */
+  async function encaminhar(dados, numero, { paraUid }, agora = new Date()) {
+    if (!paraUid) throw erro('Escolha para quem encaminhar.', 400, 'SEM_DESTINATARIO');
+
+    await dados.atualizarAtomico(COLECAO, String(numero), (atual) => (
+      atual.atribuidoA === paraUid ? null : {
+        atribuidoA: paraUid,
+        atribuidoEm: paraTimestamp(agora),
+      }
+    ));
+
+    return { numero: Number(numero), atribuidoA: paraUid };
+  }
+
+  /**
    * Apaga o indicador de não lido de um dos lados.
    *
    * Devolver `null` quando já está apagado evita uma escrita por abertura de
@@ -266,6 +290,7 @@ function criarChamadoService({ db, admin }) {
     abrirChamado,
     responder,
     resolver,
+    encaminhar,
     marcarComoLido,
     listarChamados,
     buscarChamado,
@@ -290,6 +315,7 @@ module.exports = {
   abrirChamado: (...a) => servico().abrirChamado(...a),
   responder: (...a) => servico().responder(...a),
   resolver: (...a) => servico().resolver(...a),
+  encaminhar: (...a) => servico().encaminhar(...a),
   marcarComoLido: (...a) => servico().marcarComoLido(...a),
   listarChamados: (...a) => servico().listarChamados(...a),
   buscarChamado: (...a) => servico().buscarChamado(...a),

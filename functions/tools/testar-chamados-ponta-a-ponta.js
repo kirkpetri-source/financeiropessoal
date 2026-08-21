@@ -48,6 +48,7 @@ const householdService = require('../src/services/householdService');
 const lgpdService = require('../src/services/lgpdService');
 const chamadoService = require('../src/services/chamadoService');
 const anexoService = require('../src/services/anexoService');
+const plataforma = require('../src/services/chamadosPlataformaService');
 const { STATUS, AUTORES, MOTIVOS_RESOLUCAO, LIMITES, DIAS_PARA_REABRIR } = require('../src/chamados/estado');
 
 let verificacoes = 0;
@@ -72,6 +73,11 @@ async function criarFamilia(sufixo) {
   });
   return familia.id;
 }
+
+// Operadores descartáveis da seção 10. Nomes fixos para a limpeza alcançá-los
+// mesmo quando o teste morre no meio.
+const OP_ATIVO = 'operador-de-teste-ativo';
+const OP_DESLIGADO = 'operador-de-teste-desligado';
 
 const ABERTURA = {
   assunto: 'não consigo importar o extrato',
@@ -321,18 +327,96 @@ async function main() {
     );
     conferir('nenhum número foi pulado', Math.max(...numeros) === depoisDoContador);
 
-    for (const id of familiasParalelas) await lgpdService.apagarHousehold(id);
+    console.log('\n10) Fila do operador — consultas cross-tenant contra o Firestore');
+    await db.collection('operadores').doc(OP_ATIVO).set({ uid: OP_ATIVO, nome: 'Alfa', papel: 'ADMIN', ativo: true });
+    await db.collection('operadores').doc(OP_DESLIGADO).set({ uid: OP_DESLIGADO, nome: 'Beta', papel: 'ATENDENTE', ativo: false });
+
+    const ativos = await plataforma.listarOperadoresAtivos();
+    conferir(
+      'listarOperadoresAtivos traz o ativo e deixa o desligado de fora',
+      ativos.some((o) => o.uid === OP_ATIVO) && !ativos.some((o) => o.uid === OP_DESLIGADO),
+    );
+
+    const filaToda = await plataforma.listarFila();
+    conferir('a fila enxerga famílias diferentes', filaToda.total >= 2, `${filaToda.total} chamados`);
+    conferir(
+      'e NÃO baixa o array de mensagens',
+      filaToda.chamados.every((c) => c.mensagens === undefined),
+      '.select() cross-tenant',
+    );
+
+    // `where` + `select` é onde o painel gestor já quebrou por falta de índice
+    // composto: passa limpo no dublê e estoura com FAILED_PRECONDITION aqui.
+    const soAbertos = await plataforma.listarFila({ status: STATUS.ABERTO });
+    conferir(
+      'filtrar por status não exige índice composto',
+      soAbertos.chamados.every((c) => c.status === STATUS.ABERTO),
+      `${soAbertos.chamados.length} em ABERTO`,
+    );
+
+    const alvo = filaToda.chamados.find((c) => c.status !== STATUS.RESOLVIDO);
+    const OPERADOR = { uid: OP_ATIVO, nome: 'Alfa' };
+
+    await plataforma.encaminhar(alvo.numero, OP_ATIVO, OPERADOR);
+    conferir(
+      'encaminhar grava o responsável',
+      (await plataforma.buscarPorNumero(alvo.numero)).atribuidoA === OP_ATIVO,
+    );
+
+    let recusouDestino = false;
+    await plataforma.encaminhar(alvo.numero, OP_DESLIGADO, OPERADOR)
+      .catch((e) => { recusouDestino = e.codigo === 'DESTINATARIO_INVALIDO'; });
+    conferir('e recusa encaminhar para operador desligado', recusouDestino);
+
+    await plataforma.responderComoSuporte(alvo.numero, { texto: 'resposta do suporte' }, OPERADOR);
+    const respondido = await plataforma.buscarPorNumero(alvo.numero);
+    conferir('operador responde e a espera zera', respondido.aguardandoOperadorDesde === null);
+    conferir('a mensagem sai com o nome do operador', respondido.mensagens.at(-1).autorNome === 'Alfa');
+
+    // A varredura usa `where` + `select` + `limit`. Mesmo risco de índice.
+    const vencidos = await plataforma.vencidosPorInatividade(new Date());
+    conferir(
+      'a varredura de inatividade roda sem índice composto',
+      Array.isArray(vencidos),
+      `${vencidos.length} vencido(s) hoje`,
+    );
+
+    const auditados = await db.collection('adminAuditLog')
+      .where('householdId', '==', alvo.householdId).get();
+    conferir('as ações do operador ficaram no adminAuditLog', auditados.size >= 2, `${auditados.size} registros`);
+
+    await plataforma.resolverComoOperador(alvo.numero, OPERADOR);
+    conferir(
+      'resolver pelo painel marca motivo OPERADOR',
+      (await plataforma.buscarPorNumero(alvo.numero)).motivoResolucao === MOTIVOS_RESOLUCAO.OPERADOR,
+    );
   } finally {
     console.log('\nLimpando...');
-    await lgpdService.apagarHousehold(familiaA).catch(() => {});
-    await lgpdService.apagarHousehold(familiaB).catch(() => {});
 
-    // apagarHousehold ainda não varre supportTickets (é a Fase 7 do plano);
-    // até lá, o teste limpa o que criou para não deixar rastro em homologação.
+    // Varre a lista de TUDO que foi criado, e não só A e B. Na primeira versão
+    // era só A e B: uma família criada no meio de uma seção que falhou depois
+    // ficou órfã em homologação, e só apareceu ao conferir a coleção na mão.
+    for (const id of familias) {
+      await anexoService.apagarDaFamilia(id).catch(() => {});
+      await lgpdService.apagarHousehold(id).catch(() => {});
+    }
     for (const numero of abertos) {
       await db.collection('supportTickets').doc(String(numero)).delete().catch(() => {});
     }
-    console.log(`  ${abertos.length} chamados e as famílias removidos.`);
+    for (const uid of [OP_ATIVO, OP_DESLIGADO]) {
+      await db.collection('operadores').doc(uid).delete().catch(() => {});
+    }
+
+    // O rastro é apagado AQUI, e não no meio do teste: a versão anterior
+    // limpava antes de resolver o chamado, e a ação seguinte gravava um
+    // registro novo que ficava para trás. Só apareceu conferindo a coleção.
+    let rastros = 0;
+    for (const id of familias) {
+      const snap = await db.collection('adminAuditLog').where('householdId', '==', id).get();
+      for (const d of snap.docs) { await d.ref.delete(); rastros += 1; }
+    }
+
+    console.log(`  ${familias.length} famílias, ${abertos.length} chamados, 2 operadores e ${rastros} registros de auditoria removidos.`);
   }
 
   console.log(`\n${verificacoes - falhas}/${verificacoes} verificações passaram.`);

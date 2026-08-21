@@ -18,6 +18,7 @@ const creditCardInvoiceRoutes = require('./routes/creditCardInvoices');
 const importacaoRoutes = require('./routes/importacao');
 const assistenteRoutes = require('./routes/assistente');
 const chamadoRoutes = require('./routes/chamados');
+const chamadosOperadorRoutes = require('./routes/chamadosOperador');
 const { handleEvolutionWebhook } = require('./webhooks/evolutionWebhook');
 const { handleMercadoPagoWebhook, handleMercadoPagoPing } = require('./webhooks/mercadoPagoWebhook');
 const errorHandler = require('./middlewares/errorHandler');
@@ -139,6 +140,16 @@ app.use('/suporte', chamadoRoutes);
 // tools/criar-login-operador.js), separado da conta pessoal de qualquer
 // família. A proteção de verdade continua sendo o middleware apenasAdmin
 // (ADMIN_EMAILS/custom claim), não o nome da rota.
+// A ORDEM DESTAS DUAS LINHAS É REQUISITO, NÃO ESTILO.
+//
+// `routes/admin.js` aplica `apenasAdmin` a tudo que registra. O Express casa na
+// ordem em que os routers são montados, então `/plataforma/chamados/*` precisa
+// encontrar o router de atendimento ANTES de chegar no do admin. Invertendo,
+// atender chamado passaria a exigir permissão de administrador e todo atendente
+// viraria admin — em silêncio, sem erro nenhum aparecer.
+//
+// `__testes__/ordemDasRotas.test.mjs` lê este arquivo e falha se a ordem mudar.
+app.use('/plataforma/chamados', chamadosOperadorRoutes);
 app.use('/plataforma', adminRoutes);
 app.use('/whatsapp/poll', limitePolling);
 app.use('/whatsapp', whatsappRoutes);

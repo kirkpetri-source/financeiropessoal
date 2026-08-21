@@ -68,4 +68,14 @@ const uploadSchema = z.object({
     .max(LIMITES.ANEXOS_POR_MENSAGEM, `No máximo ${LIMITES.ANEXOS_POR_MENSAGEM} anexos por vez.`),
 }).strict();
 
-module.exports = { aberturaSchema, respostaSchema, uploadSchema };
+/**
+ * Encaminhamento. Só o uid — quem confere se esse uid é um operador ATIVO é o
+ * service, não o schema: essa resposta mora no banco e muda sem deploy.
+ */
+const encaminharSchema = z.object({
+  paraUid: z.string({ required_error: 'Escolha para quem encaminhar.' })
+    .trim()
+    .min(1, 'Escolha para quem encaminhar.'),
+}).strict();
+
+module.exports = { aberturaSchema, respostaSchema, uploadSchema, encaminharSchema };
