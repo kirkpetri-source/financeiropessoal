@@ -1,19 +1,47 @@
 # Estado do projeto — 21/08/2026 (tudo em produção: backend E frontend)
 
-## RETOMAR AQUI — a primeira coisa é PERGUNTAR ao Kirk
+## RETOMAR AQUI — 3 decisões do Kirk, e depois o plano
 
-**Pergunte a ele quais são os ajustes que ele quer na spec dos chamados**
-(`docs/superpowers/specs/2026-08-21-chamados-de-suporte-design.md`).
+Os ajustes dele chegaram em 21/08/2026 (19 itens) e **já estão aplicados** na
+spec, que subiu para a **revisão 2**:
+`docs/superpowers/specs/2026-08-21-chamados-de-suporte-design.md`. Cada ponto
+foi confrontado com o código antes de virar texto. **Nada foi implementado.**
 
-Ele leu a spec, disse que fez ajustes e pediu explicitamente que a próxima
-sessão comece pedindo esses ajustes. **O arquivo no disco está IGUAL ao
-commitado** — conferido com `git diff` antes de encerrar a sessão, sem
-diferença nenhuma. Ou seja: os ajustes estão com ele, não no arquivo. Não
-comece a implementar nada antes de ouvi-los.
+**O que falta antes do plano — três decisões, marcadas [DECIDIR] na spec:**
 
-Depois dos ajustes aplicados na spec: invocar a skill `writing-plans` para
-gerar o plano de implementação. É o único passo seguinte previsto pelo
-processo de brainstorming — nenhuma outra skill entra aqui.
+1. Aviso de WhatsApp ao operador sai pelo canal da família DELE (recomendado,
+   zero infra nova) ou por instância dedicada de plataforma (não existe hoje).
+2. `escopo.js` ganha `criarEmTransacao` e `atualizarAtomico`. É o arquivo da
+   regra 3, com 16 testes de vazamento — a alternativa é `db` cru no service,
+   que não recomendo.
+3. Anexo por signed URL (como ele pediu) ou servido pela API. A segunda opção
+   elimina a dependência de IAM inteira e reusa o padrão de blob que o
+   `MeusDados.jsx` já usa.
+
+Depois das três respostas: invocar a skill `writing-plans`. É o único passo
+seguinte previsto pelo processo de brainstorming — nenhuma outra skill entra
+aqui.
+
+### O que o código contrariou nos ajustes (não reabrir do zero)
+
+- **Não existe rate limit por família em rota HTTP** para reaproveitar (item 16
+  do texto dele). O de `rateLimit.js` é por IP; o `limiteMensagensService` é do
+  WhatsApp. Substituído por teto de 5 chamados abertos por família.
+- **`escopo.js` não sabe fazer `arrayUnion` nem entrar em transação** — daí a
+  decisão 2 acima.
+- **Não existe instância Evolution de plataforma** — daí a decisão 1.
+- **O bucket de Storage de HOMOLOGAÇÃO não existe** (`revelacash-staging`).
+  Conferido por script. Produção tem
+  (`financeiropessoal-29b32.firebasestorage.app`). Como a regra 17 manda a
+  feature nascer em homologação, criar esse bucket é pré-requisito da etapa.
+- **Não existe `storage.rules` no repo.** Ligar Storage sem publicar regra
+  deixa o bucket aberto para qualquer usuário autenticado — e todo cliente do
+  RevelaCash é autenticado. Entrou no escopo da etapa.
+- **O painel do cliente NÃO lê o Firestore direto** (`firestore.rules` nega
+  tudo; o frontend nem importa `firebase/firestore`), então não há regra de
+  Firestore a escrever para as coleções novas.
+- **O login do operador É Firebase Auth** (`admin.auth().createUser()` com
+  e-mail interno), então `operadores/{uid}` funciona.
 
 ### Onde exatamente paramos
 
