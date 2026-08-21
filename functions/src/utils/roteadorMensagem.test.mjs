@@ -17,9 +17,13 @@ const { parseFinancialMessage } = require('./financialParser.js');
 
 const MEMBROS = ['Kirk', 'Raquel'];
 
-function rotear(texto, { nome = 'Nina', ehComando = false, assistenteAtiva = true } = {}) {
+function rotear(texto, {
+  nome = 'Nina', ehComando = false, assistenteAtiva = true, aguardandoResposta = false,
+} = {}) {
   const casouRegra = !!parseFinancialMessage(texto, MEMBROS);
-  return decidirSemIA({ texto, nomeDaAssistente: nome, ehComando, casouRegra, assistenteAtiva });
+  return decidirSemIA({
+    texto, nomeDaAssistente: nome, ehComando, casouRegra, aguardandoResposta, assistenteAtiva,
+  });
 }
 
 describe('lançamento continua sendo lançamento — o que NÃO pode regredir', () => {
@@ -340,6 +344,42 @@ describe('pedido de conta fixa vai para a assistente', () => {
 
   it('sem assistente ligada, segue o fluxo antigo', () => {
     const r = rotear('cadastra minha conta fixa de agua', { assistenteAtiva: false });
+    expect(r.destino).toBeNull();
+  });
+});
+
+describe('regra 5 — a assistente perguntou e espera a resposta', () => {
+  const respondendo = (texto) => rotear(texto, { aguardandoResposta: true });
+
+  // O caso real: "cadastra minha internet como conta fixa" -> a Nina pede
+  // valor e dia -> "139,90 dia 10" virava uma despesa de R$ 139,90 em Outros,
+  // e a conta fixa nunca era cadastrada.
+  it('a resposta com valor e dia vai para a assistente, não vira despesa', () => {
+    const r = respondendo('139,90 dia 10');
+    expect(r.destino).toBe(DESTINO.CHAT);
+    expect(r.motivo).toBe('RESPOSTA_A_PERGUNTA_DA_ASSISTENTE');
+  });
+
+  it('o mesmo texto sem pergunta no ar segue o fluxo de sempre', () => {
+    expect(rotear('139,90 dia 10').destino).toBeNull();
+  });
+
+  it('LANÇAMENTO EXPLÍCITO NÃO REGRIDE, nem com pergunta no ar', () => {
+    expect(respondendo('gastei 84,90 no mercado').destino).toBe(DESTINO.LANCAMENTO);
+    expect(respondendo('paguei 50 de gasolina no pix').destino).toBe(DESTINO.LANCAMENTO);
+  });
+
+  it('chamar pelo nome continua vencendo tudo', () => {
+    expect(respondendo('Nina, quanto gastei esse mes?').motivo).toBe('CHAMOU_PELO_NOME');
+  });
+
+  it('comando conhecido não é confundido com resposta', () => {
+    const r = rotear('saldo', { ehComando: true, aguardandoResposta: true });
+    expect(r.destino).toBe(DESTINO.COMANDO);
+  });
+
+  it('sem assistente ligada, nada muda', () => {
+    const r = rotear('139,90 dia 10', { aguardandoResposta: true, assistenteAtiva: false });
     expect(r.destino).toBeNull();
   });
 });

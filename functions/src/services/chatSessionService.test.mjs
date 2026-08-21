@@ -224,3 +224,57 @@ describe('chatSessionService', () => {
     });
   });
 });
+
+describe('esperandoResposta — a Nina perguntou algo', () => {
+  const PEDIDO_DE_DADOS = 'Para cadastrar a Internet como conta fixa, preciso de duas '
+    + 'informações: qual é o valor mensal? E qual é o dia do vencimento? '
+    + 'Assim que me passar, eu cadastro.';
+
+  it('marca a espera quando a resposta tem pergunta', async () => {
+    const dados = escopoDe(FAMILIA);
+    await svc.registrarTroca(dados, KIRK, {
+      pergunta: 'cadastra minha internet como conta fixa',
+      resposta: PEDIDO_DE_DADOS,
+    });
+
+    expect(await svc.esperandoResposta(dados, KIRK)).toBe(true);
+  });
+
+  it('resposta afirmativa não deixa espera nenhuma', async () => {
+    const dados = escopoDe(FAMILIA);
+    await svc.registrarTroca(dados, KIRK, {
+      pergunta: 'quanto gastei esse mes',
+      resposta: 'Você gastou R$ 2.381,17 em agosto.',
+    });
+
+    expect(await svc.esperandoResposta(dados, KIRK)).toBe(false);
+  });
+
+  it('a espera vence — depois disso a mensagem volta a ser lançamento', async () => {
+    const dados = escopoDe(FAMILIA);
+    await svc.registrarTroca(dados, KIRK, { pergunta: 'p', resposta: 'Qual o valor?' });
+
+    relogio = new Date(relogio.getTime() + 11 * 60 * 1000);
+
+    expect(await svc.esperandoResposta(dados, KIRK)).toBe(false);
+  });
+
+  it('a troca seguinte sem pergunta encerra a espera', async () => {
+    const dados = escopoDe(FAMILIA);
+    await svc.registrarTroca(dados, KIRK, { pergunta: 'p', resposta: 'Qual o dia do vencimento?' });
+    await svc.registrarTroca(dados, KIRK, { pergunta: 'dia 10', resposta: 'Conta fixa cadastrada.' });
+
+    expect(await svc.esperandoResposta(dados, KIRK)).toBe(false);
+  });
+
+  it('a espera é de quem foi perguntado, não da família inteira', async () => {
+    const dados = escopoDe(FAMILIA);
+    await svc.registrarTroca(dados, KIRK, { pergunta: 'p', resposta: 'Qual o valor?' });
+
+    expect(await svc.esperandoResposta(dados, RAQUEL)).toBe(false);
+  });
+
+  it('sem conversa nenhuma, não há espera', async () => {
+    expect(await svc.esperandoResposta(escopoDe(FAMILIA), KIRK)).toBe(false);
+  });
+});

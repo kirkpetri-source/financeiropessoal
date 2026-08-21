@@ -25,6 +25,12 @@ const MAX_TROCAS = 8;
 // parado é dado exposto à toa.
 const HORAS_DE_VALIDADE = 6;
 
+// Por quanto tempo uma pergunta da assistente segue "no ar" esperando resposta.
+// Curto: é o intervalo em que alguém responde a uma pergunta que acabou de ler.
+// Passou disso, a próxima mensagem é assunto novo e volta a ser tratada como
+// lançamento, que é o caminho barato e o principal do produto.
+const MINUTOS_ESPERANDO_RESPOSTA = 10;
+
 /** Deixa o interlocutor utilizável como pedaço de ID de documento. */
 function chaveDoInterlocutor(interlocutor) {
   return String(interlocutor || 'desconhecido')
@@ -34,6 +40,20 @@ function chaveDoInterlocutor(interlocutor) {
 
 function idDaSessao(householdId, interlocutor) {
   return `${householdId}__${chaveDoInterlocutor(interlocutor)}`;
+}
+
+/**
+ * A resposta da assistente contém uma pergunta?
+ *
+ * Procura o "?" em qualquer lugar, não só no fim. A resposta que expôs o
+ * problema pedia duas informações no meio e terminava com "Assim que me passar
+ * esses dados, eu cadastro" — exigir o "?" no fim não pegaria nenhuma delas.
+ *
+ * Errar para o lado do "perguntou" é barato: no máximo uma mensagem seguinte
+ * vai para a assistente em vez do parser, e a assistente também sabe lançar.
+ */
+function perguntou(resposta) {
+  return String(resposta || '').includes('?');
 }
 
 function criarChatSessionService({ agora = () => new Date() } = {}) {
@@ -72,7 +92,19 @@ function criarChatSessionService({ agora = () => new Date() } = {}) {
       { papel: 'assistente', texto: String(resposta || ''), em: agoraISO },
     ].slice(-MAX_TROCAS * 2);
 
-    const conteudo = { interlocutor: String(interlocutor || ''), mensagens, expiraEm };
+    // A assistente devolveu uma pergunta? Então a próxima mensagem desta pessoa
+    // é provavelmente a RESPOSTA, e não um lançamento novo. Ver
+    // `esperandoResposta` abaixo.
+    const esperandoRespostaAte = perguntou(resposta)
+      ? new Date(agora().getTime() + MINUTOS_ESPERANDO_RESPOSTA * 60 * 1000).toISOString()
+      : null;
+
+    const conteudo = {
+      interlocutor: String(interlocutor || ''),
+      mensagens,
+      expiraEm,
+      esperandoRespostaAte,
+    };
 
     const existente = await dados.buscarDoc('chatSessions', id);
     if (existente) await dados.atualizar('chatSessions', id, conteudo);
@@ -118,6 +150,27 @@ function criarChatSessionService({ agora = () => new Date() } = {}) {
     return doc?.acaoPendente || null;
   }
 
+  /**
+   * A assistente fez uma pergunta e ainda espera a resposta?
+   *
+   * Existe por um caso real: "cadastra minha internet como conta fixa" fez a
+   * Nina pedir o valor e o dia; a pessoa respondeu **"139,90 dia 10"** e isso
+   * virou uma DESPESA de R$ 139,90 em Outros — o parser viu um valor e fez o
+   * que sempre fez. A conta fixa nunca foi cadastrada e ainda sobrou um
+   * lançamento fantasma. Aconteceu duas vezes no teste ao vivo de 20/08/2026.
+   *
+   * A janela é curta e a barreira do lançamento vem antes: mensagem que o
+   * parser por regra entende ("gastei 45 no mercado") continua sendo
+   * lançamento mesmo com uma pergunta no ar.
+   */
+  async function esperandoResposta(dados, interlocutor) {
+    const doc = await dados.buscarDoc('chatSessions', idDaSessao(dados.householdId, interlocutor));
+    if (!doc?.esperandoRespostaAte) return false;
+
+    const ate = doc.esperandoRespostaAte?.toDate?.() || new Date(doc.esperandoRespostaAte);
+    return ate > agora();
+  }
+
   async function limparAcaoPendente(dados, interlocutor) {
     const id = idDaSessao(dados.householdId, interlocutor);
     const existente = await dados.buscarDoc('chatSessions', id);
@@ -131,6 +184,7 @@ function criarChatSessionService({ agora = () => new Date() } = {}) {
     definirAcaoPendente,
     lerAcaoPendente,
     limparAcaoPendente,
+    esperandoResposta,
   };
 }
 
@@ -138,6 +192,8 @@ module.exports = {
   criarChatSessionService,
   idDaSessao,
   chaveDoInterlocutor,
+  perguntou,
   MAX_TROCAS,
   HORAS_DE_VALIDADE,
+  MINUTOS_ESPERANDO_RESPOSTA,
 };

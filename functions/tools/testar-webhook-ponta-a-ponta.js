@@ -321,6 +321,46 @@ async function principal() {
   checar('"Sim" sem proposta não vira log nem gasta IA', logsSimSolto.length === 0,
     `gravou ${logsSimSolto.length}`);
 
+  // 8. CONTA FIXA EM DUAS ETAPAS — o bug do teste ao vivo de 20/08.
+  //
+  // A Nina pede o valor e o dia; a resposta ("139,90 dia 10") tinha valor, e o
+  // parser fez o que sempre fez: criou uma DESPESA de R$ 139,90 em Outros. A
+  // conta fixa nunca era cadastrada e ainda sobrava um lançamento fantasma.
+  console.log('\n8. Conta fixa em duas etapas (a Nina pergunta, a pessoa responde)');
+
+  const idPedido = `TESTE-FIXA-${Date.now()}`;
+  await processarMensagemRecebida(
+    payload(idPedido, 'Nina, cadastra minha internet como conta fixa'),
+  );
+
+  const sessaoDaPergunta = await db.collection('chatSessions')
+    .where('householdId', '==', FAMILIA).get();
+  checar('a Nina respondeu pedindo os dados que faltam', sessaoDaPergunta.size >= 1);
+
+  const idResposta = `TESTE-FIXA-RESP-${Date.now()}`;
+  await processarMensagemRecebida(payload(idResposta, '139,90 dia 10'));
+
+  const logsResposta = await logsDe(idResposta);
+  checar('a resposta NÃO virou lançamento', !logsResposta[0]?.transactionId,
+    `virou o lançamento ${logsResposta[0]?.transactionId}`);
+
+  const fantasma = await db.collection('transactions')
+    .where('householdId', '==', FAMILIA).where('amount', '==', 139.9).get();
+  checar('não sobrou despesa fantasma de R$ 139,90', fantasma.empty,
+    `${fantasma.size} lançamento(s)`);
+
+  const contasFixas = await db.collection('recurringBills')
+    .where('householdId', '==', FAMILIA).get();
+  const internet = contasFixas.docs.map((d) => d.data())
+    .find((c) => /internet/i.test(c.description || ''));
+  checar('a conta fixa da internet foi cadastrada', !!internet,
+    `${contasFixas.size} conta(s) fixa(s) na família`);
+  if (internet) {
+    checar('com o valor e o dia que a pessoa respondeu',
+      Number(internet.amountCents) === 13990 && Number(internet.dueDay) === 10,
+      `centavos=${internet.amountCents} dia=${internet.dueDay}`);
+  }
+
   console.log(`\n===== ${passou} passaram, ${falhou} falharam =====\n`);
 
   await limpar();

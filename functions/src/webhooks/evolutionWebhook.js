@@ -16,6 +16,7 @@ const { tratarComando } = require('../services/comandosWhatsapp');
 const { responder, confirmarLancamentos, ehMensagemDoBot } = require('../services/respostaWhatsapp');
 const { provedorDe } = require('../canais');
 const { decidirSemIA, decidirComIntencao, pareceperguntaOuPedido, DESTINO } = require('../utils/roteadorMensagem');
+const { parseFinancialMessage } = require('../utils/financialParser');
 const assistenteService = require('../services/assistenteService');
 const { NOME_PADRAO } = require('../utils/nomeDaAssistente');
 
@@ -178,6 +179,75 @@ async function processarMensagemRecebida(req) {
   const ehPrivado = !msg.remoteJid?.endsWith('@g.us');
   const origem = ehPrivado ? 'chat privado' : 'grupo';
 
+  const nomeDaAssistente = config?.nomeDaAssistente || NOME_PADRAO;
+  const assistenteAtiva = assistenteService.ativa(householdId);
+
+  /**
+   * Quem está falando, no formato que a memória de conversa usa. Memorizado
+   * porque `telefoneEfetivo` vai ao banco, e a fórmula precisa ser IDÊNTICA à
+   * de `conversarComAssistente` — se as duas divergirem, a confirmação procura
+   * a proposta na sessão errada e não acha nada.
+   */
+  let _interlocutor;
+  async function interlocutorDaMensagem() {
+    if (_interlocutor === undefined) {
+      _interlocutor = `wa-${await telefoneEfetivo(msg.senderJid, householdId) || 'desconhecido'}`;
+    }
+    return _interlocutor;
+  }
+
+  /**
+   * A pessoa está respondendo "sim" a uma proposta da assistente?
+   *
+   * Alterar e apagar acontecem em duas etapas: a Nina propõe, a pessoa
+   * confirma. Só que a confirmação é quase sempre uma palavra — "sim", "ok",
+   * "confirmo" — e o roteador matava isso de duas formas diferentes: "sim"
+   * está na lista de conversa fiada e era descartado sem virar log; "confirmo"
+   * passava, mas a IA classificava como OUTRO e o roteador mandava ignorar.
+   * Resultado: a proposta ficava pendente para sempre e a pessoa não recebia
+   * NADA — nem a alteração, nem um aviso. Achado no teste ao vivo de
+   * 19/08/2026, com "Sim" e depois "Confirmo", os dois no vazio.
+   *
+   * Este desvio só é consultado nas mensagens que iam morrer de qualquer
+   * jeito, DEPOIS de comando e regra de lançamento terem sido descartados.
+   * Assim "gastei 50 no mercado" com uma proposta aberta continua virando
+   * lançamento, e a regra 3 do roteador segue de pé.
+   *
+   * Mora AQUI, antes do bloco de mídia, porque o ÁUDIO precisa exatamente da
+   * mesma defesa: falar "Sim" para confirmar uma exclusão caía no parser e
+   * voltava "Não entendi 'Sim'" (teste ao vivo de 20/08/2026). Definido depois,
+   * o áudio não alcançava — as variáveis de memória ainda estariam na zona
+   * morta do `let`.
+   */
+  let _pendente;
+  async function respondendoAProposta() {
+    if (!assistenteAtiva) return false;
+    if (_pendente === undefined) {
+      _pendente = await assistenteService.temAcaoPendente({
+        householdId,
+        interlocutor: await interlocutorDaMensagem(),
+      });
+    }
+    return _pendente;
+  }
+
+  /**
+   * A Nina perguntou algo e esta mensagem é a resposta?
+   *
+   * Só é consultado quando o parser por REGRA não entendeu a mensagem — com
+   * isso "gastei 45 no mercado" nem chega a ler o banco, e o caminho principal
+   * do produto continua sem custo nenhum a mais.
+   */
+  async function respondendoAPergunta(texto) {
+    if (!assistenteAtiva) return false;
+    if (parseFinancialMessage(texto)) return false;
+
+    return assistenteService.esperandoResposta({
+      householdId,
+      interlocutor: await interlocutorDaMensagem(),
+    });
+  }
+
   // Áudio (transcrito) e imagem (lida como cupom) viram lançamento igual ao
   // texto — passam pela IA multimodal e depois pelo MESMO caminho de
   // interpretação (ver lancamentoPorMensagem.lancarPorAudio/lancarPorCupom).
@@ -244,19 +314,56 @@ async function processarMensagemRecebida(req) {
       // não dá para depurar nada do que aconteceu depois.
       await updateLog(dados, log.id, { content: textoTranscrito });
 
-      const nomeDaAssistenteAudio = config?.nomeDaAssistente || NOME_PADRAO;
+      // Resposta falada a uma pergunta de subcategoria — mesmo passo que o
+      // texto dá antes de rotear.
+      const confirmacaoFalada = await tentarResolverConfirmacaoPendente({
+        householdId, senderJid: msg.senderJid, texto: textoTranscrito,
+      });
+      if (confirmacaoFalada.tratado) {
+        await updateLog(dados, log.id, { processingStatus: 'PROCESSED' });
+        await responder(householdId, config, msg.remoteJid, confirmacaoFalada.resposta);
+        return;
+      }
+
       const rotaDoAudio = decidirSemIA({
         texto: textoTranscrito,
-        nomeDaAssistente: nomeDaAssistenteAudio,
+        nomeDaAssistente,
         ehComando: false,
-        assistenteAtiva: assistenteService.ativa(householdId),
+        aguardandoResposta: await respondendoAPergunta(textoTranscrito),
+        assistenteAtiva,
       });
 
       if (rotaDoAudio.destino === DESTINO.CHAT) {
         await conversarComAssistente({
           householdId, config, msg, texto: rotaDoAudio.texto,
-          nomeDaAssistente: nomeDaAssistenteAudio, logExistente: log,
+          nomeDaAssistente, logExistente: log,
         });
+        return;
+      }
+
+      // CONVERSA FIADA FALADA NÃO VAI PARA O PARSER.
+      //
+      // Este é o MESMO filtro do texto, algumas dezenas de linhas abaixo — no
+      // texto, "sim" e "bom dia" morrem em silêncio, ou viram confirmação
+      // quando a Nina está esperando uma. No áudio não morriam: seguiam para
+      // `lancarPorAudio` e voltavam "⚠️ Não entendi 'Sim'. Comece dizendo se
+      // gastou ou recebeu", com a lição de como escrever um gasto. Aconteceu
+      // duas vezes no teste ao vivo de 20/08/2026: um "Sim" que deveria
+      // confirmar uma EXCLUSÃO já proposta, e um "Bom dia".
+      const conversaFiadaFalada = rotaDoAudio.destino === DESTINO.IGNORAR
+        || (rotaDoAudio.destino === null
+            && !looksLikeFinancialMessage(textoTranscrito)
+            && !(assistenteAtiva && pareceperguntaOuPedido(textoTranscrito)));
+
+      if (conversaFiadaFalada) {
+        if (await respondendoAProposta()) {
+          await conversarComAssistente({
+            householdId, config, msg, texto: textoTranscrito,
+            nomeDaAssistente, logExistente: log,
+          });
+          return;
+        }
+        await updateLog(dados, log.id, { processingStatus: 'CANCELLED' });
         return;
       }
     }
@@ -352,51 +459,10 @@ async function processarMensagemRecebida(req) {
   // Roteamento. A ordem está em utils/roteadorMensagem.js e é a garantia de
   // que nada do fluxo de lançamento regride: mensagem que o parser por regra
   // entende nunca chega perto da assistente.
-  const nomeDaAssistente = config?.nomeDaAssistente || NOME_PADRAO;
-  const assistenteAtiva = assistenteService.ativa(householdId);
-
-  /**
-   * Quem está falando, no formato que a memória de conversa usa. Memorizado
-   * porque `telefoneEfetivo` vai ao banco, e a fórmula precisa ser IDÊNTICA à
-   * de `conversarComAssistente` — se as duas divergirem, a confirmação procura
-   * a proposta na sessão errada e não acha nada.
-   */
-  let _interlocutor;
-  async function interlocutorDaMensagem() {
-    if (_interlocutor === undefined) {
-      _interlocutor = `wa-${await telefoneEfetivo(msg.senderJid, householdId) || 'desconhecido'}`;
-    }
-    return _interlocutor;
-  }
-
-  /**
-   * A pessoa está respondendo "sim" a uma proposta da assistente?
-   *
-   * Alterar e apagar acontecem em duas etapas: a Nina propõe, a pessoa
-   * confirma. Só que a confirmação é quase sempre uma palavra — "sim", "ok",
-   * "confirmo" — e o roteador matava isso de duas formas diferentes: "sim"
-   * está na lista de conversa fiada e era descartado sem virar log; "confirmo"
-   * passava, mas a IA classificava como OUTRO e o roteador mandava ignorar.
-   * Resultado: a proposta ficava pendente para sempre e a pessoa não recebia
-   * NADA — nem a alteração, nem um aviso. Achado no teste ao vivo de
-   * 19/08/2026, com "Sim" e depois "Confirmo", os dois no vazio.
-   *
-   * Este desvio só é consultado nas mensagens que iam morrer de qualquer
-   * jeito, DEPOIS de comando e regra de lançamento terem sido descartados.
-   * Assim "gastei 50 no mercado" com uma proposta aberta continua virando
-   * lançamento, e a regra 3 do roteador segue de pé.
-   */
-  let _pendente;
-  async function respondendoAProposta() {
-    if (!assistenteAtiva) return false;
-    if (_pendente === undefined) {
-      _pendente = await assistenteService.temAcaoPendente({
-        householdId,
-        interlocutor: await interlocutorDaMensagem(),
-      });
-    }
-    return _pendente;
-  }
+  //
+  // `nomeDaAssistente`, `assistenteAtiva`, `interlocutorDaMensagem()` e
+  // `respondendoAProposta()` são definidos lá em cima, antes do bloco de
+  // mídia, porque o áudio precisa dos mesmos.
 
   // O comando é consultado antes de decidir, porque a decisão precisa saber se
   // casou — mas a resposta só é usada se o roteador mandar para COMANDO.
@@ -406,6 +472,7 @@ async function processarMensagemRecebida(req) {
     texto: msg.content,
     nomeDaAssistente,
     ehComando: !!respostaDeComando,
+    aguardandoResposta: await respondendoAPergunta(msg.content),
     assistenteAtiva,
   });
 

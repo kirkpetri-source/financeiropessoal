@@ -180,6 +180,19 @@ function criarAssistente({ ia, sessoes, limite, escopoDe, consultaDireta = null,
     return true;
   }
 
+  /**
+   * A assistente perguntou algo e ainda espera a resposta desta pessoa?
+   *
+   * O webhook consulta antes de mandar a mensagem para o parser de lançamento:
+   * "139,90 dia 10" logo depois de a Nina pedir valor e dia é resposta, não
+   * despesa nova. Leitura de UM documento por ID, e só nas mensagens que o
+   * parser por regra NÃO entendeu.
+   */
+  async function esperandoResposta({ householdId, interlocutor }) {
+    if (!ativa(householdId) || !householdId || !interlocutor) return false;
+    return sessoes.esperandoResposta(escopoDe(householdId), interlocutor);
+  }
+
   /** Uso do dia, sem consumir. Alimenta a porcentagem no painel. */
   async function uso(householdId) {
     if (!ativa(householdId)) return { ativa: false };
@@ -206,7 +219,7 @@ function criarAssistente({ ia, sessoes, limite, escopoDe, consultaDireta = null,
     return { ativa: true, mensagens };
   }
 
-  return { responder, uso, limparConversa, historico, temAcaoPendente };
+  return { responder, uso, limparConversa, historico, temAcaoPendente, esperandoResposta };
 }
 
 let _padrao = null;
@@ -260,4 +273,5 @@ module.exports = {
   limparConversa: (...args) => servico().limparConversa(...args),
   historico: (...args) => servico().historico(...args),
   temAcaoPendente: (...args) => servico().temAcaoPendente(...args),
+  esperandoResposta: (...args) => servico().esperandoResposta(...args),
 };

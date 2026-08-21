@@ -124,9 +124,14 @@ function pedeCadastroDeContaFixa(texto) {
  *   `lancarPorTexto` já faz exatamente isso logo em seguida. Sem o parâmetro, a
  *   decisão devolve destino nulo e o fluxo de lançamento segue como sempre.
  * @param {boolean} p.assistenteAtiva  a feature está ligada para esta família
+ * @param {boolean} [p.aguardandoResposta] a assistente fez uma pergunta a esta
+ *   pessoa e ainda espera a resposta (ver regra 5 abaixo). Também é opcional:
+ *   quem não informa mantém o comportamento anterior, inteiro.
  * @returns {{destino: string|null, texto: string, motivo: string}}
  */
-function decidirSemIA({ texto, nomeDaAssistente, ehComando, casouRegra, assistenteAtiva = true }) {
+function decidirSemIA({
+  texto, nomeDaAssistente, ehComando, casouRegra, aguardandoResposta = false, assistenteAtiva = true,
+}) {
   const mensagem = String(texto || '').trim();
 
   if (!mensagem) return { destino: DESTINO.IGNORAR, texto: '', motivo: 'VAZIA' };
@@ -156,6 +161,21 @@ function decidirSemIA({ texto, nomeDaAssistente, ehComando, casouRegra, assisten
   //    o parser de lançamento levaria "90 reais" para uma despesa avulsa.
   if (assistenteAtiva && pedeCadastroDeContaFixa(mensagem)) {
     return { destino: DESTINO.CHAT, texto: mensagem, motivo: 'CADASTRO_DE_CONTA_FIXA' };
+  }
+
+  // 5. A assistente PERGUNTOU algo e está esperando esta resposta.
+  //
+  //    "cadastra minha internet como conta fixa" entra pela regra 4; a Nina
+  //    responde pedindo o valor e o dia; e a mensagem seguinte — "139,90 dia
+  //    10" — não casa com nada aqui e ia direto para o parser, que via um
+  //    valor e criava uma despesa em Outros. A conta fixa nunca era cadastrada
+  //    e ainda sobrava um lançamento fantasma (teste ao vivo de 20/08/2026).
+  //
+  //    Vem DEPOIS da regra 3 de propósito: com uma pergunta no ar, "gastei 45
+  //    no mercado" continua sendo lançamento. Quem chama é que consulta o
+  //    estado — e só quando o parser por regra não entendeu a mensagem.
+  if (assistenteAtiva && aguardandoResposta) {
+    return { destino: DESTINO.CHAT, texto: mensagem, motivo: 'RESPOSTA_A_PERGUNTA_DA_ASSISTENTE' };
   }
 
   // 5. Precisa da IA para saber o que é. Quem chama decide se vale o custo.

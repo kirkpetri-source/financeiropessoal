@@ -216,6 +216,34 @@ async function principal() {
     alterar.logs[0]?.processingStatus !== 'ERROR',
     `erro=${alterar.logs[0]?.errorMessage}`);
 
+  // 6. O que falhou ao vivo em 20/08: confirmar POR ÁUDIO.
+  //
+  // No texto, "Sim" com uma proposta aberta vira confirmação. Falado, ia para
+  // o parser e voltava «⚠️ Não entendi "Sim". Comece dizendo se gastou ou
+  // recebeu» — a exclusão proposta ficava pendente para sempre.
+  console.log('\n6. "Sim" falado confirma a proposta da Nina');
+  await falar('Nina, apague o lançamento de compra do mês');
+
+  const sim = await falar('Sim');
+  checar('o "Sim" falado NÃO virou "não entendi"',
+    sim.logs[0]?.processingStatus !== 'ERROR',
+    `erro=${sim.logs[0]?.errorMessage}`);
+
+  const sobrou = await db.collection('transactions')
+    .where('householdId', '==', FAMILIA).where('description', '==', 'compra do mês').get();
+  checar('o lançamento foi excluído de verdade', sobrou.empty,
+    `ainda existem ${sobrou.size}`);
+
+  // 7. Saudação falada morre em silêncio, como no texto.
+  console.log('\n7. "Bom dia" falado não vira "não entendi"');
+  const bomDia = await falar('Bom dia');
+  checar('não respondeu "não entendi"', bomDia.logs[0]?.processingStatus !== 'ERROR',
+    `erro=${bomDia.logs[0]?.errorMessage}`);
+  checar('foi tratado como conversa fiada',
+    bomDia.logs[0]?.processingStatus === 'CANCELLED',
+    `status=${bomDia.logs[0]?.processingStatus}`);
+  checar('NÃO virou lançamento', !bomDia.logs[0]?.transactionId);
+
   console.log(`\n===== ${passou} passaram, ${falhou} falharam =====\n`);
 
   await limpar();
