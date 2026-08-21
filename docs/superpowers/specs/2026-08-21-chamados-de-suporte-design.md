@@ -1,13 +1,14 @@
 # Chamados de suporte — desenho
 
-**Data:** 21/08/2026 · **revisão 2** (ajustes do Kirk aplicados e confrontados
-com o código)
+**Data:** 21/08/2026 · **revisão 3** (ajustes aplicados, confrontados com o
+código, e as três decisões do Kirk fechadas)
 **Etapa:** 1 de 3 da Fase 4 (chamados → papéis de operador → central de ajuda)
 
-> Revisão 2: os 19 ajustes foram incorporados. O que mudou de rumo por causa do
-> que o código mostrou está reunido em **"O que o código contrariou"**, no fim —
-> leia essa seção antes de aprovar. Três pontos precisam de decisão sua e estão
-> marcados com **[DECIDIR]**.
+> Revisão 3: os 19 ajustes foram incorporados e as três escolhas que faltavam
+> foram decididas pelo Kirk em 21/08/2026 — ver **"Decisões tomadas"**, no fim.
+> A terceira delas mudou o desenho dos anexos: **não há mais signed URL**, o
+> arquivo é servido pela própria API. Isso eliminou a dependência de IAM.
+> **Spec fechada — o passo seguinte é o plano de implementação.**
 
 ## O problema
 
@@ -241,7 +242,9 @@ Duas adições, e nenhum service usando `db` cru para chamado de cliente:
 
 **Este é o arquivo mais sensível do projeto** (regra 3, 16 testes de vazamento).
 Os testes de isolamento existentes precisam cobrir os dois métodos novos antes
-de qualquer rota usá-los.
+de qualquer rota usá-los. **Decidido pelo Kirk em 21/08/2026: pode mexer no
+`escopo.js`** — a alternativa (chamado falando com o banco por fora da portaria)
+foi recusada, porque abriria precedente para a próxima feature copiar.
 
 ## Ciclo de vida
 
@@ -383,10 +386,31 @@ primeiro.
 ### O que fica no Firestore (item 11)
 
 Só metadados: `storagePath`, `nomeOriginal`, `mimeType`, `tamanho`, `enviadoEm`.
-**Signed URL nunca é persistida** — ela é temporária por definição e, guardada,
-nasce vencida na próxima leitura. Ela é gerada a cada visualização, depois de:
-autenticar → validar acesso ao chamado → validar `householdId` → localizar o
-arquivo → assinar.
+Nenhuma URL é persistida.
+
+### A leitura do anexo — decidida em 21/08: pela API, sem signed URL
+
+`GET /suporte/chamados/:numero/anexos/:anexoId` autentica pelo Bearer de
+sempre, resolve o household por `escopoDe`, confere que o anexo pertence àquele
+chamado daquela família, lê o objeto do Storage pelo Admin SDK e **devolve os
+bytes**, com `Content-Type` e `Content-Disposition`. O frontend consome com
+`responseType: 'blob'` — o mesmo caminho que `MeusDados.jsx` já usa para o
+export.
+
+Por que não a signed URL, que era o desenho anterior:
+
+- `getSignedUrl` dentro de Cloud Functions v2 exige o papel **Service Account
+  Token Creator** na conta de serviço em uso, e a falha é de **runtime**, não de
+  deploy — sobe verde e quebra na cara do cliente.
+- Pior, é **impossível de testar com honestidade daqui**: local o Admin SDK
+  assina com a chave privada do JSON e funciona sempre; a function no ar não tem
+  chave e depende do `signBlob`. Teste local dá verde e produção dá 403.
+- Servir pela API tira a dependência inteira e reusa autorização que já existe.
+
+O que se paga: o arquivo trafega pela function. Com 5 MB de teto e o volume de
+uma operação começando, é ruído no custo. Se um dia virar tráfego de verdade, a
+signed URL volta à mesa — aí com o papel de IAM concedido de propósito e testado
+no ar, não na máquina.
 
 ### Transporte do upload
 
@@ -473,7 +497,10 @@ família, é a solução limpa — mas exige um documento de config que não é
 `whatsappConfigs/{householdId}` e um caminho de envio que não passe por
 `respostaWhatsapp.responder` (que grava log sob um `householdId`). Isso é
 infraestrutura nova, não cabe nesta etapa, e está registrado nas dívidas.
-**[DECIDIR 1]**
+
+**Decidido pelo Kirk em 21/08/2026: o canal da própria família dele.** O aviso
+some se ele desconectar o WhatsApp do sistema — e nesse caso sobra o e-mail, que
+não depende de canal nenhum.
 
 ### Endereços
 
@@ -547,24 +574,28 @@ Três mudanças no `lgpdService`:
 
 ### Anexo utilizável no export (item 19)
 
-O export é um JSON baixado como blob (`MeusDados.jsx` já usa
-`responseType: 'blob'`). Duas saídas possíveis:
+Com a decisão de servir anexo pela API, a saída por link assinado deixou de
+existir — e embutir binário em base64 no JSON continua fora de questão (um
+chamado com 5 anexos de 5 MB viraria ~33 MB montados na memória de uma function
+de 256 MiB com 60 s de timeout).
 
-- **binário embutido em base64** — um chamado com 5 anexos de 5 MB viraria ~33
-  MB de JSON, montado na memória de uma function de 256 MiB com 60 s de timeout.
-  Quebra.
-- **URL assinada com validade longa** — o V4 do Cloud Storage assina por **até 7
-  dias**, que é exatamente o prazo de arrependimento da exclusão
-  (`DIAS_ATE_APAGAR = 7`). O cliente que exporta porque vai sair tem a janela
-  inteira para baixar.
+**O JSON do export leva os metadados de cada anexo** (`nomeOriginal`,
+`mimeType`, `tamanho`, `enviadoEm`, o número do chamado e o caminho da API que
+o serve) — não os bytes.
 
-**Escolhido: URL assinada de 7 dias**, com `expiraEm` explícito ao lado de cada
-anexo no JSON e um aviso no cabeçalho do export ("os links dos anexos valem até
-DD/MM; depois disso, exporte de novo ou abra o chamado no painel"). Os arquivos
-continuam no Storage até a conta ser apagada, então reexportar sempre funciona.
+**Os bytes vêm pela tela.** `MeusDados.jsx` ganha, ao lado de "Exportar meus
+dados", um **"Baixar anexos dos chamados"**: o frontend percorre a lista, busca
+cada arquivo pelo mesmo endpoint autenticado da visualização normal e salva um a
+um. Portabilidade de verdade, sem link que vence e sem JSON gigante.
 
-Essas são as únicas URLs assinadas de vida longa do sistema — a visualização
-normal na tela usa vida curta (15 minutos).
+Isso funciona inclusive no caso que mais importa — a conta com exclusão pedida.
+Ela fica congelada para lançar, mas continua **lendo e exportando** durante os 7
+dias (é a regra 6, e é o motivo de o prazo existir). Depois disso os arquivos
+somem junto com o resto, que é o ponto da exclusão.
+
+O texto do cabeçalho do export diz isso em uma linha: "os anexos dos chamados
+não vêm dentro deste arquivo; baixe pelo botão ao lado, enquanto sua conta
+existir".
 
 ## Segurança e isolamento
 
@@ -619,6 +650,9 @@ Anexos
 - estouro do limite de 5 por mensagem
 - falha parcial de upload: a mensagem persiste com os anexos válidos e nenhum
   metadado aponta para arquivo inexistente
+- **o endpoint que serve o arquivo recusa anexo de outra família** e recusa
+  `anexoId` que existe mas não pertence àquele chamado — os dois com a mesma
+  resposta de "não encontrado", para não confirmar existência sondando id
 
 Outros
 - falha de notificação não derruba a criação do chamado e fica em
@@ -674,7 +708,8 @@ números distintos e o contador sem buraco).
 | `src/services/chamadosPlataformaService.js` | **novo** — cross-tenant, único lugar com `db` cru |
 | `src/services/emailService.js` | **novo** — Resend |
 | `src/services/notificacaoChamadoService.js` | **novo** — orquestra e-mail + WhatsApp, registra falha |
-| `src/services/anexoService.js` | **novo** — Storage, magic bytes, signed URL |
+| `src/services/anexoService.js` | **novo** — Storage, magic bytes, leitura dos bytes pela API |
+| `frontend/src/components/lgpd/MeusDados.jsx` | botão "Baixar anexos dos chamados" |
 | `src/utils/tipoDeArquivo.js` | **novo** — magic bytes, sem dependência |
 | `src/services/lgpdService.js` | export inclui chamados; apagar inclui `supportTickets` e Storage; `executarExclusoesPendentes` |
 | `src/app.js` | `express.json` de 8mb em `/suporte/anexos`; `/plataforma/chamados` **antes** de `/plataforma` |
@@ -702,7 +737,7 @@ que exija índice, e o frontend não fala com o Firestore.
 | `RESEND_API_KEY` no Secret Manager | eu | `firebase functions:secrets:set` |
 | **Storage no projeto de HOMOLOGAÇÃO** | eu (API) ou Kirk (1 clique) | o bucket de `revelacash-staging` **não existe** — conferido. O Firebase CLI não cria bucket; sai pela Management API ou pelo Console. **Sem isso não dá para testar anexo em homologação, e a regra 17 proíbe estrear em produção** |
 | Storage em produção | já resolvido | `financeiropessoal-29b32.firebasestorage.app` existe — conferido |
-| **IAM: Service Account Token Creator** | eu, por CLI | `getSignedUrl` dentro de Cloud Functions v2 falha sem esse papel na conta de serviço em uso: é **erro de runtime, não de deploy**, e um teste local com a chave JSON dá falso positivo (a chave assina localmente; a function não tem chave e depende de `signBlob`). Nos dois projetos. **`gcloud` não está instalado nesta máquina** — instalar ou usar a IAM API |
+| ~~IAM: Service Account Token Creator~~ | **não é mais necessária** | caiu com a decisão de servir o anexo pela API. Era a única dependência que falhava em runtime e dava falso positivo em teste local |
 | `SUPORTE_EMAIL_DESTINO`, `SUPORTE_EMAIL_REMETENTE`, `SUPORTE_WHATSAPP_HOUSEHOLD_ID` | eu | `.env` dos dois projetos |
 
 ## O que foi conferido no código
@@ -756,37 +791,38 @@ o `limiteGeral` por IP que já cobre todas as rotas. Nenhum middleware novo.
 como fazer isso hoje.** Nenhum dos oito métodos aceita sentinela ou entra em
 transação. Ou o service usa `db` cru para escrever chamado (contornando a
 regra 3, no arquivo mais sensível do projeto), ou o escopo ganha os dois métodos
-descritos em "Concorrência e atomicidade". Escolhi o segundo — mas é mudança em
-`escopo.js`, e por isso está marcada na tabela de arquivos. **[DECIDIR 2]**
+descritos em "Concorrência e atomicidade". **Decidido: o escopo ganha os dois
+métodos.**
 
 **c) O item 5 pede "a instância da plataforma", e ela não existe.** O sistema não
 tem canal fora de família. A solução desta etapa é o canal da sua própria família
 com destino na auto-conversa — que é o que o aviso de cadastro já faz hoje e
-atende o requisito de não sair pela instância do cliente. Instância dedicada
-virou dívida. **[DECIDIR 1]**
+atende o requisito de não sair pela instância do cliente. **Decidido: canal da
+própria família.** Instância dedicada virou dívida.
+
+**d) O item 4 (IAM para signed URL) deixou de existir.** Ele estava certo
+enquanto o desenho previa signed URL: `getSignedUrl` em Cloud Functions v2 falha
+sem o papel Service Account Token Creator, e falha em runtime. Com a decisão de
+servir o anexo pela API, a dependência sumiu inteira — e junto sumiu o teste que
+daria falso positivo local.
 
 E uma descoberta que não estava em nenhum dos lados: **o bucket de Storage de
 homologação não existe**. Como a regra 17 manda a feature nascer em homologação,
 criar esse bucket é pré-requisito da etapa, não detalhe de infra.
 
-## Pontos para você decidir
+## Decisões tomadas (Kirk, 21/08/2026)
 
-**[DECIDIR 1] Aviso ao operador pelo canal da sua família, ou instância
-dedicada?** Recomendo o canal da sua família nesta etapa (zero infra nova, mesmo
-caminho já provado pelo aviso de cadastro) e instância dedicada quando houver
-equipe.
+| decisão | escolha | o que ela custa |
+|---|---|---|
+| **1. De onde sai o aviso de WhatsApp ao operador** | canal da própria família dele, na auto-conversa — mesmo caminho do aviso de cadastro | se ele desconectar o WhatsApp do sistema, o aviso para; o e-mail continua. Instância dedicada virou dívida, para quando houver equipe |
+| **2. `escopo.js` ganha `criarEmTransacao` e `atualizarAtomico`** | sim, mexer na portaria | alteração no arquivo mais sensível do projeto, coberta pelos 16 testes de vazamento existentes mais testes novos para os dois métodos, escritos **antes** de qualquer rota usá-los |
+| **3. Como o anexo chega ao cliente** | servido pela API, com o Bearer de sempre — **sem signed URL** | o arquivo trafega pela function a cada visualização. Em troca some a dependência de IAM inteira, que era a única que falharia só em produção |
 
-**[DECIDIR 2] `escopo.js` ganha dois métodos.** É o arquivo que sustenta a regra
-3 e tem 16 testes de vazamento. A alternativa é o service de chamados usar `db`
-cru — que eu não recomendo. Precisa do seu aval porque mexer nesse arquivo é
-diferente de mexer em qualquer outro.
+A decisão 3 mudou os itens 4, 11 e 19 do texto de ajustes: não há mais signed
+URL em lugar nenhum do desenho, e o export leva metadados mais um botão que
+baixa os arquivos de verdade.
 
-**[DECIDIR 3] Anexo por signed URL, ou pela API?** Você decidiu signed URL
-(itens 4 e 11) e a spec está escrita assim. Registro a alternativa porque ela
-**elimina a dependência de IAM inteira**: o backend lê o objeto e devolve os
-bytes, autenticado pelo Bearer de sempre — e o frontend já sabe consumir
-resposta binária (`MeusDados.jsx` usa `responseType: 'blob'`). O custo é o
-tráfego passar pela function. Se preferir, troco.
+Com isso a spec está fechada. **Próximo passo: o plano de implementação.**
 
 ## Decisões que não mudam
 
