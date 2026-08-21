@@ -1,97 +1,86 @@
 # Estado do projeto — 21/08/2026 (tudo em produção: backend E frontend)
 
-## RETOMAR AQUI — spec e plano fechados, começar pela Fase 0
+## RETOMAR AQUI — chamados PRONTOS em homologação, esperando o Kirk aprovar
 
-Etapa 1 da Fase 4 (chamados de suporte) está **desenhada, decidida e
-planejada**. **Nenhuma linha de código foi escrita.**
+As 9 fases do plano estão **fechadas e verificadas**. O código está na branch
+`feature/chamados-suporte` (11 commits), **nada foi para `main`** e nada foi
+para produção — regra 17.
 
-- Spec, revisão 3: `docs/superpowers/specs/2026-08-21-chamados-de-suporte-design.md`
+- Spec revisão 3: `docs/superpowers/specs/2026-08-21-chamados-de-suporte-design.md`
 - Plano: `docs/superpowers/plans/2026-08-21-chamados-suporte-implementacao.md`
 
-Os 19 ajustes do Kirk foram aplicados e cada um confrontado com o código. As
-três decisões que faltavam ele fechou em 21/08/2026:
+### O que o Kirk precisa fazer
 
-1. **Aviso de WhatsApp ao operador sai pelo canal da família dele**, na
-   auto-conversa — mesmo caminho do aviso de cadastro. Instância dedicada de
-   plataforma virou dívida.
-2. **`escopo.js` ganha `criarEmTransacao` e `atualizarAtomico`.** A alternativa
-   (`db` cru no service de chamados) foi recusada por abrir precedente.
-3. **Anexo servido pela API, sem signed URL.** Isso apagou a dependência de IAM
-   (Token Creator) — a única que falharia só em runtime, com teste local dando
-   falso positivo. Mudou os itens 4, 11 e 19 dos ajustes dele.
+**1. Abrir e usar em homologação**, e dizer se aprova:
 
-**Começar pela Fase 0 do plano.** Duas tarefas dependem do Kirk e não saem por
-CLI:
+```bash
+cd frontend && npm run dev -- --mode staging --port 5173 --strictPort
+#   cliente:  teste@revelacash.invalid / teste-da-nina-123  → menu Suporte
+#   operador: /plataforma — precisa criar o login antes:
+#   ALVO=staging node functions/tools/criar-login-operador.js kirkdouglas_19 --papel ADMIN --nome Kirk --confirmar
+```
 
-- **0.4** criar conta no Resend e colar SPF + DKIM no registro.br (o DNS não
-  está na Vercel)
-- **0.2** provisionar o bucket de Storage do staging, se a Management API
-  recusar — aí é 1 clique no Console
+O backend de homologação já está deployado com tudo. O login de operador do
+staging foi APAGADO no fim do teste (era descartável) — recriar com o comando
+acima.
 
-O resto da Fase 0 (branch, `storage.rules`, segredos, variáveis) sai por CLI.
+**2. Depois de aprovar**, a publicação em produção é:
 
-### Achados da conferência que não podem se perder
+```bash
+firebase deploy --only functions --project prod   # backend PRIMEIRO
+git checkout main && git merge feature/chamados-suporte && git push origin main
+```
 
-- **Não existe rate limit por família em rota HTTP.** `rateLimit.js` é por IP;
-  `limiteMensagensService` é do WhatsApp. Substituído por teto de 5 chamados
-  abertos por família.
-- **`escopo.js` não sabe `arrayUnion` nem entrar em transação** — daí a
-  decisão 2.
-- **Não existe instância Evolution de plataforma** — daí a decisão 1.
-- **O bucket de Storage de HOMOLOGAÇÃO não existe** (`revelacash-staging`);
-  produção tem (`financeiropessoal-29b32.firebasestorage.app`). Conferido por
-  script.
-- **Não existe `storage.rules` no repo.** Ligar Storage sem publicar regra
-  deixa o bucket aberto para qualquer usuário autenticado.
-- **O painel do cliente NÃO lê o Firestore direto** — não há regra de Firestore
-  a escrever para as coleções novas.
-- **O login do operador É Firebase Auth**, então `operadores/{uid}` funciona.
-- **`routes/admin.js` faz `router.use(authMiddleware, apenasAdmin)` na linha
-  29**: a rota do operador tem que ser montada ANTES de `/plataforma` no
-  `app.js`, senão todo atendente vira admin em silêncio.
+Backend antes do frontend: tela nova chamando rota que não existe quebra; o
+contrário só deixa a rota ociosa.
 
+**Antes do deploy de produção, falta configurar lá (hoje só o staging tem):**
 
-### Onde exatamente paramos
+- `STORAGE_BUCKET_ANEXOS=revelacash-anexos` no `.env.financeiropessoal-29b32`
+  (o bucket JÁ existe, criado em 21/08)
+- `SUPORTE_EMAIL_REMETENTE` e `SUPORTE_EMAIL_DESTINO` no mesmo arquivo
+- `SUPORTE_WHATSAPP_HOUSEHOLD_ID` — opcional; sem ela o aviso ao operador sai
+  só por e-mail
+- `RESEND_API_KEY` já está no Secret Manager dos dois projetos
+- criar o operador em produção: `node tools/criar-login-operador.js ... --confirmar`
 
-A Fase 4 foi decomposta em três etapas, nesta ordem, com o Kirk aprovando cada
-decisão:
+### O que ficou pronto
 
-1. **Chamados de suporte** — desenhado, especificado e planejado (spec revisão
-   3 + plano, links acima). NÃO implementado. Nenhuma linha de código foi
-   escrita.
-2. **Papéis de operador** — o que cada papel pode fazer, criar operador pela
-   tela, desativar quem saiu. O cadastro MÍNIMO de operadores foi puxado para
-   a etapa 1, porque encaminhar chamado exige um "para quem".
+| Camada | O que tem |
+|---|---|
+| Dados | `supportTickets` escopada, `operadores`, `counters`, `notificacoesNaoEntregues` |
+| Isolamento | `escopo.js` ganhou `criarEmTransacao` e `atualizarAtomico` |
+| Autorização | `apenasOperadorAtivo` — atendente atende sem virar admin |
+| Cliente | `/suporte` e `/suporte/:numero`, com anexos |
+| Operador | aba Chamados no `/plataforma`, fila por tempo de espera |
+| Anexos | bucket dedicado em São Paulo, magic bytes, servidos pela API |
+| Notificações | Resend + WhatsApp, sem conteúdo do chamado |
+| Rotina diária | encerra chamado parado há 15 dias |
+| LGPD | export inclui chamados; exclusão leva os arquivos |
+
+**Suíte: 1233 testes.** Ponta a ponta contra homologação: 80/80. Teste HTTP do
+operador: 13/13.
+
+### Armadilhas novas, achadas construindo (detalhe nos commits)
+
+- **`serverTimestamp()` não funciona dentro de item de array** no Firestore. A
+  data da mensagem é `Timestamp.fromDate`.
+- **Não existe "disparar e esquecer" no Cloud Run**: a CPU congela quando a
+  resposta HTTP sai e a promessa morre. Notificação é AGUARDADA.
+- **`Buffer.from(x, 'base64')` nunca lança** — descarta o que não reconhece e
+  grava um arquivo menor e plausível. Confira o formato antes.
+- **O login do operador é um e-mail interno que ninguém lê.** Aviso de
+  encaminhamento para lá é aviso para o vazio.
+- **`apenasAdmin` estava guardando a tela em DOIS lugares** (`PlataformaPage` e
+  `AdminPage`), desfazendo na interface a separação que o backend faz.
+- **Teste estático que lê código precisa ignorar comentário**, senão ele testa
+  a prosa — e apagar o comentário faz um teste quebrado voltar a passar.
+
+### Próximas etapas da Fase 4 (depois desta ir ao ar)
+
+2. **Papéis de operador** — o que cada papel pode fazer, criar/desativar pela
+   tela. Hoje `papel` é só um campo e `atribuidoA` é informativo.
 3. **Central de ajuda** — conteúdo na landing e no painel.
-
-### As decisões da spec que já foram aprovadas por ele
-
-Não reabrir sem motivo — cada uma foi uma pergunta respondida:
-
-- chamado vive no Firestore; e-mail é só aviso, e o sistema nunca lê caixa
-- só cliente logado abre chamado; o botão da landing passa pelo login
-- **quem enxerga é o dono da conta** — correção dele: hoje existe UM login por
-  família, membro de WhatsApp não tem senha
-- aviso (WhatsApp E e-mail) leva só o número do chamado e o link, **nunca o
-  conteúdo da resposta** — ressalva explícita dele, duas vezes
-- documento único com mensagens dentro, para não abrir exceção no `escopoDe`
-- anexo com imagem desde o começo, upload pela API, URL assinada
-- encaminhamento de chamado para outro operador — pedido dele
-- equipe avisada por e-mail + WhatsApp; provedor Resend
-
-### Fatos levantados durante o desenho (não perder)
-
-- **`revelacash.com.br` não tem MX nem SPF.** Não recebe e-mail e nada está
-  autorizado a enviar em nome dele. Conferido por DNS (`nslookup` contra
-  8.8.8.8).
-- **O DNS está no registro.br**, nameservers `a.sec.dns.br` / `b.sec.dns.br` —
-  não delegado à Vercel. Enquanto for assim, colar SPF/DKIM é ação manual do
-  Kirk (exceção à regra 8). Delegar o DNS à Vercel resolveria por CLI.
-- **O projeto não envia e-mail hoje.** Zero dependências, zero código. Todo
-  aviso sai por WhatsApp (`notificacaoOperadorService`).
-- **O `/plataforma` não tem cadastro de operador.** `apenasAdmin` só responde
-  sim ou não, por claim ou e-mail em variável de ambiente — sem nome, sem
-  lista, sem destinatário possível para encaminhamento.
 
 ## O DIA 21/08 — o que mudou
 
