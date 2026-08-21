@@ -500,12 +500,67 @@ async function main() {
       const sumiu = await db.collection('households').doc(familiaParaApagar).get();
       conferir('e a família não existe mais', !sumiu.exists);
     }
+
+    console.log('\n13) LGPD — export e exclusão levam os chamados junto');
+    const familiaLgpd = await criarFamilia('LGPD');
+    familias.push(familiaLgpd);
+    const dadosLgpd = escopoDe(familiaLgpd);
+
+    const uploadLgpd = await anexoService.subirArquivos(familiaLgpd, [
+      { nomeOriginal: 'comprovante.pdf', conteudo: Buffer.from('%PDF-1.7\ncomprovante\n').toString('base64') },
+    ]);
+
+    const comAnexoLgpd = await chamadoService.abrirChamado(dadosLgpd, {
+      ...ABERTURA,
+      anexos: await anexoService.metadadosDe(familiaLgpd, [uploadLgpd.enviados[0].storagePath]),
+    });
+    abertos.push(comAnexoLgpd.numero);
+
+    const exportado = await lgpdService.exportarDados(familiaLgpd, 'teste@example.invalid');
+
+    conferir('o export traz os chamados', exportado.chamadosDeSuporte?.length === 1);
+    conferir('com as mensagens dentro', exportado.chamadosDeSuporte[0].mensagens.length === 1);
+    conferir('e o total conta os chamados', exportado.totais.chamadosDeSuporte === 1);
+
+    const anexoExportado = exportado.chamadosDeSuporte[0].mensagens[0].anexos[0];
+    const caminhoEsperado = new RegExp(`^/suporte/chamados/${comAnexoLgpd.numero}/anexos/.+`);
+    conferir('o anexo vem por metadado, com o caminho para baixar',
+      anexoExportado.nomeOriginal === 'comprovante.pdf'
+      && caminhoEsperado.test(anexoExportado.baixarEm || ''),
+      anexoExportado.baixarEm);
+    conferir('o BINÁRIO não vem dentro do JSON',
+      anexoExportado.conteudo === undefined && anexoExportado.storagePath === undefined,
+      '33 MB de base64 quebrariam a function',
+    );
+    conferir('e o export avisa onde baixar', !!exportado.avisoSobreAnexos);
+
+    const tamanhoDoJson = JSON.stringify(exportado).length;
+    conferir('o JSON continua pequeno', tamanhoDoJson < 200_000, `${(tamanhoDoJson / 1024).toFixed(1)} KB`);
+
+    // Agora a exclusão: os chamados E os arquivos precisam sumir.
+    const contagem = await lgpdService.apagarHousehold(familiaLgpd);
+
+    conferir('a exclusão contou o chamado apagado', contagem.supportTickets === 1, JSON.stringify(contagem.supportTickets));
+    conferir('e diz o que aconteceu com os anexos', contagem.anexosNoStorage === 'apagados', String(contagem.anexosNoStorage));
+
+    const chamadoSumiu = await db.collection('supportTickets').doc(String(comAnexoLgpd.numero)).get();
+    conferir('o chamado não existe mais', !chamadoSumiu.exists);
+
+    let anexoSumiu = false;
+    await anexoService.lerAnexo(familiaLgpd, uploadLgpd.enviados[0].storagePath)
+      .catch((e) => { anexoSumiu = e.statusCode === 404; });
+    conferir('e o arquivo também não', anexoSumiu, 'sem isto, sobra print de extrato de quem pediu para sumir');
   } finally {
     console.log('\nLimpando...');
 
     // Varre a lista de TUDO que foi criado, e não só A e B. Na primeira versão
     // era só A e B: uma família criada no meio de uma seção que falhou depois
     // ficou órfã em homologação, e só apareceu ao conferir a coleção na mão.
+    //
+    // Desde a Fase 7 o `apagarHousehold` já leva chamados e anexos junto. As
+    // duas varridas explícitas abaixo continuam porque limpeza de teste não
+    // pode DEPENDER do código que o teste está verificando: se a exclusão
+    // quebrar, é justamente quando o rastro não pode ficar para trás.
     for (const id of familias) {
       await anexoService.apagarDaFamilia(id).catch(() => {});
       await lgpdService.apagarHousehold(id).catch(() => {});

@@ -41,6 +41,33 @@ async function despejar(query) {
 }
 
 /**
+ * Chamados de suporte, prontos para o export.
+ *
+ * O binário do anexo NÃO vem aqui dentro. Um chamado com cinco anexos de 5 MB
+ * viraria ~33 MB de base64 montados na memória de uma function de 256 MiB — e
+ * quebraria. O que vai é o metadado mais o caminho da API que serve o arquivo;
+ * a tela "Meus dados" usa esse caminho para baixar cada um, autenticada.
+ *
+ * Também não vai link assinado: ele venceria dentro do arquivo exportado, e um
+ * link morto num JSON é pior que nenhum link, porque parece que funciona.
+ */
+function prepararChamados(chamados) {
+  return chamados.map((chamado) => ({
+    ...chamado,
+    mensagens: (chamado.mensagens || []).map((mensagem) => ({
+      ...mensagem,
+      anexos: (mensagem.anexos || []).map((anexo) => ({
+        nomeOriginal: anexo.nomeOriginal,
+        mimeType: anexo.mimeType,
+        tamanho: anexo.tamanho,
+        enviadoEm: anexo.enviadoEm || null,
+        baixarEm: `/suporte/chamados/${chamado.numero}/anexos/${anexo.id}`,
+      })),
+    })),
+  }));
+}
+
+/**
  * Tudo que o sistema guarda sobre a família, em JSON.
  * Formato legível por humano e por planilha — é o que "portabilidade" quer
  * dizer na prática, não um dump interno do banco.
@@ -48,7 +75,7 @@ async function despejar(query) {
 async function exportarDados(householdId, solicitadoPor) {
   const dados = escopoDe(householdId);
 
-  const [familia, membros, transacoes, categorias, subcategorias, formas, logs, config, orcamentos, contasFixas, faturas, importacoes, conversas, memoriaDeDescricao] = await Promise.all([
+  const [familia, membros, transacoes, categorias, subcategorias, formas, logs, config, orcamentos, contasFixas, faturas, importacoes, conversas, memoriaDeDescricao, chamados] = await Promise.all([
     householdService.buscarHousehold(householdId),
     householdService.listarMembros(householdId),
     despejar(dados.consultar('transactions')),
@@ -63,6 +90,7 @@ async function exportarDados(householdId, solicitadoPor) {
     despejar(dados.consultar('importBatches')),
     despejar(dados.consultar('chatSessions')),
     despejar(dados.consultar('memoriaDeDescricao')),
+    despejar(dados.consultar('supportTickets')),
   ]);
 
   const configLimpa = Object.fromEntries(
@@ -75,6 +103,12 @@ async function exportarDados(householdId, solicitadoPor) {
     exportadoEm: new Date().toISOString(),
     solicitadoPor,
     aviso: 'Arquivo com dados financeiros da sua família. Guarde em local seguro.',
+    // Dito em uma linha porque a alternativa é a pessoa procurar o anexo dentro
+    // do JSON e concluir que o export veio incompleto.
+    avisoSobreAnexos: chamados.length
+      ? 'Os anexos dos chamados não vêm dentro deste arquivo. Baixe pelo botão '
+        + '"Baixar anexos dos chamados", em Configurações > Meus dados, enquanto sua conta existir.'
+      : undefined,
     familia: familiaSemSegredo,
     membros: paraJson(membros),
     lancamentos: transacoes,
@@ -89,11 +123,13 @@ async function exportarDados(householdId, solicitadoPor) {
     conversasComOConsultor: conversas,
     // O que o sistema aprendeu sobre como esta família descreve os gastos.
     memoriaDeDescricoes: memoriaDeDescricao,
+    chamadosDeSuporte: prepararChamados(chamados),
     configuracaoDoCanal: paraJson(configLimpa),
     totais: {
       lancamentos: transacoes.length,
       mensagens: logs.length,
       membros: membros.length,
+      chamadosDeSuporte: chamados.length,
     },
   };
 }
@@ -133,8 +169,9 @@ async function cancelarExclusao(householdId) {
  * por uma rota HTTP.
  *
  * O que sai: lançamentos, logs, categorias e formas de pagamento da família,
- * configuração do canal, membros, o documento da família e o atalho
- * `users/{uid}.householdId` de cada membro.
+ * chamados de suporte, os ARQUIVOS de anexo no Storage, configuração do canal,
+ * membros, o documento da família e o atalho `users/{uid}.householdId` de cada
+ * membro.
  *
  * O que fica: a conta de login no Firebase Auth. Apagar login de outra pessoa
  * porque o dono da família pediu seria apagar dado de terceiro. Cada um exclui
@@ -148,9 +185,12 @@ async function apagarHousehold(householdId) {
     'transactions', 'whatsappLogs', 'categories', 'subcategories', 'paymentMethods',
     'budgets', 'recurringBills', 'creditCardInvoices', 'pendingSubcategoryConfirmations',
     'importBatches', 'importMemoria', 'chatSessions', 'memoriaDeDescricao',
+    'supportTickets',
   ]) {
     contagem[colecao] = await apagarEmLote(dados.consultar(colecao));
   }
+
+  contagem.anexosNoStorage = await apagarAnexosDaFamilia(householdId);
 
   const membros = await householdService.listarMembros(householdId);
   const lote = db.batch();
@@ -251,6 +291,31 @@ async function apagarFamiliaAgora(householdId, { provider = null, evolutionConfi
   }
 
   return { nome: familia.name || null, contagem, loginsRemovidos, avisoWhatsapp };
+}
+
+/**
+ * Apaga os arquivos de anexo da família, por prefixo.
+ *
+ * Sem isto, sobra print de extrato de um cliente que pediu para sumir — e o
+ * serviço que existe justamente para impedir isso teria deixado passar o dado
+ * mais sensível de todos.
+ *
+ * Nunca lança: uma falha aqui não pode impedir a eliminação dos documentos, que
+ * é a maior parte do dado. Mas o resultado ENTRA na contagem devolvida, então a
+ * falha aparece no log da agendada e no retorno do painel do operador em vez de
+ * sumir. Anexo que sobrou é o tipo de pendência que precisa de alguém sabendo.
+ */
+async function apagarAnexosDaFamilia(householdId) {
+  if (!process.env.STORAGE_BUCKET_ANEXOS) return 'sem bucket configurado';
+
+  try {
+    const anexoService = require('./anexoService');
+    await anexoService.apagarDaFamilia(householdId);
+    return 'apagados';
+  } catch (err) {
+    console.error(`[LGPD] FALHOU ao apagar anexos de ${householdId}:`, err.message);
+    return `FALHOU: ${err.message}`;
+  }
 }
 
 /** Firestore não tem "delete where". Vai em lotes de 400 (o teto do batch é 500). */
