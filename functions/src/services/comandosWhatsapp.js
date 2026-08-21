@@ -266,58 +266,107 @@ async function comandoVincular(codigo, remoteJid) {
     + 'Digite *ajuda* para ver os comandos.';
 }
 
+// Correção conversacional: só reage quando a mensagem INTEIRA é um destes
+// termos — "nossa, que dia errado" não pode virar um apagar acidental. Cada
+// termo é a mensagem sozinha, do jeito que alguém manda logo depois de ver
+// que o lançamento saiu errado.
+const GATILHOS_APAGAR = [
+  'apagar ultimo', 'desfazer', 'errado', 'esta errado', 'ta errado',
+  'errou', 'apagar', 'apaga', 'cancela', 'cancelar', 'lancamento errado',
+];
+
 /**
- * Interpreta e executa. Devolve null quando não é comando — aí a mensagem segue
- * para o caminho normal de lançamento.
+ * A mensagem é um comando? Função PURA — não toca no banco e não executa nada.
+ *
+ * RECONHECER E EXECUTAR SÃO COISAS DIFERENTES, e misturá-las custou um bug.
+ * O webhook precisa saber se a mensagem casou com um comando ANTES de rotear,
+ * porque a decisão depende disso. Enquanto reconhecer significava executar,
+ * o efeito acontecia mesmo quando o roteador mandava a mensagem para outro
+ * lugar: "Nina, categoria moradia" mudava a categoria do último lançamento e
+ * só DEPOIS ia para a conversa; e uma resposta à Nina que começasse com
+ * "categoria..." era engolida pelo comando (teste ao vivo de 21/08/2026).
+ *
+ * @returns {{tipo: string, argumento: string|null}|null}
  */
-async function tratarComando(texto, { householdId, remoteJid, senderJid }) {
+function reconhecerComando(texto, { householdId } = {}) {
   const limpo = normalizar(texto);
 
   if (limpo.startsWith('vincular')) {
-    const codigo = limpo.split(/\s+/)[1];
-    return comandoVincular(codigo, remoteJid);
+    return { tipo: 'VINCULAR', argumento: limpo.split(/\s+/)[1] || null };
   }
 
   // Os demais exigem família já vinculada.
   if (!householdId) return null;
 
   if (limpo === 'resumo' || limpo === 'resumo mes' || limpo === 'resumo do mes') {
-    return comandoResumo(householdId);
+    return { tipo: 'RESUMO', argumento: null };
   }
   if (limpo === 'ultimos' || limpo === 'ultimos lancamentos') {
-    return comandoUltimos(householdId);
+    return { tipo: 'ULTIMOS', argumento: null };
   }
-  // Correção conversacional: só reage quando a mensagem INTEIRA é um destes
-  // termos — "nossa, que dia errado" não pode virar um apagar acidental. Cada
-  // termo é a mensagem sozinha, do jeito que alguém manda logo depois de ver
-  // que o lançamento saiu errado.
-  const GATILHOS_APAGAR = [
-    'apagar ultimo', 'desfazer', 'errado', 'esta errado', 'ta errado',
-    'errou', 'apagar', 'apaga', 'cancela', 'cancelar', 'lancamento errado',
-  ];
   if (GATILHOS_APAGAR.includes(limpo)) {
-    return comandoApagarUltimo(householdId);
+    return { tipo: 'APAGAR_ULTIMO', argumento: null };
   }
   if (limpo.startsWith('subcategoria ') || limpo.startsWith('mudar subcategoria ') || limpo.startsWith('trocar subcategoria ')) {
-    const nomeSubcategoria = limpo
-      .replace(/^(mudar\s+|trocar\s+)?subcategoria\s+(para\s+)?/, '')
-      .trim();
-    return comandoMudarSubcategoria(householdId, nomeSubcategoria, senderJid);
+    return {
+      tipo: 'MUDAR_SUBCATEGORIA',
+      argumento: limpo.replace(/^(mudar\s+|trocar\s+)?subcategoria\s+(para\s+)?/, '').trim(),
+    };
   }
   if (limpo.startsWith('categoria ') || limpo.startsWith('mudar categoria ') || limpo.startsWith('trocar categoria ')) {
-    const nomeCategoria = limpo
-      .replace(/^(mudar\s+|trocar\s+)?categoria\s+(para\s+)?/, '')
-      .trim();
-    return comandoMudarCategoria(householdId, nomeCategoria);
+    return {
+      tipo: 'MUDAR_CATEGORIA',
+      argumento: limpo.replace(/^(mudar\s+|trocar\s+)?categoria\s+(para\s+)?/, '').trim(),
+    };
   }
   if (limpo === 'categorias') {
-    return comandoCategorias(householdId);
+    return { tipo: 'CATEGORIAS', argumento: null };
   }
   if (limpo === 'ajuda' || limpo === 'help' || limpo === 'comandos') {
-    return AJUDA;
+    return { tipo: 'AJUDA', argumento: null };
   }
 
   return null;
 }
 
-module.exports = { tratarComando, gerarCodigoVinculo, AJUDA, normalizar };
+/** Executa o que `reconhecerComando` identificou. Só quem decidiu chama. */
+async function executarComando(comando, { householdId, remoteJid, senderJid }) {
+  if (!comando) return null;
+
+  switch (comando.tipo) {
+    case 'VINCULAR': return comandoVincular(comando.argumento, remoteJid);
+    case 'RESUMO': return comandoResumo(householdId);
+    case 'ULTIMOS': return comandoUltimos(householdId);
+    case 'APAGAR_ULTIMO': return comandoApagarUltimo(householdId);
+    case 'MUDAR_SUBCATEGORIA':
+      return comandoMudarSubcategoria(householdId, comando.argumento, senderJid);
+    case 'MUDAR_CATEGORIA':
+      return comandoMudarCategoria(householdId, comando.argumento);
+    case 'CATEGORIAS': return comandoCategorias(householdId);
+    case 'AJUDA': return AJUDA;
+    default: return null;
+  }
+}
+
+/**
+ * Interpreta e executa numa passada. Devolve null quando não é comando.
+ *
+ * Continua existindo para quem só quer a resposta e não participa do
+ * roteamento. O webhook NÃO usa: lá as duas metades são separadas de
+ * propósito (ver `reconhecerComando`).
+ */
+async function tratarComando(texto, { householdId, remoteJid, senderJid }) {
+  const comando = reconhecerComando(texto, { householdId });
+  if (!comando) return null;
+
+  return executarComando(comando, { householdId, remoteJid, senderJid });
+}
+
+module.exports = {
+  tratarComando,
+  reconhecerComando,
+  executarComando,
+  gerarCodigoVinculo,
+  AJUDA,
+  normalizar,
+};

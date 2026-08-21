@@ -361,6 +361,47 @@ async function principal() {
       `centavos=${internet.amountCents} dia=${internet.dueDay}`);
   }
 
+  // 9. COMANDO NÃO ENGOLE A RESPOSTA — o bug de 21/08.
+  //
+  // A Nina pergunta "qual categoria você prefere?"; a pessoa responde
+  // "categoria moradia". Isso casava com o comando `categoria <nome>`, que
+  // MUDA A CATEGORIA DO ÚLTIMO LANÇAMENTO — uma escrita silenciosa, no meio de
+  // uma conversa sobre outra coisa. O comando também era executado antes de o
+  // roteador decidir, então nem precisava ganhar a rota para causar efeito.
+  console.log('\n9. Resposta que parece comando não altera lançamento nenhum');
+
+  const dadosDaFamilia = escopoDe(FAMILIA);
+  const antesDoTeste = await db.collection('transactions')
+    .where('householdId', '==', FAMILIA).where('origin', '==', 'WHATSAPP').get();
+  const categoriasAntes = antesDoTeste.docs.map((d) => [d.id, d.data().categoryId]);
+
+  const idPergunta = `TESTE-CMD-PERG-${Date.now()}`;
+  await processarMensagemRecebida(
+    payload(idPergunta, 'Nina, cadastra o meu plano de saude como conta fixa'),
+  );
+
+  const idRespCmd = `TESTE-CMD-RESP-${Date.now()}`;
+  await processarMensagemRecebida(payload(idRespCmd, 'categoria Saúde'));
+
+  const depoisDoTeste = await db.collection('transactions')
+    .where('householdId', '==', FAMILIA).where('origin', '==', 'WHATSAPP').get();
+  const categoriasDepois = depoisDoTeste.docs.map((d) => [d.id, d.data().categoryId]);
+
+  checar('nenhum lançamento teve a categoria trocada pelas costas',
+    JSON.stringify(categoriasAntes.sort()) === JSON.stringify(categoriasDepois.sort()),
+    'o comando alterou um lançamento que ninguém pediu para alterar');
+
+  const logsRespCmd = await logsDe(idRespCmd);
+  checar('a resposta virou conversa, e não comando', logsRespCmd.length === 1,
+    `gravou ${logsRespCmd.length} log(s) — comando não gera log`);
+
+  // E o comando continua funcionando quando é comando de verdade.
+  const idComando = `TESTE-CMD-PURO-${Date.now()}`;
+  await processarMensagemRecebida(payload(idComando, 'categorias'));
+  const logsComando = await logsDe(idComando);
+  checar('comando sem conversa aberta continua sendo comando',
+    logsComando.length === 0, `gravou ${logsComando.length} log(s)`);
+
   console.log(`\n===== ${passou} passaram, ${falhou} falharam =====\n`);
 
   await limpar();

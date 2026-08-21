@@ -130,7 +130,8 @@ function pedeCadastroDeContaFixa(texto) {
  * @returns {{destino: string|null, texto: string, motivo: string}}
  */
 function decidirSemIA({
-  texto, nomeDaAssistente, ehComando, casouRegra, aguardandoResposta = false, assistenteAtiva = true,
+  texto, nomeDaAssistente, ehComando, comandoComArgumento = false, casouRegra,
+  aguardandoResposta = false, assistenteAtiva = true,
 }) {
   const mensagem = String(texto || '').trim();
 
@@ -146,7 +147,17 @@ function decidirSemIA({
   }
 
   // 2. Comando conhecido: responde sem IA, de graça.
-  if (ehComando) {
+  //
+  //    EXCETO o comando COM ARGUMENTO quando a assistente acabou de perguntar
+  //    algo. "categoria moradia", respondendo a "qual categoria você prefere?",
+  //    não é o pedido de mudar a categoria do último lançamento — e era isso
+  //    que acontecia (teste ao vivo de 21/08/2026).
+  //
+  //    Comando de palavra só — `resumo`, `categorias`, `ajuda`, `desfazer` —
+  //    continua valendo mesmo com pergunta no ar: ninguém responde "qual o
+  //    valor?" com "resumo", e mandá-lo para a IA transformaria um comando de
+  //    graça em conversa paga por 10 minutos depois de cada pergunta.
+  if (ehComando && !(aguardandoResposta && comandoComArgumento)) {
     return { destino: DESTINO.COMANDO, texto: mensagem, motivo: 'COMANDO' };
   }
 

@@ -12,7 +12,7 @@ const {
   tentarResolverConfirmacaoPendente,
   telefoneEfetivo,
 } = require('../services/lancamentoPorMensagem');
-const { tratarComando } = require('../services/comandosWhatsapp');
+const { tratarComando, reconhecerComando, executarComando } = require('../services/comandosWhatsapp');
 const { responder, confirmarLancamentos, ehMensagemDoBot } = require('../services/respostaWhatsapp');
 const { provedorDe } = require('../canais');
 const { decidirSemIA, decidirComIntencao, pareceperguntaOuPedido, DESTINO } = require('../utils/roteadorMensagem');
@@ -464,14 +464,19 @@ async function processarMensagemRecebida(req) {
   // `respondendoAProposta()` são definidos lá em cima, antes do bloco de
   // mídia, porque o áudio precisa dos mesmos.
 
-  // O comando é consultado antes de decidir, porque a decisão precisa saber se
-  // casou — mas a resposta só é usada se o roteador mandar para COMANDO.
-  const respostaDeComando = await tratarComando(msg.content, { householdId, remoteJid: msg.remoteJid, senderJid: msg.senderJid });
+  // O comando é RECONHECIDO antes de decidir, porque a decisão precisa saber
+  // se casou — mas é EXECUTADO só quando o roteador manda para COMANDO.
+  //
+  // Antes as duas coisas eram uma só, e o efeito acontecia mesmo quando a
+  // mensagem ia para outro lugar: "Nina, categoria moradia" mudava a categoria
+  // do último lançamento e só então virava conversa.
+  const comando = reconhecerComando(msg.content, { householdId });
 
   const rota = decidirSemIA({
     texto: msg.content,
     nomeDaAssistente,
-    ehComando: !!respostaDeComando,
+    ehComando: !!comando,
+    comandoComArgumento: !!comando?.argumento,
     aguardandoResposta: await respondendoAPergunta(msg.content),
     assistenteAtiva,
   });
@@ -479,6 +484,9 @@ async function processarMensagemRecebida(req) {
   if (rota.destino === DESTINO.IGNORAR) return;
 
   if (rota.destino === DESTINO.COMANDO) {
+    const respostaDeComando = await executarComando(comando, {
+      householdId, remoteJid: msg.remoteJid, senderJid: msg.senderJid,
+    });
     await responder(householdId, config, msg.remoteJid, respostaDeComando);
     return;
   }

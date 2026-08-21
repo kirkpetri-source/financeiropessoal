@@ -19,10 +19,12 @@ const MEMBROS = ['Kirk', 'Raquel'];
 
 function rotear(texto, {
   nome = 'Nina', ehComando = false, assistenteAtiva = true, aguardandoResposta = false,
+  comandoComArgumento = false,
 } = {}) {
   const casouRegra = !!parseFinancialMessage(texto, MEMBROS);
   return decidirSemIA({
-    texto, nomeDaAssistente: nome, ehComando, casouRegra, aguardandoResposta, assistenteAtiva,
+    texto, nomeDaAssistente: nome, ehComando, comandoComArgumento, casouRegra,
+    aguardandoResposta, assistenteAtiva,
   });
 }
 
@@ -373,13 +375,50 @@ describe('regra 5 — a assistente perguntou e espera a resposta', () => {
     expect(respondendo('Nina, quanto gastei esse mes?').motivo).toBe('CHAMOU_PELO_NOME');
   });
 
-  it('comando conhecido não é confundido com resposta', () => {
-    const r = rotear('saldo', { ehComando: true, aguardandoResposta: true });
+  // Esta expectativa MUDOU depois do teste ao vivo de 21/08/2026. Ela dizia
+  // que o comando continuava vencendo — e foi exatamente assim que "categoria
+  // aluguel. 2500 todo dia 15", resposta à pergunta da Nina, virou o comando
+  // de mudar a categoria do último lançamento.
+  it('com pergunta no ar, o comando COM ARGUMENTO cede a vez', () => {
+    const r = rotear('categoria moradia', {
+      ehComando: true, comandoComArgumento: true, aguardandoResposta: true,
+    });
+    expect(r.destino).toBe(DESTINO.CHAT);
+  });
+
+  // Comando de palavra so continua de graca: ninguem responde 'qual o valor?'
+  // com 'resumo', e manda-lo para a IA viraria conversa paga por 10 minutos
+  // depois de cada pergunta da Nina.
+  it('comando de palavra so continua sendo comando', () => {
+    const r = rotear('resumo', { ehComando: true, aguardandoResposta: true });
     expect(r.destino).toBe(DESTINO.COMANDO);
   });
 
   it('sem assistente ligada, nada muda', () => {
     const r = rotear('139,90 dia 10', { aguardandoResposta: true, assistenteAtiva: false });
     expect(r.destino).toBeNull();
+  });
+});
+
+describe('comando cede a vez quando a assistente está esperando resposta', () => {
+  // "qual categoria você prefere?" -> "categoria moradia" NÃO é o comando de
+  // mudar a categoria do último lançamento. Era, e alterava um lançamento
+  // antigo no meio de outra conversa (teste ao vivo de 21/08/2026).
+  it('resposta que parece comando vai para a conversa', () => {
+    const r = rotear('categoria moradia', {
+      ehComando: true, comandoComArgumento: true, aguardandoResposta: true,
+    });
+    expect(r.destino).toBe(DESTINO.CHAT);
+    expect(r.motivo).toBe('RESPOSTA_A_PERGUNTA_DA_ASSISTENTE');
+  });
+
+  it('sem pergunta no ar, o comando continua ganhando', () => {
+    const r = rotear('categoria moradia', { ehComando: true, comandoComArgumento: true });
+    expect(r.destino).toBe(DESTINO.COMANDO);
+  });
+
+  it('lançamento explícito não vira conversa nem com pergunta no ar', () => {
+    const r = rotear('gastei 84,90 no mercado', { ehComando: false, aguardandoResposta: true });
+    expect(r.destino).toBe(DESTINO.LANCAMENTO);
   });
 });
