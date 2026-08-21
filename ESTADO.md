@@ -83,8 +83,21 @@ Os dois ramos (texto e áudio) agora compartilham as MESMAS quatro defesas, na
 mesma ordem: confirmação pendente → chamado pelo nome → conta fixa → resposta a
 pergunta → conversa fiada.
 
-Provas: 993 testes de unidade (era 981) e, contra o Firestore de homologação,
-webhook 25/25, áudio 19/19, roteador 17/17, criar subcategoria 20/20.
+**5. Comando engolia a resposta — e executava antes de o roteador decidir.**
+Achado no segundo teste, com o monitor ligado: a resposta que começava com
+"categoria" foi capturada pelo comando `categoria <nome>`, que MUDA A CATEGORIA
+DO ÚLTIMO LANÇAMENTO. Naquela hora o nome não existia e nada mudou, mas
+"categoria moradia" teria alterado um lançamento antigo em silêncio, no meio de
+uma conversa sobre outra coisa. Duas correções: `reconhecerComando` virou função
+PURA e só `executarComando` escreve — antes, "Nina, categoria moradia" alterava
+o lançamento e SÓ ENTÃO virava conversa; e, com pergunta no ar, comando COM
+ARGUMENTO cede a vez. Comando de palavra só (`resumo`, `categorias`, `ajuda`,
+`desfazer`) continua de graça: a primeira versão da regra fazia todos cederem, e
+o próprio teste ponta a ponta pegou `categorias` virando conversa paga.
+
+Provas: 997 testes de unidade (era 981) e, contra o Firestore de homologação,
+webhook 28/28, áudio 19/19, roteador 17/17, criar subcategoria 20/20. Tudo em
+produção na madrugada de 21/08, com App Check conferido depois de cada deploy.
 
 ### Pendências técnicas fechadas (20/08, noite) — falta deployar
 

@@ -377,6 +377,16 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   testados ANTES dela, porque ali eles são resposta. Achado pelo rastro de um
   `[Resposta]` a mais no teste ponta a ponta — o número de checagens passava,
   o efeito colateral só aparecia no log.
+- **Reconhecer um comando não pode significar EXECUTAR o comando.** O webhook
+  precisa saber se a mensagem casou com um comando antes de rotear; enquanto
+  `tratarComando` fazia as duas coisas, o efeito acontecia mesmo quando a rota
+  ia para outro lugar — "Nina, categoria moradia" mudava a categoria do último
+  lançamento e SÓ ENTÃO virava conversa. Hoje `reconhecerComando` é puro e
+  `executarComando` só roda quando o roteador manda para COMANDO. E, com uma
+  pergunta da assistente no ar, comando COM ARGUMENTO cede a vez para a
+  conversa; comando de palavra só (`resumo`, `categorias`) continua valendo —
+  fazer todos cederem transformava comando de graça em conversa paga por 10
+  minutos depois de cada pergunta.
 - **Resposta a uma PERGUNTA da assistente caía no parser e virava despesa.**
   "cadastra minha internet como conta fixa" → a Nina pede valor e dia → a
   pessoa responde "139,90 dia 10" → o parser via um valor e criou uma despesa
