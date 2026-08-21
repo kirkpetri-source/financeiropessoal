@@ -231,6 +231,8 @@ export default function AssistentePage() {
   const { mensagens, pensando, uso, carregando, indisponivel, perguntar, limpar } = useAssistente();
   const [rascunho, setRascunho] = useState('');
   const fim = useRef(null);
+  const campo = useRef(null);
+  const pensavaAntes = useRef(false);
 
   // Só rola quando há conversa. Rolar com a tela vazia empurra o convite
   // inicial para fora do quadro e ele aparece cortado no topo.
@@ -239,11 +241,22 @@ export default function AssistentePage() {
     fim.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [mensagens, pensando]);
 
+  // Devolve o foco ao campo quando a resposta chega.
+  //
+  // Só na transição de "pensando" para "pronto" — focar em todo render roubaria
+  // o cursor de quem está rolando a conversa, e abriria o teclado sozinho no
+  // celular assim que a tela abrisse.
+  useEffect(() => {
+    if (pensavaAntes.current && !pensando) campo.current?.focus();
+    pensavaAntes.current = pensando;
+  }, [pensando]);
+
   const enviar = (texto) => {
     const conteudo = texto ?? rascunho;
     if (!conteudo.trim() || pensando) return;
     setRascunho('');
     perguntar(conteudo);
+    campo.current?.focus();
   };
 
   if (carregando) {
@@ -297,13 +310,18 @@ export default function AssistentePage() {
           onSubmit={(e) => { e.preventDefault(); enviar(); }}
           className="flex items-center gap-2.5 bg-surface border border-border-strong rounded-xl pl-4 pr-2.5 py-2 focus-within:border-accent transition-colors"
         >
+          {/* NUNCA desabilitar o campo enquanto a Nina responde: o navegador
+              tira o foco de um input que fica disabled, e ele não volta
+              sozinho — a pessoa tinha que clicar no campo de novo a cada
+              pergunta. Enviar já está barrado enquanto `pensando`, e assim dá
+              para ir escrevendo a próxima. */}
           <input
+            ref={campo}
             value={rascunho}
             onChange={(e) => setRascunho(e.target.value)}
             placeholder="Pergunte sobre suas finanças…"
             maxLength={1000}
-            disabled={pensando}
-            className="flex-1 bg-transparent border-0 outline-none text-sm placeholder:text-faint disabled:text-muted"
+            className="flex-1 bg-transparent border-0 outline-none text-sm placeholder:text-faint"
           />
           <button
             type="submit"
