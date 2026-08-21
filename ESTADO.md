@@ -1,5 +1,61 @@
 # Estado do projeto — 21/08/2026 (tudo em produção: backend E frontend)
 
+## RETOMAR AQUI — a primeira coisa é PERGUNTAR ao Kirk
+
+**Pergunte a ele quais são os ajustes que ele quer na spec dos chamados**
+(`docs/superpowers/specs/2026-08-21-chamados-de-suporte-design.md`).
+
+Ele leu a spec, disse que fez ajustes e pediu explicitamente que a próxima
+sessão comece pedindo esses ajustes. **O arquivo no disco está IGUAL ao
+commitado** — conferido com `git diff` antes de encerrar a sessão, sem
+diferença nenhuma. Ou seja: os ajustes estão com ele, não no arquivo. Não
+comece a implementar nada antes de ouvi-los.
+
+Depois dos ajustes aplicados na spec: invocar a skill `writing-plans` para
+gerar o plano de implementação. É o único passo seguinte previsto pelo
+processo de brainstorming — nenhuma outra skill entra aqui.
+
+### Onde exatamente paramos
+
+A Fase 4 foi decomposta em três etapas, nesta ordem, com o Kirk aprovando cada
+decisão:
+
+1. **Chamados de suporte** — desenhado e especificado (a spec acima). NÃO
+   implementado. Nenhuma linha de código foi escrita.
+2. **Papéis de operador** — o que cada papel pode fazer, criar operador pela
+   tela, desativar quem saiu. O cadastro MÍNIMO de operadores foi puxado para
+   a etapa 1, porque encaminhar chamado exige um "para quem".
+3. **Central de ajuda** — conteúdo na landing e no painel.
+
+### As decisões da spec que já foram aprovadas por ele
+
+Não reabrir sem motivo — cada uma foi uma pergunta respondida:
+
+- chamado vive no Firestore; e-mail é só aviso, e o sistema nunca lê caixa
+- só cliente logado abre chamado; o botão da landing passa pelo login
+- **quem enxerga é o dono da conta** — correção dele: hoje existe UM login por
+  família, membro de WhatsApp não tem senha
+- aviso (WhatsApp E e-mail) leva só o número do chamado e o link, **nunca o
+  conteúdo da resposta** — ressalva explícita dele, duas vezes
+- documento único com mensagens dentro, para não abrir exceção no `escopoDe`
+- anexo com imagem desde o começo, upload pela API, URL assinada
+- encaminhamento de chamado para outro operador — pedido dele
+- equipe avisada por e-mail + WhatsApp; provedor Resend
+
+### Fatos levantados durante o desenho (não perder)
+
+- **`revelacash.com.br` não tem MX nem SPF.** Não recebe e-mail e nada está
+  autorizado a enviar em nome dele. Conferido por DNS (`nslookup` contra
+  8.8.8.8).
+- **O DNS está no registro.br**, nameservers `a.sec.dns.br` / `b.sec.dns.br` —
+  não delegado à Vercel. Enquanto for assim, colar SPF/DKIM é ação manual do
+  Kirk (exceção à regra 8). Delegar o DNS à Vercel resolveria por CLI.
+- **O projeto não envia e-mail hoje.** Zero dependências, zero código. Todo
+  aviso sai por WhatsApp (`notificacaoOperadorService`).
+- **O `/plataforma` não tem cadastro de operador.** `apenasAdmin` só responde
+  sim ou não, por claim ou e-mail em variável de ambiente — sem nome, sem
+  lista, sem destinatário possível para encaminhamento.
+
 ## O DIA 21/08 — o que mudou
 
 **O frontend foi publicado.** `main` recebeu os 58 commits e a Vercel deployou:
