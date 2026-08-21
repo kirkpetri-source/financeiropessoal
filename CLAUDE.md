@@ -14,7 +14,7 @@ e não podem ser perdidos.** Eles são a família #1 e o primeiro teste de tudo.
 | Backend | Express dentro de Cloud Functions v2, região `southamerica-east1` |
 | Banco | Firestore (projeto `financeiropessoal-29b32`) |
 | Auth | Firebase Auth (ID token no header, verificado pelo Admin SDK) |
-| IA | Gemini via REST, secret `GEMINI_API_KEY` — modelo atual `gemini-3.6-flash` (ver armadilha sobre descontinuação de modelo) |
+| IA | Gemini via REST, secret `GEMINI_API_KEY`. Chat da assistente: `gemini-3.5-flash-lite` (`GEMINI_MODELO_CHAT` no .env, desde 21/08/2026 — 3x mais barato, medido). Parser de texto e mídia: `gemini-3.6-flash`, fixo no código |
 | Canal | Evolution API (VPS Hostinger) hoje; Cloud API oficial preparada |
 | Cobrança | Mercado Pago (preapproval mensal), secrets `MERCADOPAGO_ACCESS_TOKEN` e `MERCADOPAGO_WEBHOOK_SECRET` |
 
@@ -335,6 +335,26 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     baixar mídia); quem garante é a gravação. `whatsappLogService.createLog`
     foi removido de propósito: um caminho curto sem trava é o que a próxima
     pessoa usaria sem perceber.
+
+24. **Custo de IA se decide MEDINDO, e a medição vem ANTES da bateria de
+    testes, não depois.** O teto de 20 conversas/dia virou "R$ 27,19/mês, mais
+    que a mensalidade" e quase motivou trocar o modelo com tudo já testado —
+    retrabalho que o Kirk cobrou, com razão. O uso real de 30 dias:
+    **143 conversas concentradas em 3 dias**, teto de custo entre R$ 2 e
+    R$ 5/mês. Teto não é consumo.
+
+    `tools/medir-uso-da-assistente.js` (só leitura, roda em produção) responde
+    o VOLUME — a fonte é `whatsappLogs`, porque o contador de cota guarda só o
+    dia corrente e as sessões expiram em 6h. `tools/comparar-modelos-assistente.js`
+    roda a mesma bateria em dois modelos, com dados plantados (a resposta certa
+    é conhecida de antemão), e mostra custo e respostas lado a lado.
+
+    Trocar o modelo do chat é a variável `GEMINI_MODELO_CHAT` + deploy do
+    backend: nenhuma linha de código, e reverter é apagar a variável. Os 997
+    testes de unidade não tocam o Gemini — quem cobre a troca são as 83
+    verificações ponta a ponta (webhook 28, áudio 19, consulta direta 21,
+    conta fixa 15). O que nenhuma delas julga é o TOM do conselho; isso é
+    leitura humana.
 
 ## Armadilhas já pagas (não repetir)
 

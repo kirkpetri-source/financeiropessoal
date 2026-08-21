@@ -1,4 +1,36 @@
-# Estado do projeto — 20/08/2026 (backend completo em produção, frontend pendente)
+# Estado do projeto — 21/08/2026 (tudo em produção: backend E frontend)
+
+## O DIA 21/08 — o que mudou
+
+**O frontend foi publicado.** `main` recebeu os 58 commits e a Vercel deployou:
+`revelacash.com.br` está com a tela da assistente. Ela só aparece para quem o
+backend liberar, então as outras 12 famílias veem o painel de sempre.
+
+**O modelo do chat virou `gemini-3.5-flash-lite`** (`GEMINI_MODELO_CHAT` nos
+dois `.env`), depois de medir em vez de estimar:
+
+| | 3.6-flash | 3.5-flash-lite |
+|---|---|---|
+| custo médio por pergunta | R$ 0,0367 | **R$ 0,0124** |
+| total exato do mês | R$ 831,80 | R$ 831,80 |
+| recorte por pessoa e dias | R$ 351,30 | R$ 351,30 |
+| exclusão em duas etapas | propôs | propôs |
+| cadastro com dado faltando | pediu valor e dia | pediu valor e dia |
+| pergunta sobre outra família | ressalva primeiro | ressalva primeiro |
+| conselho | 3 ferramentas | 1 ferramenta, mais raso |
+
+Com o lite: webhook 28/28, áudio 19/19, consulta direta 21/21, conta fixa
+15/15. **83 verificações, zero falhas.** Reverter é apagar a variável e
+deployar.
+
+**Uso real medido** (30 dias, produção): 143 conversas concentradas em 3 dias,
+teto de custo entre R$ 2 e R$ 5/mês. O "R$ 27,19/mês" era o pior caso teórico
+de 20 conversas com IA todo dia. Ressalva honesta: esses 143 são da conta de
+teste — uso de CLIENTE ainda não existe, porque a Nina não foi liberada.
+
+---
+
+# Estado anterior — 20/08/2026 (backend completo, frontend pendente)
 
 Transformação de sistema pessoal em micro-SaaS a R$ 24,90/mês.
 
