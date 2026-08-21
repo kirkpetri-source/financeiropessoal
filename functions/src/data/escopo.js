@@ -34,6 +34,10 @@ const COLECOES_ESCOPADAS = new Set([
   // Guarda texto financeiro em linguagem natural, então entra no export e no
   // apagar da LGPD junto com o resto.
   'chatSessions',
+  // Chamados de suporte, com as mensagens dentro do próprio documento. Guarda
+  // o que a família escreveu e a lista de anexos (print de extrato, comprovante),
+  // então entra no export e no apagar da LGPD.
+  'supportTickets',
   // O que a família ensinou sobre uma descrição de gasto: quantas vezes ela
   // apareceu, a subcategoria aprendida e a recusa de sugerir. Guarda descrição
   // de gasto, então entra no export e no apagar da LGPD.
@@ -180,6 +184,38 @@ function criarEscopo(db, admin) {
       },
 
       /**
+       * Cria DENTRO de uma transação que quem chama já abriu.
+       *
+       * Existe porque `criar` usa `add()`, que é uma escrita independente e não
+       * participa de transação nenhuma. O chamado de suporte precisa nascer na
+       * MESMA transação que incrementa `counters/supportTickets`: número
+       * consumido sem chamado criado deixa um buraco na numeração que ninguém
+       * consegue explicar depois, e chamado sem número não tem como ser citado.
+       *
+       * Sem este método, a alternativa seria o service escrever com `db` cru —
+       * a primeira escrita de coleção escopada fora da barreira, no sistema
+       * inteiro. O carimbo do householdId aqui é o que impede isso.
+       *
+       * Síncrono de propósito: `tx.create` do Firestore não devolve promessa;
+       * a escrita só acontece no commit da transação.
+       */
+      criarEmTransacao(tx, colecao, ref, dados) {
+        validarColecao(colecao);
+        if (!ref) throw new ErroDeEscopo('Referência obrigatória em criarEmTransacao.');
+
+        // A ordem do spread é a proteção: householdId enviado de fora é
+        // sobrescrito, nunca respeitado. Mesmo contrato de `criar`.
+        tx.create(ref, {
+          ...dados,
+          [CAMPO]: householdId,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return { id: ref.id };
+      },
+
+      /**
        * Atualiza conferindo a dona antes. Lança 404 quando o documento não é da
        * família — mesma mensagem de "não encontrado", para não vazar existência.
        */
@@ -200,6 +236,69 @@ function criarEscopo(db, admin) {
 
         const doc = await db.collection(colecao).doc(id).get();
         return { id: doc.id, ...doc.data() };
+      },
+
+      /**
+       * Escrita ATÔMICA, com a conferência de dono DENTRO da transação.
+       *
+       * `atualizar` faz ler-depois-escrever em duas viagens: entre a leitura e
+       * a gravação cabe a escrita de outra pessoa, e quem chegar por último
+       * apaga o trabalho do primeiro. Num chamado de suporte isso é o caso
+       * comum, não a exceção — cliente e operador respondendo quase juntos —, e
+       * o que se perde é mensagem.
+       *
+       * Aqui `montarPatch` recebe o documento COMO ELE ESTÁ e devolve o que
+       * mudar; tudo dentro da mesma transação, então a decisão ("qual o próximo
+       * status?") é tomada sobre o estado real e não sobre um estado lido
+       * segundos antes. Devolver `null` cancela a escrita sem erro.
+       *
+       * O patch aceita sentinela (`arrayUnion`, `increment`) — é o que permite
+       * acrescentar uma mensagem sem nunca reescrever o array inteiro.
+       *
+       * Devolve o documento COMO ERA ANTES do patch. Montar um "depois" aqui
+       * seria chute: sentinela é resolvida no servidor, e o valor final só
+       * existe depois do commit. Quem precisa do estado novo relê.
+       */
+      async atualizarAtomico(colecao, id, montarPatch) {
+        validarColecao(colecao);
+        if (!id) throw new ErroDeEscopo('ID obrigatório em atualizarAtomico.');
+
+        const ref = db.collection(colecao).doc(id);
+        const naoEncontrado = () => Object.assign(
+          new Error('Registro não encontrado.'), { statusCode: 404 }
+        );
+
+        return db.runTransaction(async (tx) => {
+          const doc = await tx.get(ref);
+          if (!doc.exists) throw naoEncontrado();
+
+          const dados = doc.data();
+
+          // Registro global de referência: leitura liberada, escrita não.
+          if (COLECOES_MISTAS.has(colecao) && dados.isDefault === true) throw naoEncontrado();
+
+          if (dados[CAMPO] !== householdId) {
+            console.warn(`[Escopo] Acesso negado: ${colecao}/${id} pertence a outra família.`);
+            throw naoEncontrado();
+          }
+
+          const anterior = { id: doc.id, ...dados };
+          const patch = typeof montarPatch === 'function' ? montarPatch(anterior) : montarPatch;
+
+          // Nada a fazer é um resultado legítimo, não um erro: "responder a um
+          // chamado que já está nesse estado" não deve escrever nem carimbar
+          // updatedAt.
+          if (!patch) return anterior;
+
+          const { [CAMPO]: _ignorado, ...limpo } = patch;
+
+          tx.update(ref, {
+            ...limpo,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          return anterior;
+        });
       },
 
       async remover(colecao, id) {
