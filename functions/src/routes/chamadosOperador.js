@@ -33,6 +33,8 @@ router.use(authMiddleware, apenasOperadorAtivo);
  * quebraria nada visível no servidor — só a tela de encaminhamento, sem lista.
  */
 router.get('/operadores', controller.operadores);
+router.get('/avisos', controller.avisosNaoEntregues);
+router.post('/avisos/:id/baixa', controller.darBaixaNoAviso);
 
 router.get('/', controller.fila);
 router.get('/:numero', controller.detalhar);

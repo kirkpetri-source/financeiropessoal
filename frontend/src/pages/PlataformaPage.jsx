@@ -98,8 +98,20 @@ export default function PlataformaPage() {
       try {
         const token = await firebaseUser.getIdToken();
         localStorage.setItem('@financeiro:token', token);
-        await api.get('/plataforma/metricas');
-        setStatus('autenticado');
+
+        // Duas portas, e basta UMA. Admin entra pelas métricas; quem só atende
+        // chamado entra pela fila. Testar só as métricas — como esta tela fazia
+        // até 21/08/2026 — recusava o atendente aqui, antes de o AdminPage
+        // sequer rodar, e a coleção `operadores` não serviria para nada.
+        //
+        // Qual aba ele vê é decidido lá dentro; aqui só se pergunta se ele tem
+        // alguma coisa para fazer neste painel.
+        const portas = await Promise.allSettled([
+          api.get('/plataforma/metricas'),
+          api.get('/plataforma/chamados', { params: { limite: 1 } }),
+        ]);
+
+        setStatus(portas.some((p) => p.status === 'fulfilled') ? 'autenticado' : 'negado');
       } catch {
         setStatus('negado');
       }

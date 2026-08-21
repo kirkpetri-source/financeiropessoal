@@ -387,6 +387,68 @@ describe('vencidosPorInatividade', () => {
   });
 });
 
+describe('avisos que não chegaram', () => {
+  beforeEach(() => {
+    duble.estado.documentos['notificacoesNaoEntregues/n1'] = {
+      tipo: 'CHAMADO_NOVO', numero: 1, canal: 'EMAIL',
+      destinatario: 'equipe@x.com', erro: '403', resolvida: false, criadoEm: '2026-08-20',
+    };
+    duble.estado.documentos['notificacoesNaoEntregues/n2'] = {
+      tipo: 'SUPORTE_RESPONDEU', numero: 2, canal: 'WHATSAPP',
+      destinatario: '5564...', erro: 'desconectado', resolvida: false, criadoEm: '2026-08-21',
+    };
+    duble.estado.documentos['notificacoesNaoEntregues/n3'] = {
+      tipo: 'CHAMADO_NOVO', numero: 3, canal: 'EMAIL', resolvida: true, criadoEm: '2026-08-19',
+    };
+  });
+
+  it('lista só as pendentes — a tela mostra pendência, não histórico', async () => {
+    const lista = await plataforma.notificacoesNaoEntregues();
+
+    expect(lista.map((n) => n.id).sort()).toEqual(['n1', 'n2']);
+  });
+
+  it('mais recente primeiro', async () => {
+    const lista = await plataforma.notificacoesNaoEntregues();
+
+    expect(lista[0].id).toBe('n2');
+  });
+
+  it('dar baixa marca como resolvida e guarda quem foi', async () => {
+    await plataforma.resolverNotificacao('n1', KIRK);
+
+    const doc = duble.estado.documentos['notificacoesNaoEntregues/n1'];
+    expect(doc.resolvida).toBe(true);
+    expect(doc.resolvidaPor).toBe('uid-kirk');
+    expect(doc.resolvidaEm).toBeTruthy();
+  });
+
+  it('não APAGA o registro — a baixa é a evidência de que alguém tratou', async () => {
+    await plataforma.resolverNotificacao('n1', KIRK);
+
+    expect(duble.estado.documentos['notificacoesNaoEntregues/n1']).toBeDefined();
+    expect(duble.estado.documentos['notificacoesNaoEntregues/n1'].erro).toBe('403');
+  });
+
+  it('dar baixa de novo não sobrescreve quem deu a primeira', async () => {
+    await plataforma.resolverNotificacao('n1', KIRK);
+    await plataforma.resolverNotificacao('n1', MARIA);
+
+    expect(duble.estado.documentos['notificacoesNaoEntregues/n1'].resolvidaPor).toBe('uid-kirk');
+  });
+
+  it('404 em aviso que não existe', async () => {
+    await expect(plataforma.resolverNotificacao('nao-existe', KIRK))
+      .rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('some da lista depois da baixa', async () => {
+    await plataforma.resolverNotificacao('n1', KIRK);
+
+    expect((await plataforma.notificacoesNaoEntregues()).map((n) => n.id)).toEqual(['n2']);
+  });
+});
+
 describe('resolverInativos — a varredura diária', () => {
   async function parado(familia, haQuantosDias) {
     const { numero } = await abrirPara(familia, diasAtras(haQuantosDias + 1));

@@ -178,6 +178,50 @@ function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar,
       .map((c) => ({ numero: c.numero ?? Number(c.id), householdId: c.householdId }));
   }
 
+  /**
+   * Avisos que não chegaram ao destino.
+   *
+   * Sem `orderBy` (regra 12): igualdade em `resolvida` mais ordenação por data
+   * exigiria índice composto. A lista é curta por natureza — se não for, é
+   * porque algo está quebrado, e aí o problema não é a paginação.
+   *
+   * Só as não resolvidas: a tela existe para mostrar pendência, não histórico.
+   */
+  async function notificacoesNaoEntregues(limite = 50) {
+    const snap = await db.collection('notificacoesNaoEntregues')
+      .where('resolvida', '==', false)
+      .get();
+
+    return snap.docs
+      .map((d) => serializar({ id: d.id, ...d.data() }))
+      .sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')))
+      .slice(0, limite);
+  }
+
+  /**
+   * Baixa manual: o operador avisou a pessoa por fora e marca como resolvido.
+   *
+   * Não apaga o registro — guarda quem deu baixa e quando. Apagar seria perder
+   * a única evidência de que alguém tratou uma falha de entrega.
+   */
+  async function resolverNotificacao(id, operador) {
+    const ref = db.collection('notificacoesNaoEntregues').doc(id);
+    const doc = await ref.get();
+
+    if (!doc.exists) {
+      throw Object.assign(new Error('Aviso não encontrado.'), { statusCode: 404 });
+    }
+    if (doc.data().resolvida === true) return { id, jaEstava: true };
+
+    await ref.update({
+      resolvida: true,
+      resolvidaPor: operador.uid,
+      resolvidaEm: new Date(),
+    });
+
+    return { id, jaEstava: false };
+  }
+
   // ---------------------------------------------------------------------------
   // Ações do operador. Descobrem cross-tenant, escrevem escopado.
   // ---------------------------------------------------------------------------
@@ -352,6 +396,8 @@ function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar,
     buscarOperador,
     vencidosPorInatividade,
     resolverInativos,
+    notificacoesNaoEntregues,
+    resolverNotificacao,
     abrirChamado,
     responderComoSuporte,
     encaminhar,
@@ -389,6 +435,8 @@ module.exports = {
   buscarOperador: (...a) => servico().buscarOperador(...a),
   vencidosPorInatividade: (...a) => servico().vencidosPorInatividade(...a),
   resolverInativos: (...a) => servico().resolverInativos(...a),
+  notificacoesNaoEntregues: (...a) => servico().notificacoesNaoEntregues(...a),
+  resolverNotificacao: (...a) => servico().resolverNotificacao(...a),
   abrirChamado: (...a) => servico().abrirChamado(...a),
   responderComoSuporte: (...a) => servico().responderComoSuporte(...a),
   encaminhar: (...a) => servico().encaminhar(...a),

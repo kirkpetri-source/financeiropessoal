@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Lock, BarChart3, Users, MessagesSquare } from 'lucide-react';
+import { Loader2, Lock, BarChart3, Users, MessagesSquare, LifeBuoy } from 'lucide-react';
 import api from '../services/api';
 import DashboardTab from './plataforma/DashboardTab';
 import ClientesTab from './plataforma/ClientesTab';
 import ComunicacaoTab from './plataforma/ComunicacaoTab';
+import ChamadosTab from './plataforma/ChamadosTab';
 
 /**
  * CRM do operador do RevelaCash — três abas:
@@ -20,21 +21,39 @@ import ComunicacaoTab from './plataforma/ComunicacaoTab';
  * Mensagens) dentro do mesmo drawer que já existia.
  */
 
+/**
+ * `soAdmin` separa o que é do DONO do negócio do que é de quem ATENDE.
+ *
+ * Sem essa distinção o painel desfaria, na tela, a separação que o backend faz:
+ * um ATENDENTE tem permissão para a fila de chamados e NÃO tem para métricas,
+ * clientes e cobrança. A versão anterior liberava a tela inteira testando
+ * `/plataforma/metricas` — ou seja, um atendente veria "Acesso restrito" e a
+ * coleção `operadores` não serviria para nada.
+ */
 const ABAS = [
-  { chave: 'dashboard', rotulo: 'Dashboard', icon: BarChart3, Componente: DashboardTab },
-  { chave: 'clientes', rotulo: 'Clientes', icon: Users, Componente: ClientesTab },
-  { chave: 'comunicacao', rotulo: 'Comunicação', icon: MessagesSquare, Componente: ComunicacaoTab },
+  { chave: 'dashboard', rotulo: 'Dashboard', icon: BarChart3, Componente: DashboardTab, soAdmin: true },
+  { chave: 'clientes', rotulo: 'Clientes', icon: Users, Componente: ClientesTab, soAdmin: true },
+  { chave: 'comunicacao', rotulo: 'Comunicação', icon: MessagesSquare, Componente: ComunicacaoTab, soAdmin: true },
+  { chave: 'chamados', rotulo: 'Chamados', icon: LifeBuoy, Componente: ChamadosTab, soAdmin: false },
 ];
 
 export default function AdminPage() {
   const [carregando, setCarregando] = useState(true);
-  const [semAcesso, setSemAcesso] = useState(false);
-  const [aba, setAba] = useState('dashboard');
+  const [ehAdmin, setEhAdmin] = useState(false);
+  const [ehOperador, setEhOperador] = useState(false);
+  const [aba, setAba] = useState(null);
 
   useEffect(() => {
-    api.get('/plataforma/metricas')
-      .then(() => setSemAcesso(false))
-      .catch((err) => { if (err.response?.status === 403) setSemAcesso(true); })
+    // Duas perguntas, e não uma: "sou administrador?" e "atendo chamado?".
+    // São permissões diferentes no backend, e quem só atende precisa entrar.
+    Promise.allSettled([
+      api.get('/plataforma/metricas'),
+      api.get('/plataforma/chamados', { params: { limite: 1 } }),
+    ])
+      .then(([metricas, chamados]) => {
+        setEhAdmin(metricas.status === 'fulfilled');
+        setEhOperador(chamados.status === 'fulfilled');
+      })
       .finally(() => setCarregando(false));
   }, []);
 
@@ -42,20 +61,23 @@ export default function AdminPage() {
     return <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-faint" /></div>;
   }
 
-  if (semAcesso) {
+  if (!ehAdmin && !ehOperador) {
     return (
       <div className="card max-w-md mx-auto text-center space-y-2">
         <Lock className="w-6 h-6 text-faint mx-auto" />
         <p className="text-sm font-medium text-ink">Acesso restrito</p>
         <p className="text-xs text-muted">
-          Este painel é da operação do serviço. Configure ADMIN_EMAILS no backend
-          para liberar o seu e-mail.
+          Este painel é da operação do serviço. Para o painel completo, o e-mail
+          precisa estar em ADMIN_EMAILS; para atender chamados, basta um registro
+          ativo em `operadores` (tools/criar-login-operador.js).
         </p>
       </div>
     );
   }
 
-  const AbaAtiva = ABAS.find((a) => a.chave === aba)?.Componente || DashboardTab;
+  const abasVisiveis = ABAS.filter((a) => ehAdmin || !a.soAdmin);
+  const abaAtual = aba && abasVisiveis.some((a) => a.chave === aba) ? aba : abasVisiveis[0].chave;
+  const AbaAtiva = abasVisiveis.find((a) => a.chave === abaAtual).Componente;
 
   return (
     <div className="space-y-6">
@@ -65,12 +87,12 @@ export default function AdminPage() {
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        {ABAS.map((a) => (
+        {abasVisiveis.map((a) => (
           <button
             key={a.chave}
             type="button"
             onClick={() => setAba(a.chave)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${aba === a.chave ? 'border-brand-700 text-brand-700' : 'border-transparent text-muted hover:text-ink'}`}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${abaAtual === a.chave ? 'border-brand-700 text-brand-700' : 'border-transparent text-muted hover:text-ink'}`}
           >
             <a.icon className="w-4 h-4" /> {a.rotulo}
           </button>

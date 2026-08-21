@@ -48,4 +48,19 @@ async function resolver(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { fila, operadores, detalhar, responder, encaminhar, resolver };
+async function avisosNaoEntregues(req, res, next) {
+  try {
+    res.json(await plataforma.notificacoesNaoEntregues());
+  } catch (err) { next(err); }
+}
+
+async function darBaixaNoAviso(req, res, next) {
+  try {
+    res.json(await plataforma.resolverNotificacao(req.params.id, req.operador));
+  } catch (err) { next(err); }
+}
+
+module.exports = {
+  fila, operadores, detalhar, responder, encaminhar, resolver,
+  avisosNaoEntregues, darBaixaNoAviso,
+};
