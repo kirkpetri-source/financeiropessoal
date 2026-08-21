@@ -76,6 +76,13 @@ app.options('*', cors());
 // direto. Assim o teto de todas as outras rotas continua exatamente onde está.
 app.use('/importacao', express.json({ limit: '4mb' }));
 
+// Anexo de chamado sobe em base64 (multipart exigiria `multer`, dependência
+// nova). 5 MB binários viram ~6,7 MB codificados, então 8 MB dá folga. Mesmo
+// truque do `/importacao` acima: montado ANTES do parser global, que então
+// encontra o corpo já lido e passa direto — o teto das outras rotas fica onde
+// está.
+app.use('/suporte/anexos', express.json({ limit: '8mb' }));
+
 // O payload do Evolution carrega metadados da mensagem, não mídia — 1mb sobra.
 app.use(express.json({ limit: '1mb' }));
 

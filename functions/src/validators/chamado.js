@@ -12,10 +12,11 @@ const { CATEGORIAS, LIMITES } = require('../chamados/estado');
  * ignorado" e "foi recusado" é a diferença entre descobrir uma tentativa e não
  * descobrir.
  *
- * `anexos` NÃO entra aqui ainda, de propósito. Aceitar um `storagePath` vindo
- * do corpo antes de o upload existir seria aceitar que o cliente aponte para o
- * arquivo de outra família. O campo entra junto com a rota de upload, que é
- * quem sabe validar de quem é o caminho.
+ * `anexos` é uma lista de CAMINHOS, e só. Nome, tipo e tamanho não vêm do
+ * corpo: o backend relê tudo do próprio objeto no Storage. Aceitar o metadado
+ * do cliente deixaria ele escrever "extrato.pdf, 2 KB" numa coisa que é outra.
+ * E o caminho passa por `anexoService.metadadosDe`, que exige que ele esteja
+ * dentro da pasta desta família E que o arquivo exista.
  */
 
 const textoDaMensagem = z.string({ required_error: 'Escreva sua mensagem.' })
@@ -25,6 +26,10 @@ const textoDaMensagem = z.string({ required_error: 'Escreva sua mensagem.' })
     LIMITES.CARACTERES_POR_MENSAGEM,
     `Mensagem muito longa (limite de ${LIMITES.CARACTERES_POR_MENSAGEM} caracteres).`,
   );
+
+const caminhosDeAnexo = z.array(z.string().trim().min(1))
+  .max(LIMITES.ANEXOS_POR_MENSAGEM, `No máximo ${LIMITES.ANEXOS_POR_MENSAGEM} anexos por mensagem.`)
+  .optional();
 
 const aberturaSchema = z.object({
   assunto: z.string({ required_error: 'Escreva o assunto do chamado.' })
@@ -37,10 +42,30 @@ const aberturaSchema = z.object({
   }),
 
   texto: textoDaMensagem,
+  anexos: caminhosDeAnexo,
 }).strict();
 
 const respostaSchema = z.object({
   texto: textoDaMensagem,
+  anexos: caminhosDeAnexo,
 }).strict();
 
-module.exports = { aberturaSchema, respostaSchema };
+/**
+ * Upload. `conteudo` é base64 — multipart exigiria `multer`, dependência nova
+ * numa function que hoje tem oito, e o volume aqui não paga isso. 5 MB
+ * binários viram ~6,7 MB em base64, e a rota tem limite próprio de 8 MB
+ * montado antes do parser global (mesmo padrão de `/importacao`).
+ *
+ * O tamanho de verdade é conferido no service, sobre o buffer JÁ decodificado:
+ * validar o comprimento da string base64 aqui erraria em 33%.
+ */
+const uploadSchema = z.object({
+  arquivos: z.array(z.object({
+    nomeOriginal: z.string().trim().min(1, 'Arquivo sem nome.'),
+    conteudo: z.string().min(1, 'Arquivo vazio.'),
+  }).strict())
+    .min(1, 'Nenhum arquivo enviado.')
+    .max(LIMITES.ANEXOS_POR_MENSAGEM, `No máximo ${LIMITES.ANEXOS_POR_MENSAGEM} anexos por vez.`),
+}).strict();
+
+module.exports = { aberturaSchema, respostaSchema, uploadSchema };

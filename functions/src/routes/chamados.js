@@ -2,7 +2,7 @@ const express = require('express');
 const authMiddleware = require('../middlewares/auth');
 const { resolverHousehold } = require('../middlewares/household');
 const validate = require('../middlewares/validate');
-const { aberturaSchema, respostaSchema } = require('../validators/chamado');
+const { aberturaSchema, respostaSchema, uploadSchema } = require('../validators/chamado');
 const chamadoController = require('../controllers/chamadoController');
 
 const router = express.Router();
@@ -46,5 +46,16 @@ router.get('/chamados', chamadoController.listar);
 router.post('/chamados', validate(aberturaSchema), chamadoController.abrir);
 router.get('/chamados/:numero', chamadoController.detalhar);
 router.post('/chamados/:numero/mensagens', validate(respostaSchema), chamadoController.responder);
+
+/**
+ * Anexos. O upload vem ANTES da mensagem: sobe, recebe os caminhos, e só então
+ * manda a mensagem citando o que subiu. Assim um arquivo que falha não leva
+ * junto o texto que a pessoa escreveu, e ela reenvia só o arquivo.
+ *
+ * O corpo desta rota tem limite próprio de 8 MB, montado em `app.js` antes do
+ * parser global de 1 MB — mesmo padrão de `/importacao`.
+ */
+router.post('/anexos', validate(uploadSchema), chamadoController.subirAnexos);
+router.get('/chamados/:numero/anexos/:anexoId', chamadoController.baixarAnexo);
 
 module.exports = router;

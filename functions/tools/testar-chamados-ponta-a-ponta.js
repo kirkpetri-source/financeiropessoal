@@ -24,11 +24,21 @@
  * operador e notificação entram quando existirem.
  */
 
-const { ALVO } = require('./carregarAmbiente');
+const { carregar, ALVO } = require('./carregarAmbiente');
 
 if (ALVO !== 'staging') {
   console.error('Este teste só roda em homologação. Use:');
   console.error('  ALVO=staging node tools/testar-chamados-ponta-a-ponta.js');
+  process.exit(1);
+}
+
+// Sem isto, o `.env.<projeto>` não é lido e o teste falha lá na frente, no
+// meio dos anexos, com "STORAGE_BUCKET_ANEXOS não configurado" — depois de já
+// ter criado família e chamado. Importar só o ALVO não carrega nada.
+carregar();
+
+if (!process.env.STORAGE_BUCKET_ANEXOS) {
+  console.error('STORAGE_BUCKET_ANEXOS ausente no .env de homologação — os anexos não teriam onde ir.');
   process.exit(1);
 }
 
@@ -37,6 +47,7 @@ const { escopoDe } = require('../src/data/escopo');
 const householdService = require('../src/services/householdService');
 const lgpdService = require('../src/services/lgpdService');
 const chamadoService = require('../src/services/chamadoService');
+const anexoService = require('../src/services/anexoService');
 const { STATUS, AUTORES, MOTIVOS_RESOLUCAO, LIMITES, DIAS_PARA_REABRIR } = require('../src/chamados/estado');
 
 let verificacoes = 0;
@@ -82,6 +93,11 @@ async function main() {
   console.log(`  família B: ${familiaB}\n`);
 
   const abertos = [];
+  // Toda família criada no meio do teste entra aqui na hora em que nasce. A
+  // limpeza no `finally` varre esta lista — na primeira versão, uma família
+  // criada no meio de uma seção que falhou depois ficou órfã em homologação,
+  // porque só A e B eram apagadas.
+  const familias = [familiaA, familiaB];
 
   try {
     console.log('1) Abertura e numeração');
@@ -201,10 +217,87 @@ async function main() {
     abertos.push(daB.numero);
     conferir('a família B não é afetada pelo teto da A', Number.isInteger(daB.numero));
 
-    console.log('\n8) Numeração sob CONTENÇÃO — o que o dublê não prova');
+    console.log('\n8) Anexos, contra o bucket de verdade');
+    const familiaC = await criarFamilia('C');
+    familias.push(familiaC);
+    const dadosC = escopoDe(familiaC);
+
+    const PNG = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('conteudo de imagem de teste'),
+    ]);
+    const PDF = Buffer.from('%PDF-1.7\nextrato de teste\n');
+    const EXECUTAVEL = Buffer.from('MZ\x90\x00 isto e um programa');
+
+    const upload = await anexoService.subirArquivos(familiaC, [
+      { nomeOriginal: 'print da tela.png', conteudo: PNG.toString('base64') },
+      { nomeOriginal: 'extrato.pdf', conteudo: PDF.toString('base64') },
+      { nomeOriginal: 'virus.png', conteudo: EXECUTAVEL.toString('base64') },
+    ]);
+
+    conferir('dois arquivos válidos subiram', upload.enviados.length === 2);
+    conferir('o executável disfarçado foi recusado', upload.falharam.length === 1
+      && upload.falharam[0].codigo === 'TIPO_NAO_ACEITO');
+    conferir(
+      'falha parcial não derrubou os bons',
+      upload.enviados.some((a) => a.mimeType === 'image/png')
+      && upload.enviados.some((a) => a.mimeType === 'application/pdf'),
+    );
+    conferir(
+      'o nome interno é aleatório, dentro da pasta da família',
+      upload.enviados.every((a) => /^chamados\/[^/]+\/[0-9a-f]{32}\.(png|pdf)$/.test(a.storagePath)),
+    );
+
+    const comAnexo = await chamadoService.abrirChamado(dadosC, {
+      ...ABERTURA,
+      anexos: await anexoService.metadadosDe(familiaC, upload.enviados.map((a) => a.storagePath)),
+    });
+    abertos.push(comAnexo.numero);
+
+    const chamadoComAnexo = await chamadoService.buscarChamado(dadosC, comAnexo.numero);
+    const anexosGravados = chamadoComAnexo.mensagens[0].anexos;
+    conferir('a mensagem cita os dois anexos', anexosGravados.length === 2);
+    conferir(
+      'os metadados foram RELIDOS do Storage, não copiados do cliente',
+      anexosGravados.some((a) => a.nomeOriginal === 'print da tela.png' && a.tamanho === PNG.length),
+    );
+
+    const lido = await anexoService.lerAnexo(familiaC, anexosGravados
+      .find((a) => a.mimeType === 'application/pdf').storagePath);
+    conferir('a leitura devolve os bytes originais', lido.conteudo.equals(PDF));
+    conferir('e o nome de exibição', lido.nomeOriginal === 'extrato.pdf');
+
+    let negou = false;
+    await anexoService.lerAnexo(familiaA, anexosGravados[0].storagePath)
+      .catch((e) => { negou = e.statusCode === 404; });
+    conferir('outra família não lê o anexo, mesmo com o caminho na mão', negou);
+
+    negou = false;
+    await anexoService.metadadosDe(familiaA, [anexosGravados[0].storagePath])
+      .catch((e) => { negou = e.codigo === 'ANEXO_INVALIDO'; });
+    conferir('nem consegue CITAR o anexo alheio numa mensagem própria', negou);
+
+    negou = false;
+    await anexoService.metadadosDe(familiaC, [`chamados/${familiaC}/${'a'.repeat(32)}.png`])
+      .catch((e) => { negou = e.codigo === 'ANEXO_INVALIDO'; });
+    conferir('não dá para citar arquivo que não existe', negou);
+
+    await anexoService.apagarDaFamilia(familiaC);
+    let sumiu = false;
+    await anexoService.lerAnexo(familiaC, anexosGravados[0].storagePath)
+      .catch((e) => { sumiu = e.statusCode === 404; });
+    conferir('apagarDaFamilia limpa o prefixo inteiro', sumiu);
+
+    await lgpdService.apagarHousehold(familiaC);
+
+    console.log('\n9) Numeração sob CONTENÇÃO — o que o dublê não prova');
     const QUANTOS = 8;
     const familiasParalelas = [];
-    for (let i = 0; i < QUANTOS; i++) familiasParalelas.push(await criarFamilia(`P${i}`));
+    for (let i = 0; i < QUANTOS; i++) {
+      const id = await criarFamilia(`P${i}`);
+      familiasParalelas.push(id);
+      familias.push(id);
+    }
 
     const antesDoContador = (await db.collection('counters').doc('supportTickets').get()).data().ultimo;
 
