@@ -1,55 +1,64 @@
 # Estado do projeto — 21/08/2026 (tudo em produção: backend E frontend)
 
-## RETOMAR AQUI — 3 decisões do Kirk, e depois o plano
+## RETOMAR AQUI — spec e plano fechados, começar pela Fase 0
 
-Os ajustes dele chegaram em 21/08/2026 (19 itens) e **já estão aplicados** na
-spec, que subiu para a **revisão 2**:
-`docs/superpowers/specs/2026-08-21-chamados-de-suporte-design.md`. Cada ponto
-foi confrontado com o código antes de virar texto. **Nada foi implementado.**
+Etapa 1 da Fase 4 (chamados de suporte) está **desenhada, decidida e
+planejada**. **Nenhuma linha de código foi escrita.**
 
-**O que falta antes do plano — três decisões, marcadas [DECIDIR] na spec:**
+- Spec, revisão 3: `docs/superpowers/specs/2026-08-21-chamados-de-suporte-design.md`
+- Plano: `docs/superpowers/plans/2026-08-21-chamados-suporte-implementacao.md`
 
-1. Aviso de WhatsApp ao operador sai pelo canal da família DELE (recomendado,
-   zero infra nova) ou por instância dedicada de plataforma (não existe hoje).
-2. `escopo.js` ganha `criarEmTransacao` e `atualizarAtomico`. É o arquivo da
-   regra 3, com 16 testes de vazamento — a alternativa é `db` cru no service,
-   que não recomendo.
-3. Anexo por signed URL (como ele pediu) ou servido pela API. A segunda opção
-   elimina a dependência de IAM inteira e reusa o padrão de blob que o
-   `MeusDados.jsx` já usa.
+Os 19 ajustes do Kirk foram aplicados e cada um confrontado com o código. As
+três decisões que faltavam ele fechou em 21/08/2026:
 
-Depois das três respostas: invocar a skill `writing-plans`. É o único passo
-seguinte previsto pelo processo de brainstorming — nenhuma outra skill entra
-aqui.
+1. **Aviso de WhatsApp ao operador sai pelo canal da família dele**, na
+   auto-conversa — mesmo caminho do aviso de cadastro. Instância dedicada de
+   plataforma virou dívida.
+2. **`escopo.js` ganha `criarEmTransacao` e `atualizarAtomico`.** A alternativa
+   (`db` cru no service de chamados) foi recusada por abrir precedente.
+3. **Anexo servido pela API, sem signed URL.** Isso apagou a dependência de IAM
+   (Token Creator) — a única que falharia só em runtime, com teste local dando
+   falso positivo. Mudou os itens 4, 11 e 19 dos ajustes dele.
 
-### O que o código contrariou nos ajustes (não reabrir do zero)
+**Começar pela Fase 0 do plano.** Duas tarefas dependem do Kirk e não saem por
+CLI:
 
-- **Não existe rate limit por família em rota HTTP** para reaproveitar (item 16
-  do texto dele). O de `rateLimit.js` é por IP; o `limiteMensagensService` é do
-  WhatsApp. Substituído por teto de 5 chamados abertos por família.
-- **`escopo.js` não sabe fazer `arrayUnion` nem entrar em transação** — daí a
-  decisão 2 acima.
+- **0.4** criar conta no Resend e colar SPF + DKIM no registro.br (o DNS não
+  está na Vercel)
+- **0.2** provisionar o bucket de Storage do staging, se a Management API
+  recusar — aí é 1 clique no Console
+
+O resto da Fase 0 (branch, `storage.rules`, segredos, variáveis) sai por CLI.
+
+### Achados da conferência que não podem se perder
+
+- **Não existe rate limit por família em rota HTTP.** `rateLimit.js` é por IP;
+  `limiteMensagensService` é do WhatsApp. Substituído por teto de 5 chamados
+  abertos por família.
+- **`escopo.js` não sabe `arrayUnion` nem entrar em transação** — daí a
+  decisão 2.
 - **Não existe instância Evolution de plataforma** — daí a decisão 1.
-- **O bucket de Storage de HOMOLOGAÇÃO não existe** (`revelacash-staging`).
-  Conferido por script. Produção tem
-  (`financeiropessoal-29b32.firebasestorage.app`). Como a regra 17 manda a
-  feature nascer em homologação, criar esse bucket é pré-requisito da etapa.
+- **O bucket de Storage de HOMOLOGAÇÃO não existe** (`revelacash-staging`);
+  produção tem (`financeiropessoal-29b32.firebasestorage.app`). Conferido por
+  script.
 - **Não existe `storage.rules` no repo.** Ligar Storage sem publicar regra
-  deixa o bucket aberto para qualquer usuário autenticado — e todo cliente do
-  RevelaCash é autenticado. Entrou no escopo da etapa.
-- **O painel do cliente NÃO lê o Firestore direto** (`firestore.rules` nega
-  tudo; o frontend nem importa `firebase/firestore`), então não há regra de
-  Firestore a escrever para as coleções novas.
-- **O login do operador É Firebase Auth** (`admin.auth().createUser()` com
-  e-mail interno), então `operadores/{uid}` funciona.
+  deixa o bucket aberto para qualquer usuário autenticado.
+- **O painel do cliente NÃO lê o Firestore direto** — não há regra de Firestore
+  a escrever para as coleções novas.
+- **O login do operador É Firebase Auth**, então `operadores/{uid}` funciona.
+- **`routes/admin.js` faz `router.use(authMiddleware, apenasAdmin)` na linha
+  29**: a rota do operador tem que ser montada ANTES de `/plataforma` no
+  `app.js`, senão todo atendente vira admin em silêncio.
+
 
 ### Onde exatamente paramos
 
 A Fase 4 foi decomposta em três etapas, nesta ordem, com o Kirk aprovando cada
 decisão:
 
-1. **Chamados de suporte** — desenhado e especificado (a spec acima). NÃO
-   implementado. Nenhuma linha de código foi escrita.
+1. **Chamados de suporte** — desenhado, especificado e planejado (spec revisão
+   3 + plano, links acima). NÃO implementado. Nenhuma linha de código foi
+   escrita.
 2. **Papéis de operador** — o que cada papel pode fazer, criar operador pela
    tela, desativar quem saiu. O cadastro MÍNIMO de operadores foi puxado para
    a etapa 1, porque encaminhar chamado exige um "para quem".
