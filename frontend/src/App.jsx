@@ -17,6 +17,8 @@ import InvoicesPage from './pages/InvoicesPage';
 import ImportarExtratoPage from './pages/ImportarExtratoPage';
 import SettingsPage from './pages/SettingsPage';
 import WhatsappLogsPage from './pages/WhatsappLogsPage';
+import SuportePage from './pages/SuportePage';
+import ChamadoPage from './pages/ChamadoPage';
 import AssinaturaPage from './pages/AssinaturaPage';
 import PlataformaPage from './pages/PlataformaPage';
 import TermosPage from './pages/legal/TermosPage';
@@ -66,6 +68,8 @@ export default function App() {
                 />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/whatsapp-logs" element={<WhatsappLogsPage />} />
+                <Route path="/suporte" element={<SuportePage />} />
+                <Route path="/suporte/:numero" element={<ChamadoPage />} />
                 <Route path="/assinatura" element={<AssinaturaPage />} />
               </Route>
             </Route>

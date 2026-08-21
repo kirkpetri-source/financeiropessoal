@@ -12,6 +12,7 @@ import {
   Upload,
   Sparkles,
   X,
+  LifeBuoy,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAssistenteDisponivel } from '../../contexts/AssistenteContext';
@@ -37,6 +38,7 @@ const NAV_ITEMS = [
   // indisponivel": anunciar novidade que nao funciona e pior que nao anunciar.
   { to: '/assistente', icon: Sparkles, label: 'Assistente', novo: true, soSeDisponivel: true },
   { to: '/whatsapp-logs', icon: MessageSquare, label: 'WhatsApp' },
+  { to: '/suporte', icon: LifeBuoy, label: 'Suporte' },
   { to: '/assinatura', icon: CreditCard, label: 'Assinatura' },
   { to: '/settings', icon: Settings, label: 'Configurações' },
 ];

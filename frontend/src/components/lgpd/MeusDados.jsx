@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Download, Trash2, Loader2, ShieldAlert, Undo2 } from 'lucide-react';
+import { Download, Trash2, Loader2, ShieldAlert, Undo2, Paperclip } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { formatDate } from '../../utils/formatters';
@@ -14,6 +14,94 @@ import { formatDate } from '../../utils/formatters';
  */
 
 const PALAVRA_DE_CONFIRMACAO = 'EXCLUIR';
+
+/**
+ * Baixa os arquivos anexados aos chamados de suporte, um a um.
+ *
+ * Eles NÃO vêm dentro do JSON do export: cinco anexos de 5 MB virariam ~33 MB
+ * de base64 montados na memória do servidor. E não vêm como link assinado, que
+ * venceria dentro do arquivo exportado — link morto num JSON é pior que nenhum
+ * link, porque parece que funciona.
+ *
+ * Então portabilidade de verdade é isto: o navegador percorre a lista e busca
+ * cada arquivo pelo mesmo endpoint autenticado que a tela do chamado usa.
+ */
+function AnexosDosChamados() {
+  const [baixando, setBaixando] = useState(false);
+  const [quantos, setQuantos] = useState(null);
+
+  useEffect(() => {
+    api.get('/suporte/chamados')
+      .then(({ data }) => setQuantos(data.length))
+      .catch(() => setQuantos(0));
+  }, []);
+
+  // Sem chamado nenhum, o bloco não aparece: não faz sentido oferecer o
+  // download de uma coisa que não existe.
+  if (!quantos) return null;
+
+  async function baixarTudo() {
+    setBaixando(true);
+    let baixados = 0;
+
+    try {
+      const { data: lista } = await api.get('/suporte/chamados');
+
+      for (const resumo of lista) {
+        const { data: chamado } = await api.get(`/suporte/chamados/${resumo.numero}`);
+
+        for (const mensagem of chamado.mensagens || []) {
+          for (const anexo of mensagem.anexos || []) {
+            const resposta = await api.get(
+              `/suporte/chamados/${chamado.numero}/anexos/${anexo.id}`,
+              { responseType: 'blob' },
+            );
+
+            const url = URL.createObjectURL(resposta.data);
+            const link = document.createElement('a');
+            link.href = url;
+            // Prefixado pelo número do chamado: vários "comprovante.pdf" na
+            // pasta de downloads sem saber de qual chamado é não ajuda ninguém.
+            link.download = `chamado-${chamado.numero}-${anexo.nomeOriginal}`;
+            link.click();
+            URL.revokeObjectURL(url);
+            baixados += 1;
+          }
+        }
+      }
+
+      toast.success(baixados
+        ? `${baixados} anexo(s) baixado(s).`
+        : 'Seus chamados não têm anexos.');
+    } catch {
+      toast.error(baixados
+        ? `Baixei ${baixados} anexo(s) e falhei no resto. Tente de novo.`
+        : 'Não consegui baixar os anexos agora.');
+    } finally {
+      setBaixando(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-medium text-ink">Baixar anexos dos chamados</p>
+      <p className="text-xs text-muted mt-0.5 mb-2">
+        Os arquivos que você anexou aos chamados de suporte não cabem dentro do
+        JSON. Baixe por aqui enquanto sua conta existir.
+      </p>
+      <button
+        type="button"
+        onClick={baixarTudo}
+        disabled={baixando}
+        className="btn-secondary text-sm flex items-center gap-2"
+      >
+        {baixando
+          ? <><Loader2 className="w-4 h-4 animate-spin" /> Baixando...</>
+          : <><Paperclip className="w-4 h-4" /> Baixar anexos</>}
+      </button>
+    </div>
+  );
+}
 
 export default function MeusDados({ podeExcluir }) {
   const [exportando, setExportando] = useState(false);
@@ -88,8 +176,9 @@ export default function MeusDados({ podeExcluir }) {
       <div>
         <p className="text-sm font-medium text-ink">Exportar meus dados</p>
         <p className="text-xs text-muted mt-0.5 mb-2">
-          Baixa todos os lançamentos, membros, categorias e mensagens da sua família
-          em um arquivo JSON. Continua disponível mesmo com a assinatura vencida.
+          Baixa todos os lançamentos, membros, categorias, mensagens e chamados de
+          suporte da sua família em um arquivo JSON. Continua disponível mesmo com
+          a assinatura vencida.
         </p>
         <button
           type="button"
@@ -102,6 +191,8 @@ export default function MeusDados({ podeExcluir }) {
             : <><Download className="w-4 h-4" /> Baixar arquivo</>}
         </button>
       </div>
+
+      <AnexosDosChamados />
 
       <div className="pt-4 border-t border-border">
         {pedido?.solicitada ? (

@@ -4,7 +4,7 @@ import {
   Users, User, Home, Eye, ArrowLeftRight, History, FileBarChart,
   ArrowRight, CheckCircle2, X, ChevronDown,
   TrendingUp, TrendingDown, DollarSign, Tag,
-  Keyboard, Mic, Camera, ShieldCheck, Clock, Undo2, Sparkles,
+  Keyboard, Mic, Camera, ShieldCheck, Clock, Undo2, Sparkles, LifeBuoy,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/brand/Logo';
@@ -622,6 +622,42 @@ export default function LandingPage() {
               <p className="text-sm text-muted mt-3">{r}</p>
             </details>
           ))}
+        </div>
+
+        {/*
+          A saída que o FAQ não tinha.
+
+          Antes, quem lia as dez perguntas e não achava a resposta ficava sem
+          para onde ir: o rodapé mandava para o Instagram e mais nada. Os dois
+          caminhos aqui são diferentes de propósito — quem JÁ É cliente abre
+          chamado (fica registrado, com histórico); quem ainda está decidindo
+          vai para o WhatsApp, porque dúvida de venda e suporte na mesma fila
+          atrapalha as duas.
+        */}
+        <div className="mt-10 card text-center">
+          <p className="font-semibold text-sm sm:text-base">Não achou sua resposta?</p>
+          <div className="mt-4 flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              type="button"
+              onClick={() => abrirAuth('entrar')}
+              className="btn-primary inline-flex items-center justify-center gap-2"
+            >
+              <LifeBuoy className="w-4 h-4" />
+              Já sou cliente: abrir chamado
+            </button>
+            <a
+              href="https://instagram.com/revelacash"
+              target="_blank"
+              rel="noreferrer"
+              className="btn-secondary inline-flex items-center justify-center gap-2"
+            >
+              Ainda não sou cliente: falar com a gente
+            </a>
+          </div>
+          <p className="mt-3 text-xs text-muted">
+            O chamado fica registrado na sua conta, com todo o histórico da
+            conversa. Entre e abra em Suporte, no menu.
+          </p>
         </div>
       </section>
 
