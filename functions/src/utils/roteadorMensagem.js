@@ -1,4 +1,5 @@
 const { reconhecerChamado } = require('./nomeDaAssistente');
+const { ehConversaFiada, normalizarParaComparar } = require('./conversaFiada');
 
 /**
  * Para onde vai uma mensagem que chegou pelo WhatsApp.
@@ -32,23 +33,9 @@ const DESTINO = {
   IGNORAR: 'IGNORAR',
 };
 
-/**
- * Conversa que não pede resposta. É a lista do que NÃO passa — e ela é curta,
- * fechada e estável, ao contrário da lista de "jeitos de perguntar", que é
- * infinita.
- *
- * Só bloqueia quando a mensagem é ISSO e nada mais: "ok" sozinho é
- * confirmação, "ok, e quanto gastei?" é pergunta.
- */
-const CONVERSA_FIADA = new Set([
-  'oi', 'ola', 'opa', 'e ai', 'eai', 'fala', 'alo',
-  'bom dia', 'boa tarde', 'boa noite', 'bom dia!', 'boa tarde!', 'boa noite!',
-  'obrigado', 'obrigada', 'obg', 'valeu', 'vlw', 'brigado', 'brigada',
-  'ok', 'okay', 'blz', 'beleza', 'certo', 'isso', 'isso mesmo', 'perfeito',
-  'sim', 'nao', 'claro', 'ta', 'ta bom', 'tudo bem', 'entendi', 'show',
-  'kkk', 'kkkk', 'kkkkk', 'rs', 'rsrs', 'haha', 'hahaha', 'ata',
-  'tchau', 'falou', 'ate mais', 'ate logo', 'boa', 'legal', 'top', 'otimo',
-]);
+// A lista de conversa fiada mora em `conversaFiada.js`: a oferta de criar
+// subcategoria precisa exatamente da mesma definição, e duas cópias
+// divergiriam com o tempo.
 
 /**
  * Vale gastar a classificação de IA nesta mensagem?
@@ -73,17 +60,14 @@ const CONVERSA_FIADA = new Set([
  * essas mesmas mensagens.
  */
 function pareceperguntaOuPedido(texto) {
-  const limpo = String(texto || '').trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[!.,;]+$/, '')
-    .replace(/\s+/g, ' ');
+  const limpo = normalizarParaComparar(texto);
 
   if (!limpo) return false;
 
   // Emoji ou pontuação solta não é pergunta.
   if (!/\p{L}|\d/u.test(limpo)) return false;
 
-  return !CONVERSA_FIADA.has(limpo);
+  return !ehConversaFiada(limpo);
 }
 
 /**

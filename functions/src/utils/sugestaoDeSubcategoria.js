@@ -1,10 +1,11 @@
 const { normalizar } = require('./normalizarTexto');
+const { ehConversaFiada } = require('./conversaFiada');
 
 /**
  * A oferta de criar subcategoria: que nome propor e o que a pessoa respondeu.
  *
- * Módulo-folha e PURO (só depende de `normalizarTexto`), para a bateria de
- * frases reais rodar sem banco.
+ * Módulo PURO (só depende de `normalizarTexto` e `conversaFiada`, os dois
+ * folhas), para a bateria de frases reais rodar sem banco.
  *
  * O nome sai por REGRA, não por IA. É a primeira palavra significativa da
  * descrição, capitalizada — "ração cachorro" vira "Ração". Custo zero numa
@@ -88,6 +89,14 @@ function interpretarResposta(texto, nomeProposto) {
 
   if (NAO.has(limpo)) return { acao: 'RECUSAR' };
   if (SIM.has(limpo)) return { acao: 'CRIAR', nome: nomeProposto };
+
+  // SAUDAÇÃO NÃO É NOME DE SUBCATEGORIA, e a barreira vem antes da regra de
+  // "palavra solta vira nome". Sem ela, um "bom dia" chegando depois da oferta
+  // criava a subcategoria *Bom Dia* — e a pessoa ainda recebia a confirmação
+  // de que tinha criado. Cumprimentar logo depois de lançar é o caso mais
+  // comum que existe no canal. Vem DEPOIS do sim/não de propósito: "sim" e
+  // "não" também estão nessa lista, e ali eles são resposta.
+  if (ehConversaFiada(bruto)) return null;
 
   const palavras = bruto.split(/\s+/).filter(Boolean);
 

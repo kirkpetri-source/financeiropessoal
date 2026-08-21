@@ -190,6 +190,26 @@ async function principal() {
   checar('NÃO ofereceu de novo depois do não', !pizza3.oferta,
     'voltou a oferecer mesmo depois da recusa');
 
+  // 6. Saudação depois da oferta não vira nome de subcategoria.
+  //
+  // Qualquer palavra solta serve como nome, então "bom dia" criava a
+  // subcategoria *Bom Dia* — e ainda confirmava para a pessoa que tinha
+  // criado. Cumprimentar logo depois de lançar é o caso mais comum do canal.
+  console.log('\n6. "bom dia" depois da oferta não cria subcategoria nenhuma');
+  await lancar('gastei 12 cafe padaria');
+  const cafe2 = await lancar('gastei 14 cafe padaria');
+  checar('ofereceu na segunda vez', !!cafe2.oferta, 'não ofereceu');
+
+  const saudacao = await responder('bom dia');
+  checar('"bom dia" não é resposta à oferta', !saudacao.tratado,
+    `tratou como resposta: ${saudacao.resposta}`);
+
+  const depois = await escopoDe(FAMILIA).consultar('subcategories').get();
+  const lixo = depois.docs.map((d) => d.data().name)
+    .filter((nome) => /bom dia/i.test(nome));
+  checar('não criou subcategoria com nome de saudação', lixo.length === 0,
+    `criou ${lixo.join(', ')}`);
+
   console.log(`\n===== ${passou} passaram, ${falhou} falharam =====\n`);
 
   await limpar();

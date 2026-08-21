@@ -52,6 +52,26 @@ describe('interpretarResposta', () => {
     expect(responder('animais')).toEqual({ acao: 'CRIAR', nome: 'Animais' });
   });
 
+  it('saudação NÃO vira nome de subcategoria', () => {
+    // A pessoa lança de manhã, o sistema oferece, ela cumprimenta — e ficava
+    // com uma subcategoria chamada *Bom Dia*, com direito a confirmação.
+    for (const t of ['bom dia', 'Bom dia!', 'boa noite', 'oi', 'obrigado', 'valeu', 'kkk']) {
+      expect(responder(t)).toBeNull();
+    }
+  });
+
+  it('mas "sim" e "não" continuam sendo resposta, não conversa fiada', () => {
+    // Os dois estão na mesma lista de conversa fiada; aqui eles decidem.
+    expect(responder('sim')).toEqual({ acao: 'CRIAR', nome: 'Ração' });
+    expect(responder('não')).toEqual({ acao: 'RECUSAR' });
+  });
+
+  it('nome que por acaso parece conversa fiada ainda passa com a categoria junto', () => {
+    // "Show" sozinho é comemoração; "Show em Lazer" é um pedido claro.
+    expect(responder('Show')).toBeNull();
+    expect(responder('Show em Lazer')).toEqual({ acao: 'CRIAR', nome: 'Show', categoria: 'Lazer' });
+  });
+
   it('"Nome em Categoria" muda as duas coisas', () => {
     expect(responder('Pet em Casa')).toEqual({ acao: 'CRIAR', nome: 'Pet', categoria: 'Casa' });
   });
