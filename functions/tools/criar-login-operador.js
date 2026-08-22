@@ -6,6 +6,7 @@
  *   node tools/criar-login-operador.js                        # simulação
  *   node tools/criar-login-operador.js --confirmar            # aplica
  *   node tools/criar-login-operador.js maria --papel ATENDENTE --nome "Maria" --confirmar
+ *   node tools/criar-login-operador.js kirkdouglas_19 --manter-senha --confirmar
  *   ALVO=staging node tools/criar-login-operador.js --confirmar
  *
  * São DUAS coisas, e as duas são necessárias:
@@ -52,6 +53,12 @@ async function main() {
   const confirmar = args.includes('--confirmar');
   const reativar = args.includes('--reativar');
 
+  // Quem já tem login e só precisa do registro em `operadores` não deveria
+  // perder a senha por isso. Sem esta flag, "cadastrar o operador" trocaria a
+  // senha que a pessoa já usa — surpresa cara quando o login é o do painel de
+  // produção e ela descobre na hora de entrar.
+  const manterSenha = args.includes('--manter-senha');
+
   // Primeiro argumento posicional que não é flag nem valor de flag.
   const usuario = args.find((a, i) => (
     !a.startsWith('--') && !['--nome', '--papel'].includes(args[i - 1])
@@ -78,7 +85,11 @@ async function main() {
   console.log(`E-mail interno: ${emailInterno}`);
   console.log(`Nome: ${nome}`);
   console.log(`Papel: ${papel}${papel === 'ATENDENTE' ? ' (padrão — menor privilégio)' : ''}`);
-  console.log(`Login: ${existente ? 'já existe, a senha seria redefinida' : 'não existe, seria criado'}`);
+  const vaiTrocarSenha = !existente || !manterSenha;
+
+  console.log(`Login: ${existente
+    ? (manterSenha ? 'já existe, a senha NÃO será tocada' : 'já existe, a senha seria REDEFINIDA')
+    : 'não existe, seria criado'}`);
   console.log(`Registro em operadores: ${jaCadastrado ? `já existe, ativo=${estavaAtivo}` : 'seria criado com ativo=true'}`);
 
   // Resetar senha NÃO pode religar quem foi desligado. Sem esta trava, "só
@@ -90,16 +101,21 @@ async function main() {
     console.log('Para religar de propósito, rode de novo com --reativar.');
   }
 
+  if (existente && !manterSenha) {
+    console.log('\nATENÇÃO: a senha atual deste login será TROCADA.');
+    console.log('Se você só quer cadastrar o operador, rode com --manter-senha.');
+  }
+
   if (!confirmar) {
     console.log('\nSIMULAÇÃO — nada foi alterado. Rode de novo com --confirmar para aplicar.');
     process.exit(0);
   }
 
-  const senha = gerarSenha();
+  const senha = vaiTrocarSenha ? gerarSenha() : null;
 
   const uid = existente
     ? (await admin.auth().updateUser(existente.uid, {
-      password: senha, emailVerified: true, disabled: false,
+      ...(senha ? { password: senha } : {}), emailVerified: true, disabled: false,
     })).uid
     : (await admin.auth().createUser({
       email: emailInterno, emailVerified: true, password: senha, displayName: nome,
@@ -126,7 +142,9 @@ async function main() {
   console.log(`  uid: ${uid}`);
   console.log(`  papel: ${papel}`);
   console.log(`  ativo: ${dados.ativo === true ? 'true' : `preservado (${estavaAtivo})`}`);
-  console.log(`  senha (anote agora, não aparece de novo): ${senha}`);
+  console.log(senha
+    ? `  senha (anote agora, não aparece de novo): ${senha}`
+    : '  senha: inalterada (--manter-senha)');
 
   if (ficouAtivo) {
     console.log('\nIsto já libera ATENDER chamado de suporte.');
