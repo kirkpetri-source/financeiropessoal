@@ -165,6 +165,48 @@ A agendada roda sozinha às 02:00. Para disparar fora de hora sem esperar:
 **Restaurar** é `gcloud firestore import gs://revelacash-backups/<pasta>` — ou
 pelo painel, ver abaixo.
 
+### Cópia semanal por e-mail (22/08/2026)
+
+**Decisão do Kirk, tomada depois de eu levantar o risco.** O anexo é a base
+financeira COMPLETA das famílias pagantes; uma vez enviado, existe cópia
+permanente na caixa de destino e na de enviados. Ofereci quatro caminhos
+(aviso sem dado, cópia para outra nuvem, link assinado, anexo) e ele escolheu
+o anexo. Fica registrado para quem mexer nisto depois — e a Política de
+Privacidade **precisa** declarar essa rota, porque hoje ela não declara.
+
+Duas defesas construídas em cima da escolha:
+
+1. O anexo vai SEMPRE criptografado (AES-256-CBC + PBKDF2, segredo
+   `BACKUP_ZIP_SENHA`). Sem a senha configurada o envio é RECUSADO — nunca
+   sai em texto claro. A senha nunca viaja no e-mail (há teste).
+2. O formato é o do `openssl enc`, e não um formato nosso:
+
+   ```
+   openssl enc -d -aes-256-cbc -pbkdf2 -in arquivo.zip.enc -out backup.zip
+   ```
+
+   Num desastre — sem este repositório, sem esta máquina — o arquivo ainda
+   abre com um comando que existe em qualquer Linux, Mac ou Git Bash. **Há
+   teste que roda o `openssl` de verdade** e confirma que ele lê o que
+   geramos; um teste que só usasse o nosso `descriptografar` provaria apenas
+   que somos consistentes com nós mesmos.
+
+`BACKUP_ZIP_SENHA` é SEPARADA de `BACKUP_RESTORE_SENHA` de propósito: uma
+protege um arquivo em repouso, a outra autoriza escrita no banco. Se fossem a
+mesma e o anexo vazasse, quem abrisse o zip também teria a chave da
+restauração.
+
+Agendada `copiaSemanalPorEmail`: segunda 05:00, depois do backup das 02:00
+(para levar o do próprio dia). Só backup ÍNTEGRO é enviado. Teto de anexo de
+15 MB — o Gmail recebe 25 MB e hoje o arquivo tem 0,78 MB, mas estourar em
+silêncio seria perder a cópia sem ninguém notar.
+
+`tools/testar-copia-por-email.js` manda SÓ a verificação por padrão; o anexo
+exige `--com-anexo`. **Confirmar o endereço antes de os dados saírem é o
+único jeito de não errar de forma irreversível** — o Kirk havia informado
+`revelacash@gmail.com.br`, domínio que não existe, corrigido para
+`revelacash@gmail.com`.
+
 ### O painel de backup (22/08/2026, tarde)
 
 A primeira versão da tela mostrava só o backup feito NA SESSÃO ATUAL, em
