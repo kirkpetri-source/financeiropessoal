@@ -35,10 +35,15 @@ const FUNDO = '#f7f5f2';
  *
  * `APP_URL` em homologação é `localhost:5173` — um e-mail é lido fora do
  * navegador que rodou o teste, então a imagem simplesmente não carregaria.
- * O arquivo é PNG de propósito: os outros do projeto são WebP, que o Outlook
- * não abre.
+ *
+ * PNG de propósito: os outros arquivos de marca do projeto são WebP, que o
+ * Outlook não abre. Este foi gerado a partir do `icon-color-256.webp`, cortado
+ * e reduzido a 96px e 5 KB — a logo original tem 2 MB, e ninguém deve baixar
+ * isso para ver um ícone de 32 pixels.
+ *
+ * Servido em 96px e exibido em 32 para ficar nítido em tela retina.
  */
-const LOGO = 'https://www.revelacash.com.br/brand/icon-square-dark-180.png';
+const LOGO = 'https://www.revelacash.com.br/brand/logo-email-96.png';
 
 /** `&`, `<` e `>` viram entidade. Nada aqui vem do cliente, mas o número vem da rota. */
 function escapar(valor) {
@@ -95,9 +100,9 @@ function montarHtml({ numero, titulo, explicacao, link, rotuloDoBotao, paraOpera
                 <tr>
                   <td style="padding-right:10px;">
                     <img src="${LOGO}" width="32" height="32" alt=""
-                         style="display:block;border:0;border-radius:8px;">
+                         style="display:block;border:0;">
                   </td>
-                  <td style="font-family:Helvetica,Arial,sans-serif;font-size:17px;font-weight:bold;color:${ROXO};">
+                  <td style="font-family:Helvetica,Arial,sans-serif;font-size:18px;font-weight:bold;color:${ROXO};">
                     RevelaCash
                   </td>
                 </tr>
