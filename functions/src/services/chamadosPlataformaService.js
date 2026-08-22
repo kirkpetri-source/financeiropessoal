@@ -49,7 +49,9 @@ const CAMPOS_DA_FILA = [
   'reaberturaDe', 'resolvidoEm', 'motivoResolucao',
 ];
 
-function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar, notificar }) {
+function criarChamadosPlataformaService({
+  db, escopoDe, chamadoService, anexoService, auditar, notificar,
+}) {
   function serializar(valor) {
     if (valor == null) return valor;
     if (typeof valor.toDate === 'function') return valor.toDate().toISOString();
@@ -254,6 +256,29 @@ function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar,
     };
   }
 
+  /**
+   * Os BYTES de um anexo, para o operador — mesma trava do lado cliente
+   * (`chamadoController.baixarAnexo`), só que a descoberta do chamado
+   * atravessa famílias em vez de vir do `req.dados` de um household só.
+   *
+   * `acessoAoChamado` já recusa número inexistente; a partir daí o
+   * `householdId` do PRÓPRIO chamado é o único que entra no `lerAnexo` — um
+   * `anexoId` de outro chamado nunca resolve, porque `storagePath` não bate
+   * com a pasta desta família.
+   */
+  async function baixarAnexo(numero, anexoId) {
+    const { chamado, dados } = await acessoAoChamado(numero);
+
+    const completo = await chamadoService.buscarChamado(dados, numero);
+    const anexo = (completo?.mensagens || [])
+      .flatMap((m) => m.anexos || [])
+      .find((a) => a.id === anexoId);
+
+    if (!anexo) throw Object.assign(new Error('Anexo não encontrado.'), { statusCode: 404 });
+
+    return anexoService.lerAnexo(chamado.householdId, anexo.storagePath);
+  }
+
   async function responderComoSuporte(numero, { texto, anexos }, operador, agora = new Date()) {
     const { chamado, dados } = await acessoAoChamado(numero);
 
@@ -399,6 +424,7 @@ function criarChamadosPlataformaService({ db, escopoDe, chamadoService, auditar,
     notificacoesNaoEntregues,
     resolverNotificacao,
     abrirChamado,
+    baixarAnexo,
     responderComoSuporte,
     encaminhar,
     resolverComoOperador,
@@ -411,12 +437,14 @@ function servico() {
     const { db } = require('../config/firebaseAdmin');
     const { escopoDe } = require('../data/escopo');
     const chamadoService = require('./chamadoService');
+    const anexoService = require('./anexoService');
     const adminAuditService = require('./adminAuditService');
 
     _padrao = criarChamadosPlataformaService({
       db,
       escopoDe,
       chamadoService,
+      anexoService,
       auditar: adminAuditService.registrar,
       notificar: require('./notificacaoChamadoService'),
     });
@@ -438,6 +466,7 @@ module.exports = {
   notificacoesNaoEntregues: (...a) => servico().notificacoesNaoEntregues(...a),
   resolverNotificacao: (...a) => servico().resolverNotificacao(...a),
   abrirChamado: (...a) => servico().abrirChamado(...a),
+  baixarAnexo: (...a) => servico().baixarAnexo(...a),
   responderComoSuporte: (...a) => servico().responderComoSuporte(...a),
   encaminhar: (...a) => servico().encaminhar(...a),
   resolverComoOperador: (...a) => servico().resolverComoOperador(...a),

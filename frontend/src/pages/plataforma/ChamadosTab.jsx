@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { AnexosDaMensagem } from '../../components/suporte/PecasDoChamado';
 
 /**
  * Fila de atendimento.
@@ -416,7 +417,7 @@ function Detalhe({ numero, operadores, onMudou, onFechar }) {
         </div>
       </div>
 
-      <Conversa mensagens={chamado.mensagens} />
+      <Conversa mensagens={chamado.mensagens} numero={numero} />
 
       <form onSubmit={responder} className="card space-y-3">
         <textarea
@@ -438,7 +439,28 @@ function Detalhe({ numero, operadores, onMudou, onFechar }) {
   );
 }
 
-function Conversa({ mensagens }) {
+function Conversa({ mensagens, numero }) {
+  /**
+   * Baixa autenticado, igual ao lado cliente: sem URL pública nem link
+   * assinado, o arquivo vem pelo Bearer do operador e vira blob local.
+   */
+  async function baixar(anexo) {
+    try {
+      const resposta = await api.get(`/plataforma/chamados/${numero}/anexos/${anexo.id}`, {
+        responseType: 'blob',
+      });
+
+      const url = URL.createObjectURL(resposta.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = anexo.nomeOriginal || 'anexo';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Não consegui baixar este anexo.');
+    }
+  }
+
   return (
     <div className="space-y-2.5">
       {(mensagens || []).map((mensagem) => {
@@ -463,13 +485,7 @@ function Conversa({ mensagens }) {
                   {mensagem.em ? new Date(mensagem.em).toLocaleString('pt-BR') : ''}
                 </p>
                 <p className="text-sm text-ink whitespace-pre-wrap break-words">{mensagem.texto}</p>
-
-                {(mensagem.anexos || []).length > 0 && (
-                  <p className="mt-1.5 text-xs text-muted">
-                    {mensagem.anexos.length} anexo(s):{' '}
-                    {mensagem.anexos.map((a) => a.nomeOriginal).join(', ')}
-                  </p>
-                )}
+                <AnexosDaMensagem anexos={mensagem.anexos} onBaixar={baixar} />
               </div>
             </div>
           </div>

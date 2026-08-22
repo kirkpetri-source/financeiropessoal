@@ -38,6 +38,7 @@ router.post('/avisos/:id/baixa', controller.darBaixaNoAviso);
 
 router.get('/', controller.fila);
 router.get('/:numero', apenasNumeroDeChamado, controller.detalhar);
+router.get('/:numero/anexos/:anexoId', apenasNumeroDeChamado, controller.baixarAnexo);
 router.post('/:numero/mensagens', apenasNumeroDeChamado, validate(respostaSchema), controller.responder);
 router.post('/:numero/encaminhar', apenasNumeroDeChamado, validate(encaminharSchema), controller.encaminhar);
 router.post('/:numero/resolver', apenasNumeroDeChamado, controller.resolver);

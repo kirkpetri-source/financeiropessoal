@@ -18,6 +18,8 @@ let chamados;
 let plataforma;
 let auditoria;
 let avisos;
+let anexosLidos;
+let anexoServiceFalso;
 
 beforeEach(() => {
   duble = criarDuble({
@@ -29,11 +31,31 @@ beforeEach(() => {
   chamados = criarChamadoService({ db: duble.db, admin: duble.admin });
   auditoria = [];
   avisos = [];
+  anexosLidos = [];
+
+  // Dublê que devolve os bytes se o `storagePath` "pertence" ao householdId
+  // pedido — o suficiente para provar que `baixarAnexo` manda o household do
+  // PRÓPRIO chamado, e não deixa vazar para outro.
+  anexoServiceFalso = {
+    lerAnexo: async (householdId, storagePath) => {
+      anexosLidos.push({ householdId, storagePath });
+      if (!storagePath.startsWith(`chamados/${householdId}/`)) {
+        throw Object.assign(new Error('Anexo não encontrado.'), { statusCode: 404 });
+      }
+      return {
+        conteudo: Buffer.from('bytes'),
+        mimeType: 'image/png',
+        nomeOriginal: storagePath.split('/').pop(),
+        tamanho: 5,
+      };
+    },
+  };
 
   plataforma = criarChamadosPlataformaService({
     db: duble.db,
     escopoDe: duble.escopoDe,
     chamadoService: chamados,
+    anexoService: anexoServiceFalso,
     auditar: async (registro) => { auditoria.push(registro); },
     notificar: {
       suporteRespondeu: async (d) => { avisos.push({ evento: 'suporteRespondeu', ...d }); },
@@ -353,6 +375,43 @@ describe('abrirChamado — a tela do operador', () => {
     await plataforma.abrirChamado(1, KIRK);
 
     expect(doc(1).naoLidoPeloCliente).toBe(false);
+  });
+});
+
+describe('baixarAnexo — o operador abre o print do cliente', () => {
+  const ANEXO_A = { id: 'anexo-1', storagePath: 'chamados/fam-A/print.png', nomeOriginal: 'print.png' };
+
+  beforeEach(async () => {
+    await abrirPara(FAMILIA_A, AGORA, { anexos: [ANEXO_A] });
+  });
+
+  it('lê com o householdId do PRÓPRIO chamado, achado cross-tenant', async () => {
+    const arquivo = await plataforma.baixarAnexo(1, 'anexo-1');
+
+    expect(arquivo.nomeOriginal).toBe('print.png');
+    expect(anexosLidos).toEqual([{ householdId: FAMILIA_A, storagePath: 'chamados/fam-A/print.png' }]);
+  });
+
+  it('404 quando o anexo não existe na mensagem', async () => {
+    await expect(plataforma.baixarAnexo(1, 'nao-existe'))
+      .rejects.toMatchObject({ statusCode: 404 });
+
+    expect(anexosLidos).toEqual([]);
+  });
+
+  it('404 quando o chamado não existe', async () => {
+    await expect(plataforma.baixarAnexo(999, 'anexo-1'))
+      .rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('acha o anexo de um chamado de OUTRA família, sem o operador precisar saber qual é', async () => {
+    const outro = { id: 'anexo-2', storagePath: 'chamados/fam-B/nota.png', nomeOriginal: 'nota.png' };
+    await abrirPara(FAMILIA_B, AGORA, { anexos: [outro] });
+
+    const arquivo = await plataforma.baixarAnexo(2, 'anexo-2');
+
+    expect(arquivo.nomeOriginal).toBe('nota.png');
+    expect(anexosLidos.at(-1)).toEqual({ householdId: FAMILIA_B, storagePath: 'chamados/fam-B/nota.png' });
   });
 });
 
