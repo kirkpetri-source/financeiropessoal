@@ -142,15 +142,32 @@ agendada agora passa por `vigiar`** (`alertaOperacionalService`), que
 transforma falha de rotina em aviso no topo da aba Chamados — antes era
 `console.error` que ninguém leria.
 
-**PENDENTE E BLOQUEADO: o backup responde `PERMISSION_DENIED`.** Testado pelo
-botão do painel em homologação. A conta de serviço das Functions
-(`<numero>-compute@developer.gserviceaccount.com`) precisa de
-`roles/datastore.importExportAdmin` no projeto e escrita no bucket. A chave
-`firebase-adminsdk` não tem poder de alterar IAM, então **isto exige a conta
-Google do Kirk** — é a mesma classe de exceção da regra 8 que o reCAPTCHA/App
-Check já tinha. Enquanto não for concedido, a agendada falha todo dia e o
-aviso aparece na aba Chamados (que é exatamente o que o `vigiar` existe para
-fazer).
+**BACKUP NO AR E VERIFICADO EM PRODUÇÃO (22/08/2026, 10:52).** O primeiro
+export gravou 23 arquivos / 3,11 MB em `gs://revelacash-backups`, com o
+`.overall_export_metadata` presente — a marca de que o Firestore concluiu o
+export inteiro, e não um pedaço.
+
+Levou uma concessão de IAM que a chave `firebase-adminsdk` não tem poder de
+fazer (exceção genuína da regra 8, mesma classe do reCAPTCHA/App Check). O
+Kirk executou no Cloud Shell, e o registro fica aqui porque **um projeto novo
+precisará disso de novo**:
+
+```bash
+SA=137963747650-compute@developer.gserviceaccount.com   # a SA das Functions
+gcloud projects add-iam-policy-binding financeiropessoal-29b32   --member="serviceAccount:$SA" --role="roles/datastore.importExportAdmin"
+gcloud storage buckets add-iam-policy-binding gs://revelacash-backups   --member="serviceAccount:$SA" --role="roles/storage.objectAdmin"
+```
+
+A agendada roda sozinha às 02:00. Para disparar fora de hora sem esperar:
+`gcloud scheduler jobs run firebase-schedule-backupDiario-southamerica-east1
+--location=southamerica-east1` (ou o botão em `/plataforma` → Sistema).
+
+**Restaurar** é `gcloud firestore import gs://revelacash-backups/<pasta>`.
+
+**HOMOLOGAÇÃO SEGUE SEM ESSA PERMISSÃO** — o bucket
+`revelacash-staging-backups` existe e o `BACKUP_BUCKET` está no `.env`, mas a
+SA de lá não recebeu os papéis. Lá a agendada falha e gera o aviso, o que é
+inofensivo (banco de teste) e serve de amostra viva do `vigiar` funcionando.
 
 **Jurídico reescrito** — termos com 18 cláusulas, privacidade com 14, índice
 lateral, numeração hierárquica (`4.2`) e versão/vigência no cabeçalho. O que
