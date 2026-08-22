@@ -42,6 +42,9 @@ const AJUDA = [
   '• *subcategoria padaria* — muda a subcategoria do último lançamento (ou *sem subcategoria* pra remover)',
   '• *categorias* — categorias mais usadas no mês',
   '• *ajuda* — esta mensagem',
+  '',
+  'Guia completo, com tudo que dá para fazer:',
+  'revelacash.com.br/ajuda',
 ].join('\n');
 
 async function comandoResumo(householdId) {

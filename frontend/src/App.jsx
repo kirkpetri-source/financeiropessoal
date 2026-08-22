@@ -21,6 +21,7 @@ import SuportePage from './pages/SuportePage';
 import ChamadoPage from './pages/ChamadoPage';
 import AssinaturaPage from './pages/AssinaturaPage';
 import PlataformaPage from './pages/PlataformaPage';
+import AjudaPage from './pages/AjudaPage';
 import TermosPage from './pages/legal/TermosPage';
 import PrivacidadePage from './pages/legal/PrivacidadePage';
 
@@ -36,6 +37,13 @@ export default function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
+
+            {/* Central de ajuda: pública de propósito. Metade das dúvidas
+                aparece antes de a pessoa ter conta, ou justamente quando ela
+                não consegue entrar — ajuda atrás de login só atende quem já
+                não precisa dela. */}
+            <Route path="/ajuda" element={<AjudaPage />} />
+            <Route path="/ajuda/:slug" element={<AjudaPage />} />
 
             {/* Termos e privacidade abrem sem login: a landing page e o próprio
                 Mercado Pago linkam para cá, e exigir conta para ler o contrato

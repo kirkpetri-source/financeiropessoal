@@ -157,6 +157,8 @@ export default function LegalLayout({ titulo, resumo, tipo = 'termos', children 
               <Link to="/termos" className="underline hover:text-ink">Termos de Uso</Link>
               {' · '}
               <Link to="/privacidade" className="underline hover:text-ink">Política de Privacidade</Link>
+              {' · '}
+              <Link to="/ajuda" className="underline hover:text-ink">Central de ajuda</Link>
             </p>
           </footer>
         </main>

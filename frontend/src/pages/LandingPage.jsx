@@ -714,6 +714,7 @@ export default function LandingPage() {
               <button type="button" onClick={() => irPara('preco')} className="text-muted hover:text-ink">Preço</button>
               <button type="button" onClick={() => irPara('duvidas')} className="text-muted hover:text-ink">Dúvidas</button>
               <button type="button" onClick={() => abrirAuth('entrar')} className="text-muted hover:text-ink">Entrar</button>
+              <Link to="/ajuda" className="text-muted hover:text-ink">Central de ajuda</Link>
               <Link to="/termos" className="text-muted hover:text-ink">Termos de Uso</Link>
               <Link to="/privacidade" className="text-muted hover:text-ink">Política de Privacidade</Link>
               <a href="https://instagram.com/revelacash" target="_blank" rel="noreferrer" className="text-muted hover:text-ink">Contato</a>

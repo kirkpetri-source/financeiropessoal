@@ -13,6 +13,7 @@ import {
   Sparkles,
   X,
   LifeBuoy,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAssistenteDisponivel } from '../../contexts/AssistenteContext';
@@ -105,6 +106,22 @@ export default function Sidebar({ open, onClose }) {
             )}
           </NavLink>
         ))}
+
+        {/* Ajuda abre em ABA NOVA de propósito: a central é uma rota pública,
+            fora do AppLayout, então navegar para ela dentro da mesma aba tira
+            a pessoa do painel — e consultar a ajuda é justamente o que se faz
+            NO MEIO de uma tarefa. */}
+        <a
+          href="/ajuda"
+          target="_blank"
+          rel="noreferrer"
+          onClick={onClose}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+                     text-muted hover:bg-surface-alt hover:text-ink transition-colors"
+        >
+          <BookOpen className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-1">Ajuda</span>
+        </a>
       </nav>
 
       {/* User info */}

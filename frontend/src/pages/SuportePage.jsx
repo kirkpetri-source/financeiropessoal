@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LifeBuoy, Plus, MessageSquare, ArrowRight } from 'lucide-react';
+import { LifeBuoy, Plus, MessageSquare, ArrowRight, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useChamados, CATEGORIAS, LIMITE_CARACTERES } from '../hooks/useChamados';
 import { Situacao, EscolherAnexos } from '../components/suporte/PecasDoChamado';
@@ -35,6 +35,18 @@ export default function SuportePage() {
           <p className="mt-1 text-sm text-muted">
             Abra um chamado e acompanhe a resposta por aqui mesmo.
           </p>
+          {/* Desvio para a ajuda ANTES do botão de abrir chamado: boa parte do
+              que chega aqui já está respondido lá, e resposta imediata é
+              melhor que resposta boa daqui a algumas horas. */}
+          <a
+            href="/ajuda"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex items-center gap-1.5 text-sm text-brand-dark hover:underline"
+          >
+            <BookOpen className="w-4 h-4" />
+            Antes disso, veja se a central de ajuda já responde
+          </a>
         </div>
 
         {!abrindo && (
