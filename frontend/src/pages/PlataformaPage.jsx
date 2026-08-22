@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { Lock, LogOut, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { auth } from '../config/firebase';
-import api from '../services/api';
+import { authPlataforma } from '../config/firebase';
+import api, { CHAVE_TOKEN_PLATAFORMA } from '../services/api';
 import AdminPage from './AdminPage';
 
 /**
@@ -15,12 +15,13 @@ import AdminPage from './AdminPage';
  * interno só porque o Firebase Auth exige formato de e-mail — ninguém lê
  * essa caixa.
  *
- * Como o Firebase Auth mantém uma sessão só por navegador, entrar aqui
- * troca a sessão ativa: quem estava logado na conta de uma família (em
- * outra aba do mesmo navegador) passa a aparecer como operador lá também,
- * até logar de novo como família. É a troca aceita para não construir um
- * segundo sistema de sessão do zero — use outro navegador (ou uma janela
- * anônima) se precisar das duas contas abertas ao mesmo tempo.
+ * SESSÃO PRÓPRIA, e isso é requisito. Este portal autentica no app Firebase
+ * NOMEADO `plataforma` (`authPlataforma`), não no app padrão que a família
+ * usa, e guarda o token numa chave separada do localStorage. Até 22/08/2026
+ * os dois compartilhavam a mesma sessão: entrar aqui sobrescrevia a sessão da
+ * família e, no F5 seguinte, a aba do cliente exibia "Olá, Operador" — o
+ * mesmo uid respondendo pelos dois lados. Agora as duas contas podem ficar
+ * abertas lado a lado, no mesmo navegador, sem se atropelar.
  */
 
 const DOMINIO_INTERNO = 'operador.revelacash.internal';
@@ -90,14 +91,14 @@ export default function PlataformaPage() {
   const [status, setStatus] = useState('verificando'); // verificando | negado | autenticado
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(authPlataforma, async (firebaseUser) => {
       if (!firebaseUser || !firebaseUser.email?.endsWith(`@${DOMINIO_INTERNO}`)) {
         setStatus('negado');
         return;
       }
       try {
         const token = await firebaseUser.getIdToken();
-        localStorage.setItem('@financeiro:token', token);
+        localStorage.setItem(CHAVE_TOKEN_PLATAFORMA, token);
 
         // Duas portas, e basta UMA. Admin entra pelas métricas; quem só atende
         // chamado entra pela fila. Testar só as métricas — como esta tela fazia
@@ -121,7 +122,7 @@ export default function PlataformaPage() {
 
   async function entrar(usuario, senha) {
     try {
-      await signInWithEmailAndPassword(auth, `${usuario}@${DOMINIO_INTERNO}`, senha);
+      await signInWithEmailAndPassword(authPlataforma, `${usuario}@${DOMINIO_INTERNO}`, senha);
       // onAuthStateChanged acima confere o acesso e troca o status.
     } catch (err) {
       const msg = ['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(err.code)
@@ -132,8 +133,8 @@ export default function PlataformaPage() {
   }
 
   async function sair() {
-    await signOut(auth);
-    localStorage.removeItem('@financeiro:token');
+    await signOut(authPlataforma);
+    localStorage.removeItem(CHAVE_TOKEN_PLATAFORMA);
     setStatus('negado');
   }
 

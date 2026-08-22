@@ -5,6 +5,7 @@ import { User, Lock, MessageSquare, Users, Loader2, Eye, EyeOff, CheckCircle2, S
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useHousehold } from '../hooks/useHousehold';
+import { problemaNaSenha, DICA_DE_SENHA, MINIMO_CARACTERES } from '../utils/politicaDeSenha';
 import MeusDados from '../components/lgpd/MeusDados';
 import ConectarWhatsapp from '../components/whatsapp/ConectarWhatsapp';
 import ParticipantesDaFamilia from '../components/whatsapp/ParticipantesDaFamilia';
@@ -180,13 +181,19 @@ export default function SettingsPage() {
                   <input
                     type={showNewPwd ? 'text' : 'password'}
                     className="input pr-10"
-                    placeholder="Mínimo 6 caracteres"
-                    {...passwordForm.register('newPassword', { required: true, minLength: 6 })}
+                    placeholder={`Mínimo ${MINIMO_CARACTERES} caracteres`}
+                    {...passwordForm.register('newPassword', {
+                      required: true,
+                      validate: (v) => problemaNaSenha(v) || true,
+                    })}
                   />
                   <button type="button" onClick={() => setShowNewPwd(!showNewPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-faint">
                     {showNewPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {passwordForm.formState.errors.newPassword?.message
+                  ? <p className="text-xs text-expense mt-1">{passwordForm.formState.errors.newPassword.message}</p>
+                  : <p className="text-xs text-faint mt-1.5">{DICA_DE_SENHA}</p>}
               </div>
               <div>
                 <label className="label">Confirmar Nova Senha</label>

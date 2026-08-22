@@ -22,6 +22,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
+// Segundo app Firebase, NOMEADO, só para o portal do operador (/plataforma).
+//
+// O Firebase Auth guarda a sessão por app: dois apps nomeados têm sessões
+// independentes no mesmo navegador. Com um app só, entrar no /plataforma
+// sobrescrevia a sessão da família — quem estava logado na conta de casa, em
+// outra aba, virava "Operador" no F5 seguinte (aconteceu de verdade em
+// 22/08/2026, com direito a print). O nome 'plataforma' é a chave dessa
+// separação; mesma config, mesmo projeto, sessão própria.
+const appPlataforma = initializeApp(firebaseConfig, 'plataforma');
+export const authPlataforma = getAuth(appPlataforma);
+
 // App Check só liga quando existir um site key do reCAPTCHA v3 (gerado no
 // console — não é automatizável por CLI). Sem VITE_RECAPTCHA_SITE_KEY, o app
 // funciona normalmente sem essa camada extra; o backend (APP_CHECK_ENFORCE)

@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { mascararTelefone, erroDoTelefone, paraApi } from '../../utils/telefone';
+import { problemaNaSenha, forcaDaSenha, DICA_DE_SENHA, MINIMO_CARACTERES } from '../../utils/politicaDeSenha';
 import toast from 'react-hot-toast';
 
 /**
@@ -17,7 +18,7 @@ import toast from 'react-hot-toast';
 const MENSAGENS = {
   'auth/email-already-in-use': 'Esse e-mail já tem conta. Faça login ou recupere a senha.',
   'auth/invalid-email': 'E-mail inválido.',
-  'auth/weak-password': 'Senha fraca. Use no mínimo 6 caracteres.',
+  'auth/weak-password': `Senha fraca. Use no mínimo ${MINIMO_CARACTERES} caracteres, com letras e números.`,
   'auth/wrong-password': 'E-mail ou senha incorretos.',
   'auth/invalid-credential': 'E-mail ou senha incorretos.',
   'auth/user-not-found': 'E-mail ou senha incorretos.',
@@ -28,6 +29,36 @@ const MENSAGENS = {
 
 function traduzir(err, padrao) {
   return MENSAGENS[err?.code] || err?.response?.data?.error || err?.message || padrao;
+}
+
+/**
+ * Barrinha de força da senha, só no cadastro.
+ *
+ * Aparece somente quando a senha já passa na política (o erro tem prioridade,
+ * logo acima na tela): mostrar "Fraca" junto com a mensagem do que está errado
+ * seria dizer a mesma coisa duas vezes. Daqui para cima é só incentivo a
+ * caprichar.
+ */
+function MedidorDeForca({ senha }) {
+  if (!senha) {
+    return <p className="text-xs text-faint mt-1.5">{DICA_DE_SENHA}</p>;
+  }
+
+  const { nivel, rotulo, cor } = forcaDaSenha(senha);
+
+  return (
+    <div className="mt-2">
+      <div className="flex gap-1" aria-hidden="true">
+        {[1, 2, 3, 4].map((passo) => (
+          <span
+            key={passo}
+            className={`h-1 flex-1 rounded-full transition-colors ${passo <= nivel ? cor : 'bg-border'}`}
+          />
+        ))}
+      </div>
+      <p className="text-xs text-muted mt-1" aria-live="polite">Força da senha: {rotulo}</p>
+    </div>
+  );
 }
 
 export default function AuthForm({ initialAba = 'entrar' }) {
@@ -251,11 +282,14 @@ export default function AuthForm({ initialAba = 'entrar' }) {
           <div className="relative">
             <input
               type={mostrarSenha ? 'text' : 'password'}
-              placeholder={ehCadastro ? 'Mínimo 6 caracteres' : 'Sua senha'}
+              placeholder={ehCadastro ? `Mínimo ${MINIMO_CARACTERES} caracteres` : 'Sua senha'}
               className={`input pr-10 ${errors.password ? 'border-expense focus:ring-expense' : ''}`}
               {...register('password', {
                 required: 'Senha obrigatória.',
-                ...(ehCadastro && { minLength: { value: 6, message: 'Mínimo 6 caracteres.' } }),
+                // A política só vale no CADASTRO: no login, quem tem senha
+                // antiga e curta precisa continuar entrando (ver
+                // utils/politicaDeSenha.js).
+                ...(ehCadastro && { validate: (v) => problemaNaSenha(v) || true }),
               })}
             />
             <button
@@ -267,6 +301,7 @@ export default function AuthForm({ initialAba = 'entrar' }) {
             </button>
           </div>
           {errors.password && <p className="text-xs text-expense mt-1">{errors.password.message}</p>}
+          {ehCadastro && !errors.password && <MedidorDeForca senha={watch('password')} />}
         </div>
 
         {/* Confirmação de senha — só no cadastro. Sem isso, um typo na senha só

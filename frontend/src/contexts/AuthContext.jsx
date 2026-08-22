@@ -7,11 +7,13 @@ import {
   signOut,
   onAuthStateChanged,
   updatePassword,
+  sendEmailVerification,
   EmailAuthProvider,
   reauthenticateWithCredential,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import api from '../services/api';
+import { problemaNaSenha } from '../utils/politicaDeSenha';
+import api, { CHAVE_TOKEN } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -26,7 +28,7 @@ export function AuthProvider({ children }) {
         try {
           // Busca o perfil salvo no Firestore
           const token = await firebaseUser.getIdToken();
-          localStorage.setItem('@financeiro:token', token);
+          localStorage.setItem(CHAVE_TOKEN, token);
           const { data } = await api.get('/auth/me');
           setUser({ ...data, firebaseUid: firebaseUser.uid });
         } catch {
@@ -34,7 +36,7 @@ export function AuthProvider({ children }) {
           setUser({ firebaseUid: firebaseUser.uid, email: firebaseUser.email, name: firebaseUser.displayName });
         }
       } else {
-        localStorage.removeItem('@financeiro:token');
+        localStorage.removeItem(CHAVE_TOKEN);
         setUser(null);
       }
       setLoading(false);
@@ -49,7 +51,7 @@ export function AuthProvider({ children }) {
       const firebaseUser = auth.currentUser;
       if (firebaseUser) {
         const token = await firebaseUser.getIdToken(true);
-        localStorage.setItem('@financeiro:token', token);
+        localStorage.setItem(CHAVE_TOKEN, token);
       }
     }, 55 * 60 * 1000); // renova a cada 55 minutos
 
@@ -59,7 +61,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const { user: firebaseUser } = await signInWithEmailAndPassword(auth, email, password);
     const token = await firebaseUser.getIdToken();
-    localStorage.setItem('@financeiro:token', token);
+    localStorage.setItem(CHAVE_TOKEN, token);
 
     try {
       const { data } = await api.get('/auth/me');
@@ -90,13 +92,31 @@ export function AuthProvider({ children }) {
    * tentar de novo.
    */
   const signUp = useCallback(async ({ nome, email, senha, telefone, aceitouTermos }) => {
+    // Última barreira antes de criar a conta. O formulário já valida, mas o
+    // contexto é usado por mais de uma tela — deixar a regra só na tela é
+    // como não ter regra nenhuma.
+    const problema = problemaNaSenha(senha);
+    if (problema) throw new Error(problema);
+
     const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, email, senha);
 
     try {
       await atualizarPerfilDoAuth(firebaseUser, { displayName: nome });
 
+      // Confirmação do e-mail. Sem isso, dava para criar conta com o endereço
+      // de outra pessoa — e é o e-mail que recupera a senha depois. NÃO
+      // bloqueia o uso: o cliente entra e trabalha normalmente; a confirmação
+      // é o que destrava recuperação confiável e avisos importantes.
+      // Falha de envio não derruba o cadastro (a conta já existe e é válida);
+      // o cliente pode reenviar pelas Configurações.
+      try {
+        await sendEmailVerification(firebaseUser);
+      } catch (erroDoEnvio) {
+        console.warn('[Auth] Não consegui enviar a verificação de e-mail:', erroDoEnvio?.code);
+      }
+
       const token = await firebaseUser.getIdToken(true);
-      localStorage.setItem('@financeiro:token', token);
+      localStorage.setItem(CHAVE_TOKEN, token);
 
       const { data } = await api.post('/auth/register', { name: nome, email, telefone, aceitouTermos });
 
@@ -105,7 +125,7 @@ export function AuthProvider({ children }) {
       return profile;
     } catch (err) {
       try { await firebaseUser.delete(); } catch { /* já foi, ou o token expirou */ }
-      localStorage.removeItem('@financeiro:token');
+      localStorage.removeItem(CHAVE_TOKEN);
       throw err;
     }
   }, []);
@@ -121,7 +141,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     await signOut(auth);
-    localStorage.removeItem('@financeiro:token');
+    localStorage.removeItem(CHAVE_TOKEN);
     setUser(null);
   }, []);
 
@@ -152,18 +172,24 @@ export function AuthProvider({ children }) {
       throw err;
     }
 
+    // Mesma política do cadastro (utils/politicaDeSenha.js). Conferida DEPOIS
+    // da reautenticação de propósito: quem não provou ser o dono da conta não
+    // recebe nem dica sobre as regras.
+    const problemaNaNova = problemaNaSenha(newPassword);
+    if (problemaNaNova) throw new Error(problemaNaNova);
+
     try {
       await updatePassword(firebaseUser, newPassword);
     } catch (err) {
       if (err.code === 'auth/weak-password') {
-        throw new Error('Senha fraca. Use no mínimo 6 caracteres.');
+        throw new Error('Senha fraca. Escolha uma senha mais longa.');
       }
       throw err;
     }
 
     // A senha nova invalida o token antigo — renova para não cair no 401.
     const token = await firebaseUser.getIdToken(true);
-    localStorage.setItem('@financeiro:token', token);
+    localStorage.setItem(CHAVE_TOKEN, token);
   }, []);
 
   const updateUser = useCallback((updatedUser) => {
