@@ -290,7 +290,95 @@ function criarServicoDeBackup({
     return !!senhaDeRestauracao;
   }
 
-  return { exportarAgora, listar, buscar, baixar, restaurar, restauracaoConfigurada };
+  /**
+   * O backup de hoje presta? Corpo da conferência diária.
+   *
+   * Existe porque "a rotina rodou" e "existe backup bom" são afirmações
+   * diferentes, e até 22/08/2026 o sistema só sabia responder a primeira. Um
+   * export interrompido, um pedaço perdido pela regra de ciclo de vida ou uma
+   * rotina que parou de disparar são todos silenciosos — descobre-se no dia em
+   * que o backup é a última coisa que restou, que é o pior dia possível para
+   * descobrir.
+   *
+   * Três perguntas, todas baratas:
+   *
+   *   1. o mais novo tem a marca de conclusão?
+   *   2. todos os `output-N` que o próprio export declarou estão no bucket, e
+   *      nenhum com zero byte?
+   *   3. ele é de hoje?
+   *
+   * O que NÃO é feito aqui, de propósito: abrir os arquivos para procurar os
+   * dados dentro. Isso significa baixar o backup inteiro todo dia, e o custo
+   * cresce junto com a base — `tools/verificar-backup.js` faz essa parte sob
+   * demanda, quando alguém quer a garantia mais forte.
+   *
+   * Lança quando algo está errado: quem chama é o `vigiar`, e é ele que
+   * transforma a exceção em aviso na tela do operador.
+   */
+  async function verificarUltimoBackup(quando = agora()) {
+    exigirBucket();
+
+    const backups = await listar();
+    if (!backups.length) throw erro('Nenhum backup no bucket.', 500, 'SEM_BACKUP');
+
+    const maisNovo = backups[0];
+    const problemas = [];
+
+    if (!maisNovo.completo) {
+      problemas.push('o export não terminou (sem .overall_export_metadata)');
+    }
+
+    const idadeEmHoras = (quando.getTime() - new Date(maisNovo.criadoEm).getTime()) / 3_600_000;
+    if (idadeEmHoras > 26) {
+      problemas.push(`o backup mais novo tem ${idadeEmHoras.toFixed(0)}h — a rotina parou de rodar`);
+    }
+
+    const [arquivos] = await bucketDeArquivos.getFiles({ prefix: `${maisNovo.id}/` });
+    const porNome = new Map(arquivos.map((a) => [a.name, a]));
+
+    const vazios = arquivos.filter((a) => Number(a.metadata?.size || 0) === 0);
+    if (vazios.length) {
+      problemas.push(`${vazios.length} arquivo(s) com zero byte`);
+    }
+
+    const caminhoDoMetadado = `${maisNovo.id}/all_namespaces/all_kinds/all_namespaces_all_kinds.export_metadata`;
+    const metadado = porNome.get(caminhoDoMetadado);
+
+    if (!metadado) {
+      problemas.push('o export não tem o metadado que lista as peças');
+    } else {
+      const [conteudo] = await metadado.download();
+      // Os nomes são strings literais dentro do protobuf: extrair por regex
+      // evita carregar um descritor de proto para ler meia dúzia de nomes.
+      const declaradas = [...new Set(conteudo.toString('latin1').match(/output-\d+/g) || [])];
+      const faltando = declaradas.filter(
+        (nome) => !porNome.has(`${maisNovo.id}/all_namespaces/all_kinds/${nome}`),
+      );
+
+      if (faltando.length) {
+        problemas.push(`${faltando.length} de ${declaradas.length} peça(s) declarada(s) sumiram do bucket`);
+      }
+    }
+
+    if (problemas.length) {
+      throw erro(
+        `Backup ${maisNovo.id} não está confiável: ${problemas.join('; ')}.`,
+        500, 'BACKUP_NAO_CONFIAVEL',
+      );
+    }
+
+    return {
+      id: maisNovo.id,
+      arquivos: maisNovo.arquivos,
+      megabytes: maisNovo.megabytes,
+      idadeEmHoras: Number(idadeEmHoras.toFixed(1)),
+    };
+  }
+
+  return {
+    exportarAgora, listar, buscar, baixar, restaurar, restauracaoConfigurada,
+    verificarUltimoBackup,
+  };
 }
 
 let _padrao = null;
@@ -329,5 +417,6 @@ module.exports = {
   buscar: (...a) => servico().buscar(...a),
   baixar: (...a) => servico().baixar(...a),
   restaurar: (...a) => servico().restaurar(...a),
+  verificarUltimoBackup: (...a) => servico().verificarUltimoBackup(...a),
   restauracaoConfigurada: (...a) => servico().restauracaoConfigurada(...a),
 };

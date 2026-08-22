@@ -294,3 +294,74 @@ describe('segredoConfere', () => {
     expect(segredoConfere('curta', 'uma-senha-bem-mais-longa')).toBe(false);
   });
 });
+
+describe('conferência diária de integridade', () => {
+  /** Um export completo: marca de conclusão, metadado que declara as peças, e as peças. */
+  const PASTA = 'diario/2026-08-22T04-00-00-000Z';
+  const CRIADO = '2026-08-22T04:00:01Z';
+
+  const exportInteiro = [
+    { name: `${PASTA}/2026-08-22T04-00-00-000Z.overall_export_metadata`, size: 98, timeCreated: CRIADO },
+    {
+      name: `${PASTA}/all_namespaces/all_kinds/all_namespaces_all_kinds.export_metadata`,
+      size: 301, timeCreated: CRIADO,
+      conteudo: 'output-0 output-1',
+    },
+    { name: `${PASTA}/all_namespaces/all_kinds/output-0`, size: 5000, timeCreated: CRIADO },
+    { name: `${PASTA}/all_namespaces/all_kinds/output-1`, size: 7000, timeCreated: CRIADO },
+  ];
+
+  it('backup inteiro e recente passa', async () => {
+    const { backup } = montar({ arquivos: exportInteiro });
+
+    const r = await backup.verificarUltimoBackup(AGORA);
+
+    expect(r.id).toBe(PASTA);
+    expect(r.arquivos).toBe(4);
+  });
+
+  it('sem a marca de conclusão, reprova — export pela metade não é backup', async () => {
+    const semMarca = exportInteiro.filter((a) => !a.name.endsWith('.overall_export_metadata'));
+    const { backup } = montar({ arquivos: semMarca });
+
+    await expect(backup.verificarUltimoBackup(AGORA))
+      .rejects.toThrow(/não terminou/);
+  });
+
+  it('peça declarada que sumiu do bucket reprova, mesmo com a marca presente', async () => {
+    // Este é o caso que a marca de conclusão NÃO pega: o export terminou bem e
+    // um pedaço se perdeu depois (ciclo de vida mal configurado, exclusão
+    // manual, cópia truncada). Sem esta checagem, o painel mostraria um backup
+    // "completo" que restaura o banco pela metade.
+    const semUmaPeca = exportInteiro.filter((a) => !a.name.endsWith('output-1'));
+    const { backup } = montar({ arquivos: semUmaPeca });
+
+    await expect(backup.verificarUltimoBackup(AGORA))
+      .rejects.toThrow(/peça/);
+  });
+
+  it('arquivo com zero byte reprova', async () => {
+    const comVazio = exportInteiro.map(
+      (a) => (a.name.endsWith('output-1') ? { ...a, size: 0 } : a),
+    );
+    const { backup } = montar({ arquivos: comVazio });
+
+    await expect(backup.verificarUltimoBackup(AGORA))
+      .rejects.toThrow(/zero byte/);
+  });
+
+  it('backup velho reprova — rotina que parou é a falha mais silenciosa de todas', async () => {
+    const antigo = exportInteiro.map((a) => ({ ...a, timeCreated: '2026-08-19T04:00:01Z' }));
+    const { backup } = montar({ arquivos: antigo });
+
+    await expect(backup.verificarUltimoBackup(AGORA))
+      .rejects.toThrow(/parou de rodar/);
+  });
+
+  it('bucket vazio reprova', async () => {
+    const { backup } = montar({ arquivos: [] });
+
+    await expect(backup.verificarUltimoBackup(AGORA))
+      .rejects.toThrow(/Nenhum backup/);
+  });
+});

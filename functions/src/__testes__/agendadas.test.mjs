@@ -58,12 +58,19 @@ describe('executarExclusoes faz as duas tarefas, isoladas', () => {
     expect(corpo).toContain('resolverInativos(');
   });
 
+  it('confere a integridade do backup do dia', () => {
+    // A conferência mora aqui, e não numa agendada nova, porque esta já roda
+    // todo dia uma hora depois do backup. "A rotina rodou" e "existe backup
+    // bom" são afirmações diferentes.
+    expect(corpo).toContain('verificarUltimoBackup(');
+  });
+
   it('cada tarefa é vigiada por si — uma falhando não leva a outra junto', () => {
-    // Duas chamadas independentes a `vigiar`, que engole o erro de cada uma e
+    // Chamadas independentes a `vigiar`, que engole o erro de cada uma e
     // registra o aviso. Numa chamada só (ou num try compartilhado), um erro na
     // LGPD deixaria chamado inativo acumulando na fila sem ninguém entender
-    // por quê.
-    expect((corpo.match(/await vigiar\(/g) || []).length).toBe(2);
+    // por quê — e a conferência do backup não rodaria.
+    expect((corpo.match(/await vigiar\(/g) || []).length).toBe(3);
   });
 });
 

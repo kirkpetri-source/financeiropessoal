@@ -9,7 +9,7 @@ const { executarExclusoesPendentes } = require('./src/services/lgpdService');
 const { resolverInativos } = require('./src/services/chamadosPlataformaService');
 const { gerarLancamentosDoDia } = require('./src/services/recurringBillService');
 const { fecharFaturasDoDia } = require('./src/services/invoiceService');
-const { exportarAgora } = require('./src/services/backupService');
+const { exportarAgora, verificarUltimoBackup } = require('./src/services/backupService');
 const { enviarCopia } = require('./src/services/backupEmailService');
 const { backupDesligado } = require('./src/services/backupDesligado');
 const { vigiar } = require('./src/services/alertaOperacionalService');
@@ -104,6 +104,20 @@ exports.executarExclusoes = onSchedule(
     // outra.
     await vigiar('LGPD', () => executarExclusoesPendentes(new Date()));
     await vigiar('Chamados', () => resolverInativos(new Date()));
+
+    // Confere o backup que saiu 1h atrás. Fica aqui, e não numa agendada
+    // nova, porque a conferência é barata e esta rotina já roda todo dia
+    // depois do backup — o `vigiar` isola as três, então uma falhar não
+    // encosta nas outras.
+    //
+    // "A rotina rodou" e "existe backup bom" são afirmações diferentes, e até
+    // 22/08/2026 o sistema só sabia responder a primeira. Export interrompido,
+    // peça perdida e rotina que parou de disparar são todos silenciosos —
+    // sem isto, descobre-se no dia em que o backup é a última coisa que
+    // restou.
+    if (!backupDesligado()) {
+      await vigiar('BackupIntegridade', () => verificarUltimoBackup(new Date()));
+    }
   }
 );
 
