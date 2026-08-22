@@ -1162,6 +1162,17 @@ revisão passiva da Meta, não bloqueia uso) e `quality_rating: UNKNOWN`
 (normal até trocar mensagem de verdade). **Os 30 dias corridos pra pedir a
 OBA começam a contar a partir de hoje, 12/08/2026.**
 
+**Checagem ao vivo — 22/08/2026 (dia 10 dos 30):** consultada a API real
+com o token do Secret Manager. A WABA foi **APROVADA**
+(`account_review_status: APPROVED` — a análise que estava pendente passou);
+número segue `CONNECTED`; nome de exibição segue `PENDING_REVIEW`;
+`is_official_business_account: false` (esperado até ~11/09). O
+`health_status` diz `can_send_message: BLOCKED`, erro `141006` — **falta a
+forma de pagamento na conta Meta** (o mesmo bloqueio conhecido de 10/08, só
+o Kirk pode resolver, cartão dele). E a Meta avisa que **o app não está
+inscrito no webhook de mensagens** — configurar o webhook + subscrever a
+WABA entra junto com o teste do adapter (item 1 abaixo).
+
 **Falta (retomar exatamente daqui):**
 1. Testar `cloudApiProvider.js` (o código do adapter em `src/canais/`,
    ainda não exercitado) contra a API real usando o token
