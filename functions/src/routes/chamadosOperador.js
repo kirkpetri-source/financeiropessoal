@@ -2,7 +2,7 @@ const express = require('express');
 const authMiddleware = require('../middlewares/auth');
 const apenasOperadorAtivo = require('../middlewares/operador');
 const validate = require('../middlewares/validate');
-const { respostaSchema, encaminharSchema } = require('../validators/chamado');
+const { respostaSchema, encaminharSchema, apenasNumeroDeChamado } = require('../validators/chamado');
 const controller = require('../controllers/chamadoOperadorController');
 
 /**
@@ -37,9 +37,9 @@ router.get('/avisos', controller.avisosNaoEntregues);
 router.post('/avisos/:id/baixa', controller.darBaixaNoAviso);
 
 router.get('/', controller.fila);
-router.get('/:numero', controller.detalhar);
-router.post('/:numero/mensagens', validate(respostaSchema), controller.responder);
-router.post('/:numero/encaminhar', validate(encaminharSchema), controller.encaminhar);
-router.post('/:numero/resolver', controller.resolver);
+router.get('/:numero', apenasNumeroDeChamado, controller.detalhar);
+router.post('/:numero/mensagens', apenasNumeroDeChamado, validate(respostaSchema), controller.responder);
+router.post('/:numero/encaminhar', apenasNumeroDeChamado, validate(encaminharSchema), controller.encaminhar);
+router.post('/:numero/resolver', apenasNumeroDeChamado, controller.resolver);
 
 module.exports = router;

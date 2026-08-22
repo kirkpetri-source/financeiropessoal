@@ -78,4 +78,22 @@ const encaminharSchema = z.object({
     .min(1, 'Escolha para quem encaminhar.'),
 }).strict();
 
-module.exports = { aberturaSchema, respostaSchema, uploadSchema, encaminharSchema };
+/**
+ * O `:numero` da rota vira ID de documento no Firestore. Se ele tiver barra, o
+ * SDK recusa com "documentPath must point to a document" — e isso sai como 500
+ * com mensagem interna, quando a resposta certa é 404.
+ *
+ * Não é travessia: o Firestore não resolve `..` e nenhum caminho forjado chegou
+ * a outra coleção (sondado contra o banco real). É a resposta que está errada,
+ * não o acesso. Um inteiro positivo é a única coisa que pode ser um número de
+ * chamado, então tudo que não for isso é "não encontrado".
+ */
+function apenasNumeroDeChamado(req, res, next) {
+  if (/^[1-9]\d{0,14}$/.test(String(req.params.numero || ''))) return next();
+
+  return res.status(404).json({ error: 'Chamado não encontrado.' });
+}
+
+module.exports = {
+  aberturaSchema, respostaSchema, uploadSchema, encaminharSchema, apenasNumeroDeChamado,
+};
