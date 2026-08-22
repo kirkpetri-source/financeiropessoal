@@ -10,6 +10,7 @@ const { resolverInativos } = require('./src/services/chamadosPlataformaService')
 const { gerarLancamentosDoDia } = require('./src/services/recurringBillService');
 const { fecharFaturasDoDia } = require('./src/services/invoiceService');
 const { exportarAgora } = require('./src/services/backupService');
+const { enviarCopia } = require('./src/services/backupEmailService');
 const { vigiar } = require('./src/services/alertaOperacionalService');
 
 // Chave da IA (Gemini) usada no fallback do parser de mensagens financeiras.
@@ -41,6 +42,13 @@ const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
 //   firebase functions:secrets:set BACKUP_RESTORE_SENHA
 const BACKUP_RESTORE_SENHA = defineSecret('BACKUP_RESTORE_SENHA');
 
+// Senha que criptografa o anexo da cópia semanal por e-mail. SEPARADA da de
+// restauração de propósito: uma protege um arquivo em repouso numa caixa de
+// e-mail, a outra autoriza escrita no banco. Se o anexo vazar e a senha for a
+// mesma, quem abrir o zip também poderia restaurar.
+//   firebase functions:secrets:set BACKUP_ZIP_SENHA
+const BACKUP_ZIP_SENHA = defineSecret('BACKUP_ZIP_SENHA');
+
 const SEGREDOS = [
   GEMINI_API_KEY,
   EVOLUTION_WEBHOOK_TOKEN,
@@ -48,6 +56,7 @@ const SEGREDOS = [
   MERCADOPAGO_WEBHOOK_SECRET,
   EVOLUTION_API_KEY,
   BACKUP_RESTORE_SENHA,
+  BACKUP_ZIP_SENHA,
 ];
 
 // API principal — todas as rotas sob /api (o webhook usa a IA no fallback)
@@ -126,6 +135,25 @@ exports.fecharFaturas = onSchedule(
 //
 // Sem BACKUP_BUCKET no ambiente, o serviço lança e o `vigiar` transforma isso
 // num aviso visível — backup desligado precisa doer, não passar batido.
+// Cópia semanal para fora do sistema, por e-mail (pedido do Kirk em
+// 22/08/2026). Segunda-feira às 05:00, depois do backup diário das 02:00 —
+// assim ela leva o backup do próprio dia, e não o da véspera.
+//
+// O anexo vai criptografado (ver src/services/backupEmailService.js). Sem
+// BACKUP_EMAIL_DESTINO ou BACKUP_ZIP_SENHA, o serviço recusa e o `vigiar`
+// transforma isso num aviso visível — cópia de segurança que silenciosamente
+// parou de sair é pior que não ter cópia nenhuma.
+exports.copiaSemanalPorEmail = onSchedule(
+  {
+    schedule: 'every monday 05:00', timeZone: 'America/Sao_Paulo',
+    region: 'southamerica-east1', timeoutSeconds: 300, memory: '512MiB',
+    secrets: SEGREDOS,
+  },
+  async () => {
+    await vigiar('CopiaSemanal', () => enviarCopia());
+  }
+);
+
 exports.backupDiario = onSchedule(
   { schedule: 'every day 02:00', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 120, memory: '256MiB' },
   async () => {

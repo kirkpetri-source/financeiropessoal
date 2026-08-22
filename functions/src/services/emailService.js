@@ -29,7 +29,7 @@ function criarEmailService({ chave, remetente, nomeDoRemetente = 'RevelaCash', h
    * usam a versão em texto, e mensagem só-HTML pontua pior nos filtros de spam.
    * O Resend monta o multipart sozinho quando recebe os dois.
    */
-  async function enviar({ para, assunto, texto, html }) {
+  async function enviar({ para, assunto, texto, html, anexos }) {
     if (!ligado) return { enviado: false, motivo: 'desligado' };
     if (!para) return { enviado: false, motivo: 'sem-destinatario' };
 
@@ -46,6 +46,10 @@ function criarEmailService({ chave, remetente, nomeDoRemetente = 'RevelaCash', h
           subject: assunto,
           text: texto,
           ...(html ? { html } : {}),
+          // `content` em base64, como o Resend espera. Só entra na chamada
+          // quando existe: mandar `attachments: []` faz alguns provedores
+          // tratarem a mensagem como multipart vazio.
+          ...(anexos?.length ? { attachments: anexos } : {}),
         }),
       });
 
