@@ -23,14 +23,13 @@ function criarEmailService({ chave, remetente, nomeDoRemetente = 'RevelaCash', h
   const ligado = !!chave && !!remetente;
 
   /**
-   * Manda um e-mail de texto puro.
+   * Manda um e-mail. `texto` sempre; `html` quando houver.
    *
-   * Texto puro e não HTML de propósito: aviso de suporte não carrega conteúdo
-   * do chamado (é decisão de produto), então não há nada para formatar — e
-   * e-mail de texto não tem imagem remota rastreando abertura nem CSS quebrado
-   * em cliente de e-mail antigo.
+   * Os DOIS juntos, e não só o HTML: cliente de e-mail antigo e leitor de tela
+   * usam a versão em texto, e mensagem só-HTML pontua pior nos filtros de spam.
+   * O Resend monta o multipart sozinho quando recebe os dois.
    */
-  async function enviar({ para, assunto, texto }) {
+  async function enviar({ para, assunto, texto, html }) {
     if (!ligado) return { enviado: false, motivo: 'desligado' };
     if (!para) return { enviado: false, motivo: 'sem-destinatario' };
 
@@ -46,6 +45,7 @@ function criarEmailService({ chave, remetente, nomeDoRemetente = 'RevelaCash', h
           to: [para],
           subject: assunto,
           text: texto,
+          ...(html ? { html } : {}),
         }),
       });
 

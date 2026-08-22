@@ -58,13 +58,20 @@ function montar(ajustes = {}) {
 
 beforeEach(() => { servico = montar(); });
 
-/** Tudo que saiu, em texto, para varrer atrás de vazamento. */
+/**
+ * Tudo que saiu, para varrer atrás de vazamento.
+ *
+ * `e.html` está aqui porque a primeira versão desta função esquecia dele: os
+ * avisos ganharam corpo em HTML e a asserção de privacidade continuou olhando
+ * só o texto. Um vazamento no HTML — o corpo que a pessoa realmente lê —
+ * passaria com os 30 testes verdes.
+ */
 function tudoQueFoiEnviado() {
   return [
-    ...enviados.flatMap((e) => [e.assunto, e.texto, e.para]),
+    ...enviados.flatMap((e) => [e.assunto, e.texto, e.html, e.para]),
     ...avisosAoOperador.map((a) => a.texto),
     ...whatsappsDaFamilia.map((w) => w.texto),
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 describe('chamadoNovo — avisa a equipe', () => {
@@ -207,6 +214,17 @@ describe('PRIVACIDADE — nenhum aviso carrega conteúdo', () => {
     it(`${nome} leva o número do chamado`, async () => {
       await disparar(servico);
       expect(tudoQueFoiEnviado()).toContain('#42');
+    });
+
+    it(`${nome} manda HTML e texto puro juntos`, async () => {
+      await disparar(servico);
+
+      // Só-HTML pontua pior no filtro de spam, e leitor de tela usa o texto.
+      for (const e of enviados) {
+        expect(e.html).toContain('<!doctype html>');
+        expect(e.texto).toBeTruthy();
+        expect(e.texto).not.toContain('<');
+      }
     });
   }
 });

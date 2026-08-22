@@ -18,6 +18,8 @@
  * E nada aqui roda dentro de transação: persiste primeiro, notifica depois.
  */
 
+const { montarAviso } = require('../chamados/emailDeAviso');
+
 const TIPOS = {
   CHAMADO_NOVO: 'CHAMADO_NOVO',
   SUPORTE_RESPONDEU: 'SUPORTE_RESPONDEU',
@@ -51,8 +53,8 @@ function criarNotificacaoChamadoService({
     }
   }
 
-  async function porEmail({ tipo, numero, householdId, para, assunto, texto }) {
-    const r = await emailService.enviar({ para, assunto, texto });
+  async function porEmail({ tipo, numero, householdId, para, assunto, texto, html }) {
+    const r = await emailService.enviar({ para, assunto, texto, html });
 
     if (!r.enviado && r.motivo !== 'desligado') {
       await anotar({
@@ -126,16 +128,28 @@ function criarNotificacaoChamadoService({
   async function chamadoNovo({ numero, householdId }) {
     const tipo = TIPOS.CHAMADO_NOVO;
 
+    // O WhatsApp fica em texto curto — lá não existe HTML. O e-mail vai com a
+    // identidade visual, montada pelo mesmo template dos quatro avisos.
     const texto = [
       `Chamado #${numero} aberto no RevelaCash.`,
       '',
       `Abra o painel para ler e responder: ${linkDoOperador()}`,
     ].join('\n');
 
+    const aviso = montarAviso({
+      numero,
+      assunto: `Chamado #${numero} aberto`,
+      titulo: 'Um cliente abriu um chamado.',
+      explicacao: 'Abra o painel para ler e responder.',
+      link: linkDoOperador(),
+      rotuloDoBotao: 'Abrir o painel',
+      paraOperador: true,
+    });
+
     await Promise.all([
       porEmail({
         tipo, numero, householdId, para: emailDaEquipe,
-        assunto: `Chamado #${numero} aberto`, texto,
+        assunto: aviso.assunto, texto: aviso.texto, html: aviso.html,
       }),
       porWhatsappDoOperador({ tipo, numero, householdId, texto }),
     ]);
@@ -151,10 +165,20 @@ function criarNotificacaoChamadoService({
       `Abra o painel para ler: ${linkDoOperador()}`,
     ].join('\n');
 
+    const aviso = montarAviso({
+      numero,
+      assunto: `Chamado #${numero} — nova resposta do cliente`,
+      titulo: 'O cliente respondeu.',
+      explicacao: 'Abra o painel para ler a resposta e continuar o atendimento.',
+      link: linkDoOperador(),
+      rotuloDoBotao: 'Abrir o painel',
+      paraOperador: true,
+    });
+
     await Promise.all([
       porEmail({
         tipo, numero, householdId, para: emailDaEquipe,
-        assunto: `Chamado #${numero} — nova resposta do cliente`, texto,
+        assunto: aviso.assunto, texto: aviso.texto, html: aviso.html,
       }),
       porWhatsappDoOperador({ tipo, numero, householdId, texto }),
     ]);
@@ -172,12 +196,22 @@ function criarNotificacaoChamadoService({
 
     const email = await buscarEmailDoDono(ownerId).catch(() => null);
 
+    const aviso = montarAviso({
+      numero,
+      assunto: `Seu chamado #${numero} teve resposta`,
+      titulo: 'O suporte respondeu você.',
+      explicacao: 'Abra o chamado para ler a resposta e continuar a conversa.',
+      link: linkDoCliente(numero),
+      rotuloDoBotao: 'Ver a resposta',
+      paraOperador: false,
+    });
+
     await Promise.all([
       porWhatsappDaFamilia({ tipo, numero, householdId, texto }),
       email
         ? porEmail({
           tipo, numero, householdId, para: email,
-          assunto: `Seu chamado #${numero} teve resposta`, texto,
+          assunto: aviso.assunto, texto: aviso.texto, html: aviso.html,
         })
         : Promise.resolve(),
     ]);
@@ -197,15 +231,19 @@ function criarNotificacaoChamadoService({
 
     const destino = para?.email || emailDaEquipe;
 
-    const texto = [
-      `O chamado #${numero} foi encaminhado para ${para?.nome || 'outro operador'}.`,
-      '',
-      `Abra o painel: ${linkDoOperador()}`,
-    ].join('\n');
+    const aviso = montarAviso({
+      numero,
+      assunto: `Chamado #${numero} encaminhado`,
+      titulo: `Encaminhado para ${para?.nome || 'outro operador'}.`,
+      explicacao: 'Abra o painel para assumir o atendimento.',
+      link: linkDoOperador(),
+      rotuloDoBotao: 'Abrir o painel',
+      paraOperador: true,
+    });
 
     await porEmail({
       tipo, numero, householdId, para: destino,
-      assunto: `Chamado #${numero} encaminhado`, texto,
+      assunto: aviso.assunto, texto: aviso.texto, html: aviso.html,
     });
   }
 
