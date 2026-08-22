@@ -162,7 +162,49 @@ A agendada roda sozinha às 02:00. Para disparar fora de hora sem esperar:
 `gcloud scheduler jobs run firebase-schedule-backupDiario-southamerica-east1
 --location=southamerica-east1` (ou o botão em `/plataforma` → Sistema).
 
-**Restaurar** é `gcloud firestore import gs://revelacash-backups/<pasta>`.
+**Restaurar** é `gcloud firestore import gs://revelacash-backups/<pasta>` — ou
+pelo painel, ver abaixo.
+
+### O painel de backup (22/08/2026, tarde)
+
+A primeira versão da tela mostrava só o backup feito NA SESSÃO ATUAL, em
+estado do React: recarregar apagava a única pista de que ele existia. Agora a
+lista vem do bucket, com tamanho, nº de arquivos e selo **íntegro/incompleto**
+— este último tirado do `.overall_export_metadata`, que o Firestore só grava
+quando o export termina. Export interrompido exibido como válido seria a pior
+mentira que esta tela poderia contar.
+
+**Retenção em duas gavetas**, e é isso que dá histórico longo sem lixo:
+`diario/` (todo dia, 30 dias de retenção) e `mensal/` (dia 1, 365 dias). São
+~42 cópias e ~130 MB, por menos de R$ 0,02/mês. A regra de ciclo de vida do
+bucket é por prefixo (`matchesPrefix`).
+
+**Download** em `.zip` pela API, autenticado — 3,11 MB viram 0,78 MB. Serve
+para redundância FORA do Google, que é o único tipo que sobrevive a um
+problema na conta. Teto de 150 MB porque passa pela memória da function;
+acima disso a resposta é `gcloud storage cp -r`.
+
+**Restauração** com três barreiras: senha própria (segredo
+`BACKUP_RESTORE_SENHA`, separado do login, conferida em tempo constante),
+repetição da id do backup, e um **backup de segurança do estado atual feito
+antes de qualquer escrita**. Backup incompleto não é restaurável. Sem o
+segredo, a função recusa tudo — botão de restaurar sem segunda senha seria
+pior que não ter botão.
+
+**O import do Firestore é uma FUSÃO, não uma substituição** — e a tela diz
+isso em destaque. Documento do backup sobrescreve o atual; documento criado
+DEPOIS do backup continua onde está. O banco não volta no tempo, ele vira a
+soma dos dois. Quem clicar esperando "desfazer" precisa saber antes.
+
+Tudo isso gera rastro em `adminAuditLog` (`backup_manual`, `backup_baixado`,
+`restauracao_tentada/executada/recusada`) e aparece na própria aba.
+
+**Bug achado na validação contra o bucket real:** o export gravado na raiz
+(antes das gavetas) aparecia como DOIS backups — um com o metadado, outro com
+os dados. O agrupamento contava segmentos do caminho, e os dois layouts têm
+profundidades diferentes. Corrigido em `raizDoExport`, que deriva a raiz da
+ESTRUTURA que o Firestore escreve (`<raiz>/all_namespaces/...`), com teste
+que reproduz o caso.
 
 **HOMOLOGAÇÃO SEGUE SEM ESSA PERMISSÃO** — o bucket
 `revelacash-staging-backups` existe e o `BACKUP_BUCKET` está no `.env`, mas a

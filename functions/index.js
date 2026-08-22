@@ -34,12 +34,20 @@ const MERCADOPAGO_WEBHOOK_SECRET = defineSecret('MERCADOPAGO_WEBHOOK_SECRET');
 // firebase functions:secrets:set EVOLUTION_API_KEY
 const EVOLUTION_API_KEY = defineSecret('EVOLUTION_API_KEY');
 
+// Senha da RESTAURAÇÃO de backup — separada do login do operador de propósito.
+// Sem ela configurada, `backupService.restaurar` recusa qualquer tentativa: um
+// botão que escreve por cima do banco de 13 famílias não pode depender só de
+// estar logado. Criada com:
+//   firebase functions:secrets:set BACKUP_RESTORE_SENHA
+const BACKUP_RESTORE_SENHA = defineSecret('BACKUP_RESTORE_SENHA');
+
 const SEGREDOS = [
   GEMINI_API_KEY,
   EVOLUTION_WEBHOOK_TOKEN,
   MERCADOPAGO_ACCESS_TOKEN,
   MERCADOPAGO_WEBHOOK_SECRET,
   EVOLUTION_API_KEY,
+  BACKUP_RESTORE_SENHA,
 ];
 
 // API principal — todas as rotas sob /api (o webhook usa a IA no fallback)
