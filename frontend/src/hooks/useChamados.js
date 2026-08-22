@@ -116,26 +116,21 @@ export function useChamados() {
   }, [subirAnexos]);
 
   /**
-   * Baixa o anexo pela API, autenticado.
+   * Traz o anexo pela API, autenticado, como Blob.
    *
    * Não existe URL pública nem link assinado: o arquivo vem pelo mesmo Bearer
-   * de todas as chamadas, e vira um blob local só para o navegador exibir.
+   * de todas as chamadas. Quem decide o que fazer com o blob — exibir num
+   * visualizador ou salvar — é a tela; aqui só se busca.
    */
-  const baixarAnexo = useCallback(async (numero, anexo) => {
-    const resposta = await api.get(`/suporte/chamados/${numero}/anexos/${anexo.id}`, {
+  const carregarAnexo = useCallback(async (numero, anexo) => {
+    const { data } = await api.get(`/suporte/chamados/${numero}/anexos/${anexo.id}`, {
       responseType: 'blob',
     });
-
-    const url = URL.createObjectURL(resposta.data);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = anexo.nomeOriginal || 'anexo';
-    link.click();
-    URL.revokeObjectURL(url);
+    return data;
   }, []);
 
   return {
-    chamados, carregando, listar, buscar, abrir, responder, baixarAnexo, subirAnexos,
+    chamados, carregando, listar, buscar, abrir, responder, carregarAnexo, subirAnexos,
   };
 }
 

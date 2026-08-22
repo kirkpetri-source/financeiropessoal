@@ -15,7 +15,7 @@ import { formatDate } from '../utils/formatters';
  */
 export default function ChamadoPage() {
   const { numero } = useParams();
-  const { buscar, responder, baixarAnexo } = useChamados();
+  const { buscar, responder, carregarAnexo } = useChamados();
 
   const [chamado, setChamado] = useState(null);
   const [carregando, setCarregando] = useState(true);
@@ -80,7 +80,7 @@ export default function ChamadoPage() {
         </div>
       </div>
 
-      <Conversa mensagens={chamado.mensagens} numero={chamado.numero} onBaixar={baixarAnexo} />
+      <Conversa mensagens={chamado.mensagens} numero={chamado.numero} onCarregar={carregarAnexo} />
 
       {chamado.status === 'RESOLVIDO' && <AvisoDeResolvido chamado={chamado} />}
 
@@ -105,14 +105,8 @@ function AvisoDeResolvido({ chamado }) {
   );
 }
 
-function Conversa({ mensagens, numero, onBaixar }) {
-  async function baixar(anexo) {
-    try {
-      await onBaixar(numero, anexo);
-    } catch {
-      toast.error('Não consegui baixar este anexo.');
-    }
-  }
+function Conversa({ mensagens, numero, onCarregar }) {
+  const carregar = (anexo) => onCarregar(numero, anexo);
 
   return (
     <div className="space-y-3">
@@ -139,7 +133,7 @@ function Conversa({ mensagens, numero, onBaixar }) {
                   {doSuporte ? (mensagem.autorNome || 'Suporte') : 'Você'} · {formatDate(mensagem.em)}
                 </p>
                 <p className="text-sm text-ink whitespace-pre-wrap break-words">{mensagem.texto}</p>
-                <AnexosDaMensagem anexos={mensagem.anexos} onBaixar={baixar} />
+                <AnexosDaMensagem anexos={mensagem.anexos} carregar={carregar} />
               </div>
             </div>
           </div>

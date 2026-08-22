@@ -441,25 +441,15 @@ function Detalhe({ numero, operadores, onMudou, onFechar }) {
 
 function Conversa({ mensagens, numero }) {
   /**
-   * Baixa autenticado, igual ao lado cliente: sem URL pública nem link
-   * assinado, o arquivo vem pelo Bearer do operador e vira blob local.
+   * Traz o anexo autenticado, igual ao lado do cliente. Quem exibe é o
+   * `AnexosDaMensagem` — imagem abre num visualizador, PDF em aba nova.
    */
-  async function baixar(anexo) {
-    try {
-      const resposta = await api.get(`/plataforma/chamados/${numero}/anexos/${anexo.id}`, {
-        responseType: 'blob',
-      });
-
-      const url = URL.createObjectURL(resposta.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = anexo.nomeOriginal || 'anexo';
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error('Não consegui baixar este anexo.');
-    }
-  }
+  const carregar = async (anexo) => {
+    const { data } = await api.get(`/plataforma/chamados/${numero}/anexos/${anexo.id}`, {
+      responseType: 'blob',
+    });
+    return data;
+  };
 
   return (
     <div className="space-y-2.5">
@@ -485,7 +475,7 @@ function Conversa({ mensagens, numero }) {
                   {mensagem.em ? new Date(mensagem.em).toLocaleString('pt-BR') : ''}
                 </p>
                 <p className="text-sm text-ink whitespace-pre-wrap break-words">{mensagem.texto}</p>
-                <AnexosDaMensagem anexos={mensagem.anexos} onBaixar={baixar} />
+                <AnexosDaMensagem anexos={mensagem.anexos} carregar={carregar} />
               </div>
             </div>
           </div>

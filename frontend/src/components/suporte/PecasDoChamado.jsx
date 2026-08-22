@@ -1,4 +1,6 @@
-import { Paperclip, X, FileText, Image as Icone } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Paperclip, X, FileText, Image as Icone, Download, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { STATUS, LIMITE_ANEXOS, problemaNoArquivo } from '../../hooks/useChamados';
 
 /** Etiqueta de status. Mesmos tons do resto do painel. */
@@ -31,29 +33,148 @@ function tamanhoLegivel(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** Anexos já gravados numa mensagem, clicáveis para baixar. */
-export function AnexosDaMensagem({ anexos, onBaixar }) {
+/**
+ * Anexos de uma mensagem, clicáveis para VER.
+ *
+ * Abriam forçando download, e quem só queria conferir um print acabava com
+ * arquivo na pasta de downloads a cada clique (apontado pelo Kirk em
+ * 22/08/2026). Agora imagem abre num visualizador aqui mesmo e PDF vai para
+ * uma aba nova, que é onde o navegador já sabe exibi-lo. Quem quiser guardar
+ * usa o botão de baixar do visualizador — ou o menu do botão direito, que
+ * funciona porque a imagem é uma <img> de verdade.
+ *
+ * O backend continua mandando `Content-Disposition: attachment` e `nosniff`,
+ * e isso NÃO muda: o arquivo chega como blob e é a tela que decide exibi-lo.
+ * Trocar o cabeçalho para `inline` faria a URL da API abrir conteúdo enviado
+ * por cliente direto no navegador, que é justamente o que aquele cabeçalho
+ * existe para impedir.
+ *
+ * `carregar(anexo)` devolve um Blob — quem chama é que sabe se a rota é a do
+ * cliente ou a do operador.
+ */
+export function AnexosDaMensagem({ anexos, carregar }) {
+  const [abrindo, setAbrindo] = useState(null);
+  const [vendo, setVendo] = useState(null);
+
+  // Todo objectURL criado precisa ser liberado, senão o blob fica na memória
+  // da aba até ela ser fechada — numa conversa com vários anexos isso soma.
+  useEffect(() => () => { if (vendo?.url) URL.revokeObjectURL(vendo.url); }, [vendo]);
+
   if (!anexos?.length) return null;
 
-  return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {anexos.map((anexo) => {
-        const Simbolo = anexo.mimeType === 'application/pdf' ? FileText : Icone;
+  async function abrir(anexo) {
+    setAbrindo(anexo.id);
+    try {
+      const blob = await carregar(anexo);
+      const url = URL.createObjectURL(blob);
 
-        return (
-          <button
-            key={anexo.id}
-            type="button"
-            onClick={() => onBaixar(anexo)}
-            className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg
-                       border border-border bg-white hover:bg-surface-alt transition-colors"
-          >
-            <Simbolo className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-            <span className="text-ink max-w-[180px] truncate">{anexo.nomeOriginal}</span>
-            <span className="text-faint">{tamanhoLegivel(anexo.tamanho)}</span>
-          </button>
-        );
-      })}
+      if (anexo.mimeType === 'application/pdf') {
+        // PDF o navegador já exibe sozinho, e num visualizador melhor que
+        // qualquer um que eu montasse aqui.
+        window.open(url, '_blank', 'noopener');
+        // Sem revoke imediato: a aba nova ainda está lendo a URL.
+        return;
+      }
+
+      setVendo({ anexo, url });
+    } catch {
+      toast.error('Não consegui abrir este anexo.');
+    } finally {
+      setAbrindo(null);
+    }
+  }
+
+  function fechar() {
+    if (vendo?.url) URL.revokeObjectURL(vendo.url);
+    setVendo(null);
+  }
+
+  return (
+    <>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {anexos.map((anexo) => {
+          const Simbolo = anexo.mimeType === 'application/pdf' ? FileText : Icone;
+          const carregando = abrindo === anexo.id;
+
+          return (
+            <button
+              key={anexo.id}
+              type="button"
+              onClick={() => abrir(anexo)}
+              disabled={carregando}
+              title={anexo.mimeType === 'application/pdf' ? 'Abrir em nova aba' : 'Visualizar'}
+              className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg
+                         border border-border bg-white hover:bg-surface-alt transition-colors"
+            >
+              {carregando
+                ? <Loader2 className="w-3.5 h-3.5 text-muted flex-shrink-0 animate-spin" />
+                : <Simbolo className="w-3.5 h-3.5 text-muted flex-shrink-0" />}
+              <span className="text-ink max-w-[180px] truncate">{anexo.nomeOriginal}</span>
+              <span className="text-faint">{tamanhoLegivel(anexo.tamanho)}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {vendo && <Visualizador anexo={vendo.anexo} url={vendo.url} onFechar={fechar} />}
+    </>
+  );
+}
+
+/** Imagem em tamanho grande, sobre o resto da tela. */
+function Visualizador({ anexo, url, onFechar }) {
+  // Esc fecha: é o reflexo de quem abriu uma imagem em qualquer lugar.
+  useEffect(() => {
+    const aoTeclar = (e) => { if (e.key === 'Escape') onFechar(); };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [onFechar]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-ink/80 p-4"
+      onClick={onFechar}
+      role="dialog"
+      aria-label={anexo.nomeOriginal}
+    >
+      <div
+        className="flex items-center gap-3 text-white text-sm mb-3 flex-shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="truncate flex-1">{anexo.nomeOriginal}</span>
+        <span className="text-white/60 text-xs">{tamanhoLegivel(anexo.tamanho)}</span>
+
+        <a
+          href={url}
+          download={anexo.nomeOriginal || 'anexo'}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg
+                     bg-white/10 hover:bg-white/20 transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" /> Baixar
+        </a>
+
+        <button
+          type="button"
+          onClick={onFechar}
+          className="p-1 rounded-lg hover:bg-white/20 transition-colors"
+          aria-label="Fechar"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* `img` de verdade, e não background: é o que faz o botão direito
+          oferecer "Salvar imagem como" e "Copiar imagem". */}
+      <img
+        src={url}
+        alt={anexo.nomeOriginal}
+        onClick={(e) => e.stopPropagation()}
+        className="flex-1 min-h-0 object-contain rounded-lg"
+      />
+
+      <p className="text-center text-white/50 text-xs mt-3 flex-shrink-0">
+        Clique fora ou aperte Esc para fechar
+      </p>
     </div>
   );
 }
