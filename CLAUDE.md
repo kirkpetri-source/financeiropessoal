@@ -10,7 +10,7 @@ e não podem ser perdidos.** Eles são a família #1 e o primeiro teste de tudo.
 
 | Camada | O que é |
 |---|---|
-| Frontend | React 18 + Vite + Tailwind + Recharts → Vercel (projeto `financeiropessoal`) |
+| Frontend | React 18 + Vite 7 + Tailwind + Recharts → Vercel (projeto `financeiropessoal`). SDK do Firebase 12, react-router 7 (atualizados em 22/08/2026, `npm audit` zerado) |
 | Backend | Express dentro de Cloud Functions v2, região `southamerica-east1` |
 | Banco | Firestore (projeto `financeiropessoal-29b32`) |
 | Auth | Firebase Auth (ID token no header, verificado pelo Admin SDK) |
@@ -26,7 +26,7 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 997 testes (vitest)
+npm test                 # 1.348 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed              # só categorias e formas de pagamento padrão
@@ -39,6 +39,7 @@ node tools/testar-canal-ponta-a-ponta.js <id> --manter
 node tools/testar-subcategoria-ponta-a-ponta.js      # CRUD + lançamento com subcategoria, família descartável
 node tools/testar-importacao-ponta-a-ponta.js        # extrato: janela retroativa + trava de duplicidade, família descartável
 node tools/testar-notificacao-cadastro.js            # simula o aviso de cadastro novo; --enviar manda de verdade
+node tools/diagnostico-cloud-api.js                  # SO LEITURA: o que falta na conta da Meta, e de quem e a vez
 
 # Assistente de IA (Nina) — todos exigem ALVO=staging, recusam rodar em producao
 ALVO=staging node tools/testar-consultor-ponta-a-ponta.js   # conversa real com o Gemini, familia descartavel
@@ -392,6 +393,16 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     credencial do `initializeApp` e procura as "default credentials" do
     ambiente: passe `keyFilename: caminhoDaCredencial`, também exportado de lá.
 
+29. **A central de ajuda (`/ajuda`) é PÚBLICA e o conteúdo dela é dado, não
+    tela.** Os 24 artigos moram em `frontend/src/conteudo/ajuda.js`; a página
+    só sabe desenhar blocos. Escrever artigo novo é acrescentar um objeto —
+    criar mais uma página quebraria a busca (que varre o corpo dos artigos) e
+    o "veja também". E nada ali pode descrever comportamento que o sistema
+    não tem: documentação que promete o que o produto não faz gera o chamado
+    que a página existe para evitar. Ao mudar comando do WhatsApp, limite da
+    assistente, janela da importação ou regra de cobrança, o artigo
+    correspondente muda junto.
+
 ## Armadilhas já pagas (não repetir)
 
 - **Preview da Vercel não fala com a API de produção, e nunca vai falar.**
@@ -460,6 +471,14 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
   proteção, mas o envio já estava barrado por código. A regra: não desabilitar
   campo de texto em fluxo de conversa; se desabilitar, devolver o foco quando
   reabilitar.
+- **Aconteceu de novo em 22/08/2026, com o backup de homologação.** O ESTADO
+  dizia "a agendada falha lá todo dia e gera aviso"; `notificacoesNaoEntregues`
+  estava VAZIA nos dois ambientes, porque `backupDiario` e
+  `copiaSemanalPorEmail` nem tinham sido deployadas em homologação. A correção
+  continuou valendo (o deploy da sessão criou as duas lá, e sem a permissão de
+  IAM elas começariam a falhar no dia seguinte), mas a premissa era falsa —
+  duas linhas de leitura do banco separam "o problema existe" de "o problema
+  ia existir amanhã".
 - **Diagnóstico escrito numa sessão anterior pode estar errado — conferir
   contra o banco ANTES de aplicar a correção prescrita.** O `ESTADO.md`
   registrava que a duplicidade de mensagens vinha de corrida entre

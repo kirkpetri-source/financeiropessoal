@@ -2,87 +2,153 @@
 
 ## RETOMAR AQUI — a resposta para "onde paramos?"
 
-> Última sessão: **22/08/2026**, longa. Tudo abaixo está **em produção e
-> verificado**, salvo onde diz o contrário.
+> Última sessão: **22/08/2026**, segunda parte. O que está **em produção** e o
+> que está **só em homologação** vem separado abaixo — não misturar.
 
-**Em uma frase:** a etapa 2 da Fase 4 (papéis de operador) foi CONCLUÍDA junto
-com uma varredura de segurança, backup automático completo e a reescrita do
-jurídico. A próxima etapa em aberto é a **etapa 3 — central de ajuda**, mas há
-duas dívidas técnicas com prioridade sobre ela (ver "O que está em aberto").
+**Em uma frase:** as cinco pendências que restavam da sessão anterior foram
+fechadas — SDK do frontend atualizado, central de ajuda escrita, rascunhos de
+importação limpos, backup de homologação silenciado e a Cloud API
+diagnosticada. **Falta o Kirk revisar a central de ajuda e autorizar a subida
+para produção.**
 
-### O que foi entregue em 22/08/2026
+### Onde cada coisa está agora
 
-**Bug crítico corrigido — sessões misturadas.** Entrar no `/plataforma` fazia
-a aba da família exibir "Olá, Operador" no F5 seguinte; os dois lados dividiam
-a mesma sessão do Firebase Auth. O portal agora usa um app Firebase **nomeado**
-(`authPlataforma`) com token em chave própria do localStorage, e
-`services/api.js` escolhe a chave pela URL. Provado no navegador com as duas
-contas abertas lado a lado.
+| Entrega | Homologação | Produção |
+|---|---|---|
+| Central de ajuda `/ajuda` (24 artigos) | sim | **não — esperando aprovação** |
+| Assistente apontando para `/ajuda` | sim | **não** |
+| Limpeza de rascunho abandonado | sim | **não** |
+| `BACKUP_ATIVO=false` | sim | não se aplica (produção faz backup) |
+| SDK do frontend atualizado | — | **não — vai junto com o push** |
+| Os 2 rascunhos velhos do banco | — | **apagados, já feito** |
 
-**Senha forte + verificação de e-mail.** `utils/politicaDeSenha.js`: mínimo 10
-caracteres com letra e número, lista do que é óbvio demais, medidor de força.
-Vale no cadastro e na troca, **nunca no login**. O cadastro dispara
-`sendEmailVerification` (não bloqueia o uso).
+### 1. SDK do frontend atualizado — `npm audit` zerado
 
-**CRM do `/plataforma` reformulado** — navegação lateral em três grupos
-(Negócio / Atendimento / Administração), com duas seções novas:
-- **Equipe**: cria, edita e desativa operador pela TELA, com matriz de
-  permissões servida pelo backend. Quatro papéis + permissões extras avulsas.
-  Ninguém muda o próprio papel nem se autodesativa. Campo de e-mail REAL.
-  **Isto é a etapa 2 da Fase 4, concluída.**
-- **Sistema**: custo de IA por dia e por família com projeção mensal (antes só
-  existia em `console.log`), mais o painel de backup.
+`firebase 10.14.1 → 12.18.0`, `vite 5.3.1 → 7.3.6` (+ `@vitejs/plugin-react`
+4 → 5) e `react-router-dom 6 → 7`. De **14 vulnerabilidades (2 high) para 0**.
 
-**Backup, completo e verificado com dados reais** — ver a seção própria
-abaixo. Diário 02:00 + mensal dia 1, histórico na tela, download em `.zip`,
-restauração com senha própria, e **cópia semanal por e-mail criptografada**
-(segunda 05:00, para `revelacash@gmail.com`, confirmado com envio real).
+O risco do firebase era baixo porque a superfície usada é pequena e estável
+desde a v9 (`initializeApp`, `getAuth`, `initializeAppCheck` +
+`ReCaptchaV3Provider`, e os métodos de auth) — nenhuma chamada mudou de nome.
+Mesma coisa no react-router: só APIs que existem iguais na v7.
 
-**Alertas de rotina.** Toda agendada passa por `alertaOperacionalService.vigiar`:
-falha vira aviso no topo da aba Chamados, não `console.error` que ninguém lê.
+**Verificado no navegador contra homologação, não só no build**: login real
+com a conta de teste, dashboard com dados, e as oito rotas privadas abrindo
+sem erro de console.
 
-**Jurídico reescrito (v2.1).** Termos com 18 cláusulas, Privacidade com 14,
-índice lateral, numeração hierárquica, versão/vigência. Cobre o que faltava:
-transferência internacional, base legal por finalidade, retenção por tipo de
-dado, direito à revisão de decisão automatizada (art. 20), cookies, e a cópia
-de contingência fora da plataforma.
+O que **não** deu para testar local: o App Check de verdade. O reCAPTCHA só
+valida em `revelacash.com.br` e pontua navegador automatizado como bot (ver
+armadilhas). Então, **no primeiro acesso depois do push para `main`, abrir o
+site em aba anônima e confirmar que o login entra** — é o único ponto onde
+uma incompatibilidade do firebase 12 apareceria.
 
-**Anexo de chamado abre na tela** em vez de forçar download — imagem num
-visualizador (Esc/clique fora fecham, botão direito funciona), PDF em aba
-nova. O `Content-Disposition: attachment` do servidor NÃO mudou de propósito.
+### 2. Central de ajuda `/ajuda` — etapa 3 da Fase 4, pronta
 
-### O que foi VERIFICADO em produção nesta sessão
+Página **pública**, sem login, com **24 artigos em 8 temas**, escritos contra
+o comportamento real do sistema (comandos conferidos em `comandosWhatsapp.js`,
+limites em `limiteChatService.js`, janela de importação em `janela.js`).
 
-| O quê | Como foi provado |
+- Conteúdo é DADO (`frontend/src/conteudo/ajuda.js`), não JSX espalhado — é o
+  que permite a busca varrer o corpo dos artigos e o "veja também" saber o
+  que existe. Artigo novo é acrescentar um objeto.
+- Busca sem acento e por E (todos os termos): "audio" acha "áudio", e digitar
+  mais palavras nunca traz MAIS resultados.
+- Título da aba por artigo — o endereço vai ser colado no WhatsApp e indexado.
+- Slug que não existe cai no índice, nunca em tela branca.
+
+Entradas: rodapé da landing, rodapé das páginas jurídicas, item **Ajuda** no
+menu do painel (abre em aba nova, para não tirar a pessoa do meio da tarefa) e
+um desvio na tela de Suporte **antes** do botão de abrir chamado.
+
+No backend, a assistente passou a mandar quem pergunta "como faço X" para
+`revelacash.com.br/ajuda` em vez de inventar passo a passo de tela, e o
+comando `ajuda` do WhatsApp cita o endereço.
+
+**Para o Kirk revisar antes de publicar** (preview da Vercel, exige estar
+logado na conta Vercel dele):
+`https://financeiropessoal-nbwpl7xan-lion-techs-projects-a92f3d16.vercel.app/ajuda`
+
+O preview funciona aqui porque a página é pública e não chama a API — a
+limitação conhecida (CORS + App Check) só atinge o que precisa de backend.
+
+### 3. Rascunho de importação abandonado agora some sozinho
+
+Quem subia um extrato e fechava a aba no meio deixava um documento com o
+extrato bancário INTEIRO dentro, que nunca virava lançamento e nunca sumia:
+a tela listava "Não concluída" para sempre, sem jeito de o cliente limpar, e
+o sistema guardava dado pessoal sem finalidade.
+
+A limpeza roda no começo de uma importação **nova** (começar outra é a prova
+de que a anterior foi abandonada), com janela de 24h para quem deixou a aba
+aberta e volta no dia seguinte. Quatro testes cobrem: velho some, recente
+sobrevive, lote confirmado nunca é tocado, rascunho de outra família fica de
+pé.
+
+Os dois rascunhos de 18/08 que estavam em produção **foram apagados**, com
+backup antes (`backups/2026-08-22T19-08-29.json`).
+
+### 4. `OTICAS DINIZ — R$ 229,90` como receita: o parser está CERTO
+
+A linha crua do extrato do Nubank diz, literalmente:
+`Transferência recebida pelo Pix - OTICAS DINIZ - 59.480.286/0001-00`.
+É dinheiro que **entrou**. Nenhum ajuste a fazer — a suspeita registrada na
+sessão anterior não se confirmou.
+
+### 5. Homologação não faz backup, de propósito
+
+**A premissa registrada no ESTADO anterior estava errada**, e conferir isso
+antes evitou trabalho inútil: não havia nenhum aviso de backup em
+homologação, porque as functions `backupDiario` e `copiaSemanalPorEmail`
+**nem existiam lá** (o deploy desta sessão foi o primeiro a criá-las).
+`notificacoesNaoEntregues` estava vazia nos DOIS ambientes.
+
+Mas o problema estava a um dia de nascer: com as agendadas agora deployadas
+em homologação e sem a permissão de IAM, elas começariam a falhar às 02:00 e
+a gerar um aviso por dia. `BACKUP_ATIVO=false` no `.env.revelacash-staging`
+desliga as duas rotinas antes disso.
+
+O desligamento é **explícito**, nunca inferido de configuração faltando: se
+um dia o `BACKUP_BUCKET` sumir do ambiente de produção por engano, isso
+continua virando erro alto e visível. Produção não tem a variável. Há teste
+conferindo que a checagem vem **antes** do `vigiar`.
+
+**Conferir amanhã depois das 02:00** que homologação passou em silêncio
+(`notificacoesNaoEntregues` continua vazia lá).
+
+### 6. WhatsApp Cloud API — a Meta já aprovou tudo que depende dela
+
+`node tools/diagnostico-cloud-api.js` (só leitura) perguntou direto à API:
+
+| O quê | Estado |
 |---|---|
-| Backup automático | Export real: 23 arquivos, 3,11 MB, `.overall_export_metadata` presente |
-| Cópia por e-mail | Enviada de verdade; ciclo `openssl` provado com a senha real antes do envio |
-| Botão de backup no painel | O Kirk clicou; gerou `diario/2026-08-22T14-59-34-495Z` |
-| Importação de extrato | **50 lançamentos do Nubank em junho/2026**, 0 sem categoria, 50/50 com trava de duplicidade, 1 lote desfeito com sucesso |
-| Anexo do operador | Testado em homologação com chamado e PNG reais |
-| Sessões separadas | Duas contas abertas lado a lado, sem se atropelar |
-| App Check / CORS / webhooks | 11 provas dinâmicas contra a produção, todas verdes |
+| Verificação do negócio | **APPROVED** |
+| Análise da conta comercial (WABA) | **APPROVED** |
+| Número +55 64 9613-0798 | **CONNECTED**, código VERIFIED, modo LIVE |
+| Token do usuário de sistema | válido, sem expiração, escopos certos |
+| Nome de exibição "revelacash" | PENDING_REVIEW — **cosmético, não bloqueia envio** |
+| App inscrito no webhook | **nenhum** — mensagem recebida não chegaria |
 
-### O que está em aberto (em ordem de prioridade)
+Ou seja: **não há nada esperando a Meta**. O que falta é (a) o Kirk anexar
+forma de pagamento à conta — é o que mantém o erro 141006; (b) configurar o
+webhook no painel do app (precisa do App Secret, que só ele tem) e inscrever
+a WABA; (c) **escrever a rota de webhook da Cloud API, que não existe** —
+`src/webhooks/` só tem `evolutionWebhook.js`; (d) testar
+`cloudApiProvider.js` contra a API real; (e) pedir a OBA a partir de
+~11/09/2026.
 
-1. **Atualizar o SDK do Firebase no frontend.** Sobra uma vulnerabilidade
-   **high** (`undici`, dentro do pacote `firebase`) que o `npm audit fix` não
-   resolve. Merece sessão própria porque mexe em login e App Check — testar em
-   homologação com navegador antes.
-2. **Migração WhatsApp Cloud API.** WABA aprovada; falta (a) o Kirk cadastrar
-   forma de pagamento na Meta — é o que mantém `can_send_message: BLOCKED`,
-   erro 141006; (b) inscrever o app no webhook de mensagens; (c) testar
-   `cloudApiProvider.js` contra a API real; (d) pedir a OBA a partir de
-   ~11/09/2026.
-3. **Etapa 3 da Fase 4 — central de ajuda.** Era o próximo item do roadmap.
-4. **Limpezas menores:** 2 rascunhos de importação de 18/08 sobraram no banco
-   (inofensivos, nunca viraram lançamento); e vale investigar se
-   `OTICAS DINIZ — R$ 229,90` lido como RECEITA na importação é estorno
-   legítimo ou erro do parser.
-5. **Homologação não tem permissão de backup** (IAM). A agendada falha lá
-   todo dia e gera aviso — inofensivo, banco de teste, e serve de amostra viva
-   do `vigiar`. Para silenciar, rodar os dois comandos de IAM apontando para
-   `revelacash-staging` e `gs://revelacash-staging-backups`.
+O passo (c) é trabalho de verdade, não configuração: mesmo com o cartão
+cadastrado hoje, a migração não fica pronta na mesma hora.
+
+### O que está em aberto
+
+1. **Kirk revisar a central de ajuda** no preview e autorizar o push para
+   `main` (que publica o frontend em produção na hora, regra do Vercel).
+2. **Depois do push: abrir o site em aba anônima** e confirmar o login —
+   é a única prova possível do App Check com o firebase 12.
+3. **Deploy do backend em produção** (`firebase deploy --only functions:api`)
+   para a assistente e o comando `ajuda` citarem a central.
+4. **Cloud API**: cartão na Meta (Kirk) e a rota de webhook (código).
+5. Conferir amanhã que homologação passou as 02:00 sem aviso.
 
 ### Roadmap anterior, ainda válido
 
