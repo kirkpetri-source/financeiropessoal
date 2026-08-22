@@ -1,9 +1,41 @@
 # Estado do projeto — 22/08/2026 (tudo em produção: backend E frontend)
 
-## RETOMAR AQUI — chamados de suporte NO AR; próxima é a etapa 2
+## RETOMAR AQUI — a resposta para "onde paramos?"
 
-A etapa 1 da Fase 4 foi publicada em **22/08/2026, ~00:40**. As 13 famílias
-veem o item **Suporte** no menu e podem abrir chamado.
+**Em uma frase:** os chamados de suporte foram publicados em produção em
+22/08/2026 e a próxima etapa é a **etapa 2 da Fase 4 — papéis de operador**.
+
+### Faça nesta ordem
+
+**1. Pergunte primeiro como foi o teste dele.** O Kirk ia abrir um chamado pela
+**Família Vinicius** (`bgo6KJKTgCqC1HN2Jqzh`) e responder pelo `/plataforma`.
+Três coisas estreiam nesse teste e nunca rodaram de verdade:
+
+- WhatsApp chegando ao **cliente** (as famílias de teste não tinham canal)
+- anexo em produção
+- o e-mail com a logo carregando na caixa dele
+
+Se algo falhar ali, **corrigir antes** de começar a etapa 2. Falha de envio vira
+registro em `notificacoesNaoEntregues` e aparece no topo da aba Chamados —
+começar olhando essa coleção é o caminho mais curto para o diagnóstico.
+
+**2. Só então, a etapa 2 — papéis de operador.** Ela resolve a fricção que ele
+apontou nesta sessão: criar operador hoje exige rodar um script com quatro
+flags, e ele achou confuso (ver a regra 8 — era para eu ter executado, não
+ensinado). O escopo:
+
+- criar e desativar operador **pela tela**, aposentando o
+  `tools/criar-login-operador.js` do uso rotineiro
+- a matriz do que cada papel pode fazer (hoje `papel` é só um campo e
+  `atribuidoA` é informativo, os dois de propósito)
+- campo de e-mail REAL do operador — sem ele, o aviso de encaminhamento cai na
+  caixa da equipe, porque o login é `@operador.revelacash.internal`, que
+  ninguém lê
+
+O processo do projeto é **spec → plano → implementação**, como foi feito na
+etapa 1: `docs/superpowers/specs/` e `docs/superpowers/plans/`.
+
+Depois vem a etapa 3, a central de ajuda.
 
 ### Como está em produção
 
