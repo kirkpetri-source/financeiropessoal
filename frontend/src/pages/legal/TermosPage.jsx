@@ -349,9 +349,15 @@ export default function TermosPage() {
           painel, em dias úteis. Buscamos responder em até 2 dias úteis.
         </Item>
         <Item numero="13.4">
-          Realizamos <strong>backup automático diário</strong> da base de dados, retido por 30
-          dias. Ainda assim, recomendamos exportar seus dados periodicamente — a função está em
-          <em> Configurações → Meus dados</em>.
+          Realizamos <strong>backup automático diário</strong> da base de dados, com retenção de
+          30 dias para as cópias diárias e 12 meses para as mensais, além de uma cópia de
+          contingência semanal mantida fora da plataforma principal e sempre criptografada,
+          conforme a cláusula 10 da Política de Privacidade.
+        </Item>
+        <Item numero="13.5">
+          Ainda assim, recomendamos exportar seus dados periodicamente — a função está em
+          <em> Configurações → Meus dados</em>. Backup nosso protege contra falha nossa; a sua
+          exportação protege contra tudo, inclusive contra o fim do serviço.
         </Item>
       </Secao>
 

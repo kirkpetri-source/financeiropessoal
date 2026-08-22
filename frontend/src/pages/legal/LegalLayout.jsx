@@ -24,7 +24,7 @@ import Logo from '../../components/brand/Logo';
 
 export const CONTATO_ENCARREGADO = 'kirkpetri@gmail.com';
 export const ATUALIZADO_EM = '22 de agosto de 2026';
-export const VERSAO = '2.0';
+export const VERSAO = '2.1';
 export const VIGENCIA = '22 de agosto de 2026';
 
 const RAZAO_SOCIAL = 'LION TECH SOLUÇÕES EM TI LTDA';

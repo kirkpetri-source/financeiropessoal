@@ -174,6 +174,7 @@ export default function PrivacidadePage() {
             ['Google (Gemini)', 'Interpretação de mensagens e assistente virtual', 'Estados Unidos'],
             ['Meta (WhatsApp)', 'Transporte das mensagens', 'Estados Unidos e rede global'],
             ['Resend', 'Envio de e-mails transacionais do suporte', 'Estados Unidos'],
+            ['Google', 'Guarda de cópia de segurança criptografada, em ambiente de e-mail corporativo', 'Estados Unidos'],
           ]}
         />
         <Item numero="5.2">
@@ -220,7 +221,8 @@ export default function PrivacidadePage() {
             ['Anexos de suporte', 'Apagados junto com a Família', 'Não têm utilidade isolada'],
             ['Registros de acesso (IP, data/hora)', '6 meses', 'Marco Civil da Internet, art. 15'],
             ['Registros fiscais da cobrança', '5 anos', 'Legislação fiscal, sem os seus lançamentos'],
-            ['Backups', '30 dias', 'Recuperação em caso de desastre'],
+            ['Backups', '30 dias (diários) e 12 meses (mensais)', 'Recuperação em caso de desastre'],
+            ['Cópia de contingência fora da plataforma', 'Enquanto necessária, com expurgo periódico', 'Redundância; mantida sempre criptografada'],
           ]}
         />
         <Item numero="7.1">
@@ -336,7 +338,18 @@ export default function PrivacidadePage() {
           acesso administrativo restrito, com credenciais próprias, papéis limitados e registro de
           auditoria de cada ação sobre conta de cliente;
         </Item>
-        <Item numero="(h)">backup diário criptografado, com retenção de 30 dias.</Item>
+        <Item numero="(h)">
+          backup diário automático do banco de dados, mantido em armazenamento privado na
+          região de São Paulo, com retenção de 30 dias para as cópias diárias e 12 meses para
+          as mensais;
+        </Item>
+        <Item numero="(i)">
+          <strong>cópia de contingência semanal fora da plataforma principal</strong>, guardada
+          em ambiente de e-mail corporativo operado pelo Google e acessível apenas à
+          administração. Essa cópia é <strong>criptografada com AES-256</strong>, e a chave é
+          mantida em cofre de segredos separado — ela não acompanha o arquivo e não é
+          transmitida junto com ele. Sem a chave, o conteúdo é ilegível.
+        </Item>
         <Item numero="10.2">
           Nenhum sistema é infalível. Havendo incidente de segurança com risco relevante aos seus
           dados, comunicamos você e a ANPD, conforme o art. 48, informando o que houve, quais
