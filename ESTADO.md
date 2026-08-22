@@ -2,110 +2,93 @@
 
 ## RETOMAR AQUI — a resposta para "onde paramos?"
 
-**Em uma frase:** os chamados de suporte foram publicados em produção em
-22/08/2026 e a próxima etapa é a **etapa 2 da Fase 4 — papéis de operador**.
+> Última sessão: **22/08/2026**, longa. Tudo abaixo está **em produção e
+> verificado**, salvo onde diz o contrário.
 
-### Faça nesta ordem
+**Em uma frase:** a etapa 2 da Fase 4 (papéis de operador) foi CONCLUÍDA junto
+com uma varredura de segurança, backup automático completo e a reescrita do
+jurídico. A próxima etapa em aberto é a **etapa 3 — central de ajuda**, mas há
+duas dívidas técnicas com prioridade sobre ela (ver "O que está em aberto").
 
-**1. Pergunte primeiro como foi o teste dele.** O Kirk ia abrir um chamado pela
-**Família Vinicius** (`bgo6KJKTgCqC1HN2Jqzh`) e responder pelo `/plataforma`.
-Três coisas estreiam nesse teste e nunca rodaram de verdade:
+### O que foi entregue em 22/08/2026
 
-- WhatsApp chegando ao **cliente** (as famílias de teste não tinham canal)
-- anexo em produção
-- o e-mail com a logo carregando na caixa dele
+**Bug crítico corrigido — sessões misturadas.** Entrar no `/plataforma` fazia
+a aba da família exibir "Olá, Operador" no F5 seguinte; os dois lados dividiam
+a mesma sessão do Firebase Auth. O portal agora usa um app Firebase **nomeado**
+(`authPlataforma`) com token em chave própria do localStorage, e
+`services/api.js` escolhe a chave pela URL. Provado no navegador com as duas
+contas abertas lado a lado.
 
-Se algo falhar ali, **corrigir antes** de começar a etapa 2. Falha de envio vira
-registro em `notificacoesNaoEntregues` e aparece no topo da aba Chamados —
-começar olhando essa coleção é o caminho mais curto para o diagnóstico.
+**Senha forte + verificação de e-mail.** `utils/politicaDeSenha.js`: mínimo 10
+caracteres com letra e número, lista do que é óbvio demais, medidor de força.
+Vale no cadastro e na troca, **nunca no login**. O cadastro dispara
+`sendEmailVerification` (não bloqueia o uso).
 
-**2. Só então, a etapa 2 — papéis de operador.** Ela resolve a fricção que ele
-apontou nesta sessão: criar operador hoje exige rodar um script com quatro
-flags, e ele achou confuso (ver a regra 8 — era para eu ter executado, não
-ensinado). O escopo:
+**CRM do `/plataforma` reformulado** — navegação lateral em três grupos
+(Negócio / Atendimento / Administração), com duas seções novas:
+- **Equipe**: cria, edita e desativa operador pela TELA, com matriz de
+  permissões servida pelo backend. Quatro papéis + permissões extras avulsas.
+  Ninguém muda o próprio papel nem se autodesativa. Campo de e-mail REAL.
+  **Isto é a etapa 2 da Fase 4, concluída.**
+- **Sistema**: custo de IA por dia e por família com projeção mensal (antes só
+  existia em `console.log`), mais o painel de backup.
 
-- criar e desativar operador **pela tela**, aposentando o
-  `tools/criar-login-operador.js` do uso rotineiro
-- a matriz do que cada papel pode fazer (hoje `papel` é só um campo e
-  `atribuidoA` é informativo, os dois de propósito)
-- campo de e-mail REAL do operador — sem ele, o aviso de encaminhamento cai na
-  caixa da equipe, porque o login é `@operador.revelacash.internal`, que
-  ninguém lê
+**Backup, completo e verificado com dados reais** — ver a seção própria
+abaixo. Diário 02:00 + mensal dia 1, histórico na tela, download em `.zip`,
+restauração com senha própria, e **cópia semanal por e-mail criptografada**
+(segunda 05:00, para `revelacash@gmail.com`, confirmado com envio real).
 
-O processo do projeto é **spec → plano → implementação**, como foi feito na
-etapa 1: `docs/superpowers/specs/` e `docs/superpowers/plans/`.
+**Alertas de rotina.** Toda agendada passa por `alertaOperacionalService.vigiar`:
+falha vira aviso no topo da aba Chamados, não `console.error` que ninguém lê.
 
-Depois vem a etapa 3, a central de ajuda.
+**Jurídico reescrito (v2.1).** Termos com 18 cláusulas, Privacidade com 14,
+índice lateral, numeração hierárquica, versão/vigência. Cobre o que faltava:
+transferência internacional, base legal por finalidade, retenção por tipo de
+dado, direito à revisão de decisão automatizada (art. 20), cookies, e a cópia
+de contingência fora da plataforma.
 
-### Como está em produção
+**Anexo de chamado abre na tela** em vez de forçar download — imagem num
+visualizador (Esc/clique fora fecham, botão direito funciona), PDF em aba
+nova. O `Content-Disposition: attachment` do servidor NÃO mudou de propósito.
 
-| | |
+### O que foi VERIFICADO em produção nesta sessão
+
+| O quê | Como foi provado |
 |---|---|
-| Backend | 5 functions deployadas, mesmos nomes (nenhuma agendada duplicada) |
-| Frontend | `main` publicado pela Vercel |
-| App Check | continua exigido — conferido com `curl` depois do deploy |
-| `operadores` | 1 registro: Kirk, papel ADMIN, ativo |
-| `supportTickets` | 0 — o primeiro chamado real será o **#1** |
-| Backup pré-deploy | `backups/2026-08-22T03-05-42.json` (1.828 documentos) |
+| Backup automático | Export real: 23 arquivos, 3,11 MB, `.overall_export_metadata` presente |
+| Cópia por e-mail | Enviada de verdade; ciclo `openssl` provado com a senha real antes do envio |
+| Botão de backup no painel | O Kirk clicou; gerou `diario/2026-08-22T14-59-34-495Z` |
+| Importação de extrato | **50 lançamentos do Nubank em junho/2026**, 0 sem categoria, 50/50 com trava de duplicidade, 1 lote desfeito com sucesso |
+| Anexo do operador | Testado em homologação com chamado e PNG reais |
+| Sessões separadas | Duas contas abertas lado a lado, sem se atropelar |
+| App Check / CORS / webhooks | 11 provas dinâmicas contra a produção, todas verdes |
 
-**Suporte NÃO tem interruptor de liberação** (diferente da assistente). Está no
-ar para todo mundo desde o push. Se um dia precisar desligar, é remover o item
-do Sidebar e a rota — não existe variável de ambiente para isso.
+### O que está em aberto (em ordem de prioridade)
 
-### O que ainda NÃO foi exercitado em produção
+1. **Atualizar o SDK do Firebase no frontend.** Sobra uma vulnerabilidade
+   **high** (`undici`, dentro do pacote `firebase`) que o `npm audit fix` não
+   resolve. Merece sessão própria porque mexe em login e App Check — testar em
+   homologação com navegador antes.
+2. **Migração WhatsApp Cloud API.** WABA aprovada; falta (a) o Kirk cadastrar
+   forma de pagamento na Meta — é o que mantém `can_send_message: BLOCKED`,
+   erro 141006; (b) inscrever o app no webhook de mensagens; (c) testar
+   `cloudApiProvider.js` contra a API real; (d) pedir a OBA a partir de
+   ~11/09/2026.
+3. **Etapa 3 da Fase 4 — central de ajuda.** Era o próximo item do roadmap.
+4. **Limpezas menores:** 2 rascunhos de importação de 18/08 sobraram no banco
+   (inofensivos, nunca viraram lançamento); e vale investigar se
+   `OTICAS DINIZ — R$ 229,90` lido como RECEITA na importação é estorno
+   legítimo ou erro do parser.
+5. **Homologação não tem permissão de backup** (IAM). A agendada falha lá
+   todo dia e gera aviso — inofensivo, banco de teste, e serve de amostra viva
+   do `vigiar`. Para silenciar, rodar os dois comandos de IAM apontando para
+   `revelacash-staging` e `gs://revelacash-staging-backups`.
 
-Nada disso corrompe dado; o pior caso é um aviso não sair, e falha de envio
-vira registro em `notificacoesNaoEntregues`, visível no topo da aba Chamados.
+### Roadmap anterior, ainda válido
 
-- **A agendada diária** (`executarExclusoes`, 03:00 BRT). A lógica foi provada
-  contra o Firestore; o gatilho do Cloud Scheduler não — a conta de serviço não
-  tem `cloudscheduler.jobs.run`. É o mesmo mecanismo das outras quatro.
-- **WhatsApp ao cliente.** Nunca disparou de verdade: família de teste não tem
-  canal. Em produção vai disparar, pela mesma trilha do bot (com a assinatura
-  anti-loop).
-- **Um chamado real de cliente**, com anexo de verdade.
-
-### Configuração de produção
-
-Tudo no `.env.financeiropessoal-29b32`: `STORAGE_BUCKET_ANEXOS=revelacash-anexos`,
-`SUPORTE_EMAIL_REMETENTE`, `SUPORTE_EMAIL_DESTINO`. `RESEND_API_KEY` no Secret
-Manager.
-
-**`SUPORTE_WHATSAPP_HOUSEHOLD_ID` NÃO está definida** — o aviso ao operador cai
-no `NOTIFICACAO_CADASTRO_HOUSEHOLD_ID`. Funciona, mas as duas coisas estão
-acopladas: esvaziar a do cadastro desliga o aviso de chamado junto, em silêncio.
-Uma linha resolve quando incomodar.
-
-### Próxima etapa: papéis de operador (etapa 2 da Fase 4)
-
-O Kirk escolheu essa. Ela resolve a fricção que ele apontou nesta sessão —
-criar operador exige script com quatro flags:
-
-- criar e desativar operador **pela tela**, sem `criar-login-operador.js`
-- o que cada papel pode fazer (hoje `papel` é só um campo e `atribuidoA` é
-  informativo, de propósito)
-- e-mail real do operador, para o aviso de encaminhamento não cair na caixa da
-  equipe
-
-Depois vem a etapa 3, a central de ajuda.
-
-### Armadilhas novas desta feature (não repetir)
-
-- **`serverTimestamp()` não funciona dentro de item de array** no Firestore.
-- **Não existe "disparar e esquecer" no Cloud Run**: a CPU congela quando a
-  resposta HTTP sai e a promessa morre. Notificação é AGUARDADA.
-- **`Buffer.from(x, 'base64')` nunca lança** — descarta o que não reconhece e
-  grava um arquivo menor e plausível.
-- **`carregar()` sem lista NÃO busca segredo.** Um script que precisa de
-  `RESEND_API_KEY` e chama `carregar()` vazio recebe `undefined`, o serviço
-  responde "desligado" e não manda nada — sem erro. Custou uma afirmação errada
-  de que e-mails tinham sido enviados.
-- **Teste que varre "não vazou conteúdo" precisa varrer TODOS os campos.** O
-  corpo em HTML entrou depois e a asserção continuou olhando só o texto.
-- **`apenasAdmin` guardava a tela em dois lugares** (`PlataformaPage` e
-  `AdminPage`), desfazendo na interface a separação que o backend faz.
-- **Substituição de texto por script falha em silêncio.** Duas correções que dei
-  como feitas não tinham aplicado. Para editar código, usar o editor.
+- Ampliar o parser (`Lanche 38,00 crédito` cai na IA por decisão consciente)
+- Convite de membro com login próprio (hoje um segundo login vira outra família)
+- Tutorial de primeiro uso (ele pediu para deixar por último)
 
 ## 22/08 (madrugada) — CRM, jurídico, senha e o bug das sessões
 
