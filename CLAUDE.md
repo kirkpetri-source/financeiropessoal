@@ -26,7 +26,7 @@ existe mais**. A pasta `backend/` é legado morto, ignorada no git. O código em
 
 ```bash
 cd functions
-npm test                 # 1.348 testes (vitest)
+npm test                 # 1.355 testes (vitest)
 npm run backup           # dump do Firestore em backups/ (fora do git)
 npm run restore -- <arq> # simulação; --confirmar para valer
 npm run seed              # só categorias e formas de pagamento padrão
@@ -40,6 +40,9 @@ node tools/testar-subcategoria-ponta-a-ponta.js      # CRUD + lançamento com su
 node tools/testar-importacao-ponta-a-ponta.js        # extrato: janela retroativa + trava de duplicidade, família descartável
 node tools/testar-notificacao-cadastro.js            # simula o aviso de cadastro novo; --enviar manda de verdade
 node tools/diagnostico-cloud-api.js                  # SO LEITURA: o que falta na conta da Meta, e de quem e a vez
+node tools/verificar-backup.js                       # SO LEITURA: o backup de hoje daria para restaurar?
+node tools/verificar-copia-por-email.js              # SO LEITURA: a copia semanal abre com openssl? (nao envia nada)
+ALVO=staging node tools/testar-restauracao-ponta-a-ponta.js  # planta, apaga, restaura e compara (recusa producao)
 
 # Assistente de IA (Nina) — todos exigem ALVO=staging, recusam rodar em producao
 ALVO=staging node tools/testar-consultor-ponta-a-ponta.js   # conversa real com o Gemini, familia descartavel
@@ -402,6 +405,26 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     que a página existe para evitar. Ao mudar comando do WhatsApp, limite da
     assistente, janela da importação ou regra de cobrança, o artigo
     correspondente muda junto.
+
+30. **"A rotina rodou" e "existe backup bom" são afirmações diferentes.**
+    Toda madrugada, `executarExclusoes` (03:00) confere o export das 02:00 por
+    `verificarUltimoBackup`: marca de conclusão, todas as peças que o próprio
+    export declarou no metadado, nenhum arquivo de zero byte, e recência.
+    Falha vira aviso na aba Chamados. A checagem das PEÇAS é a que pega o caso
+    que a marca de conclusão não pega — export que terminou bem e perdeu um
+    pedaço depois. A conferência diária não abre os arquivos de propósito
+    (custo cresce com a base); a garantia forte é sob demanda, em
+    `tools/verificar-backup.js`, que procura ids reais de documento DENTRO dos
+    bytes. Nessa auditoria, a régua é sempre o INSTANTE do export: documento
+    criado depois dele não está no pacote, e cobrar sua presença transforma a
+    auditoria em máquina de falso alarme.
+
+31. **O layout do export nativo é `all_namespaces/all_kinds/`, não uma pasta
+    por coleção.** Com `collectionIds: []` (todas), o Firestore grava um fluxo
+    único — procurar `kind_<colecao>/` não acha nada e parece que o backup
+    está sem coleção alguma. Já custou um "FALHA: 21 coleções fora do backup"
+    que era só a checagem errada. A lista de peças verdadeira está dentro de
+    `all_namespaces_all_kinds.export_metadata`, como strings `output-N`.
 
 ## Armadilhas já pagas (não repetir)
 

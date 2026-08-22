@@ -5,22 +5,22 @@
 > Última sessão: **22/08/2026**, segunda parte. O que está **em produção** e o
 > que está **só em homologação** vem separado abaixo — não misturar.
 
-**Em uma frase:** as cinco pendências que restavam da sessão anterior foram
-fechadas — SDK do frontend atualizado, central de ajuda escrita, rascunhos de
-importação limpos, backup de homologação silenciado e a Cloud API
-diagnosticada. **Falta o Kirk revisar a central de ajuda e autorizar a subida
-para produção.**
+**Em uma frase:** as cinco pendências que restavam foram fechadas e **tudo
+está em produção** — SDK atualizado, central de ajuda no ar, rascunhos
+limpos, backup de homologação silenciado, Cloud API diagnosticada — e o
+backup foi auditado de ponta a ponta a pedido do Kirk.
 
 ### Onde cada coisa está agora
 
 | Entrega | Homologação | Produção |
 |---|---|---|
-| Central de ajuda `/ajuda` (24 artigos) | sim | **não — esperando aprovação** |
-| Assistente apontando para `/ajuda` | sim | **não** |
-| Limpeza de rascunho abandonado | sim | **não** |
+| Central de ajuda `/ajuda` (24 artigos) | sim | **sim, no ar** |
+| Assistente apontando para `/ajuda` | sim | **sim** |
+| Limpeza de rascunho abandonado | sim | **sim** |
+| SDK do frontend atualizado | — | **sim** |
+| Conferência diária do backup | sim (desligada) | **sim** |
 | `BACKUP_ATIVO=false` | sim | não se aplica (produção faz backup) |
-| SDK do frontend atualizado | — | **não — vai junto com o push** |
-| Os 2 rascunhos velhos do banco | — | **apagados, já feito** |
+| Os 2 rascunhos velhos do banco | — | apagados |
 
 ### 1. SDK do frontend atualizado — `npm audit` zerado
 
@@ -64,12 +64,10 @@ No backend, a assistente passou a mandar quem pergunta "como faço X" para
 `revelacash.com.br/ajuda` em vez de inventar passo a passo de tela, e o
 comando `ajuda` do WhatsApp cita o endereço.
 
-**Para o Kirk revisar antes de publicar** (preview da Vercel, exige estar
-logado na conta Vercel dele):
-`https://financeiropessoal-nbwpl7xan-lion-techs-projects-a92f3d16.vercel.app/ajuda`
-
-O preview funciona aqui porque a página é pública e não chama a API — a
-limitação conhecida (CORS + App Check) só atinge o que precisa de backend.
+**No ar em produção desde 22/08/2026**: `revelacash.com.br/ajuda`, aprovada
+pelo Kirk. Ele registrou que ela **vai precisar ser reescrita quando a Cloud
+API do WhatsApp entrar** — os artigos de lançar e de conectar descrevem o
+fluxo da Evolution.
 
 ### 3. Rascunho de importação abandonado agora some sozinho
 
@@ -139,16 +137,64 @@ a WABA; (c) **escrever a rota de webhook da Cloud API, que não existe** —
 O passo (c) é trabalho de verdade, não configuração: mesmo com o cartão
 cadastrado hoje, a migração não fica pronta na mesma hora.
 
+### 7. Backup auditado — o que foi provado e o que ainda não dá para provar
+
+O Kirk pediu a garantia de que o backup não vem corrompido, já que ele não
+tem como testar restaurando. O que foi feito em 22/08:
+
+**Provado, contra a produção de verdade** (`node tools/verificar-backup.js`):
+
+- marca de conclusão presente no export mais novo;
+- as **21 peças** que o próprio export declara no metadado estão todas no
+  bucket, nenhuma com zero byte;
+- **todas as coleções** do banco aparecem dentro dos bytes do export, e
+  **49 ids reais de documento** foram encontrados lá dentro;
+- o backup tinha 6,6h — a rotina das 02:00 está rodando.
+
+**Provado, a cópia semanal por e-mail** (`node tools/verificar-copia-por-email.js`,
+não envia nada): o zip é criptografado com a senha real, descriptografado de
+volta pelo código E pelo **binário do openssl**, aberto, e os 23 arquivos
+conferidos por SHA-256 contra o bucket — todos idênticos. Senha errada é
+recusada. O anexo tem 0,78 MB, com 95% de folga para o teto de 15 MB.
+
+**Provado, o caminho de recuperação alternativo**
+(`ALVO=staging node tools/testar-restauracao-ponta-a-ponta.js`): um documento
+com timestamp, geopoint, referência, bytes, mapa aninhado, array com objeto e
+subcoleção foi plantado, salvo por `tools/backup.js`, **apagado**, e
+restaurado por `tools/restore.js --confirmar`. Os 14 campos voltaram
+idênticos, tipo por tipo, e a simulação (sem `--confirmar`) não gravou nada.
+
+**Agora é contínuo:** toda madrugada às 03:00, dentro da `executarExclusoes`,
+o sistema confere o export das 02:00 (`verificarUltimoBackup`). Falha vira
+aviso na aba Chamados, como qualquer outra rotina. Não é mais preciso alguém
+lembrar de conferir.
+
+**O que ainda NÃO dá para provar:** que o Firestore reconstrói cada documento
+a partir dos bytes do export nativo. Isso só um `firestore import` de verdade
+mostra, e ele exige `roles/datastore.importExportAdmin` — que nenhuma
+credencial desta máquina tem. Para fechar essa última milha em homologação
+(sem tocar em produção), bastam dois comandos no Cloud Shell:
+
+```bash
+SA=$(gcloud iam service-accounts list --project revelacash-staging      --filter="displayName:compute" --format="value(email)")
+gcloud projects add-iam-policy-binding revelacash-staging   --member="serviceAccount:$SA" --role="roles/datastore.importExportAdmin"
+```
+
+Com isso, o ensaio vira: exportar homologação → apagar → importar → conferir.
+
 ### O que está em aberto
 
-1. **Kirk revisar a central de ajuda** no preview e autorizar o push para
-   `main` (que publica o frontend em produção na hora, regra do Vercel).
-2. **Depois do push: abrir o site em aba anônima** e confirmar o login —
-   é a única prova possível do App Check com o firebase 12.
-3. **Deploy do backend em produção** (`firebase deploy --only functions:api`)
-   para a assistente e o comando `ajuda` citarem a central.
-4. **Cloud API**: cartão na Meta (Kirk) e a rota de webhook (código).
-5. Conferir amanhã que homologação passou as 02:00 sem aviso.
+1. **Cloud API do WhatsApp** — o cartão já foi cadastrado pelo Kirk em
+   22/08/2026. Ele decidiu deixar a migração para uma etapa própria, porque
+   ela muda o produto inteiro (inclusive COMO as pessoas mandam a mensagem) e
+   ainda há dúvidas de desenho a resolver. **Não começar sem conversar.**
+   Quando for: falta a rota de webhook da Cloud API (não existe), a inscrição
+   do app na WABA, o teste do `cloudApiProvider.js` e a OBA a partir de
+   ~11/09/2026. **A central de ajuda vai precisar ser reescrita junto** — os
+   artigos de lançar e de conectar descrevem o fluxo da Evolution.
+2. **Fechar a última milha do backup** (dois comandos acima), se o Kirk
+   quiser o ensaio de import de verdade.
+3. Conferir amanhã que homologação passou as 02:00 sem aviso.
 
 ### Roadmap anterior, ainda válido
 
