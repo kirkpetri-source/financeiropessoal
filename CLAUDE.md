@@ -273,19 +273,17 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     dele**: quando ele disser um dos dois, é esse ambiente, sem interpretar.
     Na dúvida, perguntar — nunca presumir produção.
 
-18. **A assistente de IA (Nina) está liberada SÓ para a família de teste.**
-    `ASSISTENTE_FAMILIAS` no `.env` de produção lista quem a enxerga — hoje só
-    `bgo6KJKTgCqC1HN2Jqzh` (Família Vinicius, conta de teste do Kirk). Todas as
-    outras 12 famílias seguem com o sistema exatamente como antes. Esvaziar a
-    variável libera para todos; `ASSISTENTE_ATIVA=false` desliga tudo sem
-    deploy e vence a lista. Com lista configurada, chamada SEM householdId
-    fica de fora — liberar por omissão seria o erro mais caro aqui.
-
-    **PARA LIBERAR PARA TODOS basta esvaziar a variável e deployar o BACKEND.**
-    O menu "Assistente" do painel aparece sozinho: o frontend pergunta ao
-    servidor (`GET /assistente/uso` → `{ativa}`) e obedece, via
-    `AssistenteContext.jsx`. Não é preciso publicar o site de novo, e a lista
-    de quem tem acesso nunca chega ao navegador.
+18. **A assistente de IA (Nina) está liberada para TODAS as famílias desde
+    22/08/2026.** `ASSISTENTE_FAMILIAS` no `.env` de produção está VAZIA — sem
+    lista, vale para todos; foi assim que a liberação geral aconteceu, depois
+    do teste com a Família Vinicius (`bgo6KJKTgCqC1HN2Jqzh`). Preencher a
+    variável com householdIds volta a restringir (só quem está nela enxerga a
+    feature); `ASSISTENTE_ATIVA=false` desliga tudo sem deploy e vence a
+    lista. Com lista configurada, chamada SEM householdId fica de fora —
+    liberar por omissão seria o erro mais caro aqui. Qualquer mudança nessas
+    variáveis é só editar o `.env` e deployar o BACKEND: o menu "Assistente"
+    do painel obedece ao servidor (`GET /assistente/uso` → `{ativa}`, via
+    `AssistenteContext.jsx`), sem publicar o site de novo.
 
 19. **Consulta responde SEM IA, e o número vem do banco.** `roteadorDeConsulta`
     classifica a pergunta e `consultaDiretaService` executa, chamando as mesmas

@@ -107,6 +107,27 @@ Depois vem a etapa 3, a central de ajuda.
 - **Substituição de texto por script falha em silêncio.** Duas correções que dei
   como feitas não tinham aplicado. Para editar código, usar o editor.
 
+## 22/08 (noite) — assistente liberada para TODOS + anexo do operador
+
+**A Nina está no ar para as 13 famílias desde 22/08/2026.** O teste do Kirk
+com a Família Vinicius terminou e ele mandou liberar: `ASSISTENTE_FAMILIAS`
+foi ESVAZIADA no `.env.financeiropessoal-29b32` e o backend deployado. Sem
+push de frontend — o menu "Assistente" aparece sozinho via
+`GET /assistente/uso` (`AssistenteContext.jsx`). `ASSISTENTE_ATIVA=false`
+segue sendo o desligamento de emergência, sem deploy. Conferido depois do
+deploy: App Check continua exigido.
+
+**Chamados: o operador agora abre o anexo do cliente** (commit `c592d88`).
+Única falha do teste em produção: a tela do `/plataforma` listava o nome do
+arquivo como texto, sem rota nem botão — cliente e operador usam autenticação
+diferente, então a rota do lado cliente não servia. Nova rota
+`GET /plataforma/chamados/:numero/anexos/:anexoId`, cross-tenant no
+`chamadosPlataformaService` (mesmo padrão das outras ações: acha o chamado
+pelo número, lê com o `householdId` do próprio chamado), atrás de
+`apenasOperadorAtivo`. Front reusa `AnexosDaMensagem`. 4 testes novos cobrem
+o caminho, incluindo o cross-tenant. Backend e frontend publicados.
+**Falta o Kirk repetir o teste do anexo na tela do operador.**
+
 ## O DIA 21/08 — o que mudou
 
 **O frontend foi publicado.** `main` recebeu os 58 commits e a Vercel deployou:
