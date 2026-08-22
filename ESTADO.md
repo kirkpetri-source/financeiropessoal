@@ -1,86 +1,79 @@
-# Estado do projeto — 21/08/2026 (tudo em produção: backend E frontend)
+# Estado do projeto — 22/08/2026 (tudo em produção: backend E frontend)
 
-## RETOMAR AQUI — chamados PRONTOS em homologação, esperando o Kirk aprovar
+## RETOMAR AQUI — chamados de suporte NO AR; próxima é a etapa 2
 
-As 9 fases do plano estão **fechadas e verificadas**. O código está na branch
-`feature/chamados-suporte` (11 commits), **nada foi para `main`** e nada foi
-para produção — regra 17.
+A etapa 1 da Fase 4 foi publicada em **22/08/2026, ~00:40**. As 13 famílias
+veem o item **Suporte** no menu e podem abrir chamado.
 
-- Spec revisão 3: `docs/superpowers/specs/2026-08-21-chamados-de-suporte-design.md`
-- Plano: `docs/superpowers/plans/2026-08-21-chamados-suporte-implementacao.md`
+### Como está em produção
 
-### O que o Kirk precisa fazer
-
-**1. Abrir e usar em homologação**, e dizer se aprova:
-
-```bash
-cd frontend && npm run dev -- --mode staging --port 5173 --strictPort
-#   cliente:  teste@revelacash.invalid / teste-da-nina-123  → menu Suporte
-#   operador: /plataforma — precisa criar o login antes:
-#   ALVO=staging node functions/tools/criar-login-operador.js kirkdouglas_19 --papel ADMIN --nome Kirk --confirmar
-```
-
-O backend de homologação já está deployado com tudo. O login de operador do
-staging foi APAGADO no fim do teste (era descartável) — recriar com o comando
-acima.
-
-**2. Depois de aprovar**, a publicação em produção é:
-
-```bash
-firebase deploy --only functions --project prod   # backend PRIMEIRO
-git checkout main && git merge feature/chamados-suporte && git push origin main
-```
-
-Backend antes do frontend: tela nova chamando rota que não existe quebra; o
-contrário só deixa a rota ociosa.
-
-**Antes do deploy de produção, falta configurar lá (hoje só o staging tem):**
-
-- `STORAGE_BUCKET_ANEXOS=revelacash-anexos` no `.env.financeiropessoal-29b32`
-  (o bucket JÁ existe, criado em 21/08)
-- `SUPORTE_EMAIL_REMETENTE` e `SUPORTE_EMAIL_DESTINO` no mesmo arquivo
-- `SUPORTE_WHATSAPP_HOUSEHOLD_ID` — opcional; sem ela o aviso ao operador sai
-  só por e-mail
-- `RESEND_API_KEY` já está no Secret Manager dos dois projetos
-- criar o operador em produção: `node tools/criar-login-operador.js ... --confirmar`
-
-### O que ficou pronto
-
-| Camada | O que tem |
+| | |
 |---|---|
-| Dados | `supportTickets` escopada, `operadores`, `counters`, `notificacoesNaoEntregues` |
-| Isolamento | `escopo.js` ganhou `criarEmTransacao` e `atualizarAtomico` |
-| Autorização | `apenasOperadorAtivo` — atendente atende sem virar admin |
-| Cliente | `/suporte` e `/suporte/:numero`, com anexos |
-| Operador | aba Chamados no `/plataforma`, fila por tempo de espera |
-| Anexos | bucket dedicado em São Paulo, magic bytes, servidos pela API |
-| Notificações | Resend + WhatsApp, sem conteúdo do chamado |
-| Rotina diária | encerra chamado parado há 15 dias |
-| LGPD | export inclui chamados; exclusão leva os arquivos |
+| Backend | 5 functions deployadas, mesmos nomes (nenhuma agendada duplicada) |
+| Frontend | `main` publicado pela Vercel |
+| App Check | continua exigido — conferido com `curl` depois do deploy |
+| `operadores` | 1 registro: Kirk, papel ADMIN, ativo |
+| `supportTickets` | 0 — o primeiro chamado real será o **#1** |
+| Backup pré-deploy | `backups/2026-08-22T03-05-42.json` (1.828 documentos) |
 
-**Suíte: 1233 testes.** Ponta a ponta contra homologação: 80/80. Teste HTTP do
-operador: 13/13.
+**Suporte NÃO tem interruptor de liberação** (diferente da assistente). Está no
+ar para todo mundo desde o push. Se um dia precisar desligar, é remover o item
+do Sidebar e a rota — não existe variável de ambiente para isso.
 
-### Armadilhas novas, achadas construindo (detalhe nos commits)
+### O que ainda NÃO foi exercitado em produção
 
-- **`serverTimestamp()` não funciona dentro de item de array** no Firestore. A
-  data da mensagem é `Timestamp.fromDate`.
+Nada disso corrompe dado; o pior caso é um aviso não sair, e falha de envio
+vira registro em `notificacoesNaoEntregues`, visível no topo da aba Chamados.
+
+- **A agendada diária** (`executarExclusoes`, 03:00 BRT). A lógica foi provada
+  contra o Firestore; o gatilho do Cloud Scheduler não — a conta de serviço não
+  tem `cloudscheduler.jobs.run`. É o mesmo mecanismo das outras quatro.
+- **WhatsApp ao cliente.** Nunca disparou de verdade: família de teste não tem
+  canal. Em produção vai disparar, pela mesma trilha do bot (com a assinatura
+  anti-loop).
+- **Um chamado real de cliente**, com anexo de verdade.
+
+### Configuração de produção
+
+Tudo no `.env.financeiropessoal-29b32`: `STORAGE_BUCKET_ANEXOS=revelacash-anexos`,
+`SUPORTE_EMAIL_REMETENTE`, `SUPORTE_EMAIL_DESTINO`. `RESEND_API_KEY` no Secret
+Manager.
+
+**`SUPORTE_WHATSAPP_HOUSEHOLD_ID` NÃO está definida** — o aviso ao operador cai
+no `NOTIFICACAO_CADASTRO_HOUSEHOLD_ID`. Funciona, mas as duas coisas estão
+acopladas: esvaziar a do cadastro desliga o aviso de chamado junto, em silêncio.
+Uma linha resolve quando incomodar.
+
+### Próxima etapa: papéis de operador (etapa 2 da Fase 4)
+
+O Kirk escolheu essa. Ela resolve a fricção que ele apontou nesta sessão —
+criar operador exige script com quatro flags:
+
+- criar e desativar operador **pela tela**, sem `criar-login-operador.js`
+- o que cada papel pode fazer (hoje `papel` é só um campo e `atribuidoA` é
+  informativo, de propósito)
+- e-mail real do operador, para o aviso de encaminhamento não cair na caixa da
+  equipe
+
+Depois vem a etapa 3, a central de ajuda.
+
+### Armadilhas novas desta feature (não repetir)
+
+- **`serverTimestamp()` não funciona dentro de item de array** no Firestore.
 - **Não existe "disparar e esquecer" no Cloud Run**: a CPU congela quando a
   resposta HTTP sai e a promessa morre. Notificação é AGUARDADA.
 - **`Buffer.from(x, 'base64')` nunca lança** — descarta o que não reconhece e
-  grava um arquivo menor e plausível. Confira o formato antes.
-- **O login do operador é um e-mail interno que ninguém lê.** Aviso de
-  encaminhamento para lá é aviso para o vazio.
-- **`apenasAdmin` estava guardando a tela em DOIS lugares** (`PlataformaPage` e
+  grava um arquivo menor e plausível.
+- **`carregar()` sem lista NÃO busca segredo.** Um script que precisa de
+  `RESEND_API_KEY` e chama `carregar()` vazio recebe `undefined`, o serviço
+  responde "desligado" e não manda nada — sem erro. Custou uma afirmação errada
+  de que e-mails tinham sido enviados.
+- **Teste que varre "não vazou conteúdo" precisa varrer TODOS os campos.** O
+  corpo em HTML entrou depois e a asserção continuou olhando só o texto.
+- **`apenasAdmin` guardava a tela em dois lugares** (`PlataformaPage` e
   `AdminPage`), desfazendo na interface a separação que o backend faz.
-- **Teste estático que lê código precisa ignorar comentário**, senão ele testa
-  a prosa — e apagar o comentário faz um teste quebrado voltar a passar.
-
-### Próximas etapas da Fase 4 (depois desta ir ao ar)
-
-2. **Papéis de operador** — o que cada papel pode fazer, criar/desativar pela
-   tela. Hoje `papel` é só um campo e `atribuidoA` é informativo.
-3. **Central de ajuda** — conteúdo na landing e no painel.
+- **Substituição de texto por script falha em silêncio.** Duas correções que dei
+  como feitas não tinham aplicado. Para editar código, usar o editor.
 
 ## O DIA 21/08 — o que mudou
 
