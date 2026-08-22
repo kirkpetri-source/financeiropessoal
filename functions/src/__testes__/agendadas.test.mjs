@@ -106,3 +106,22 @@ describe('backup diário', () => {
     expect(corpo).toContain('exportarAgora(');
   });
 });
+
+describe('interruptor de backup por ambiente', () => {
+  // Homologação não faz backup de propósito (BACKUP_ATIVO=false). O que estes
+  // testes protegem é o SILÊNCIO ser explícito: a checagem tem que vir ANTES
+  // do `vigiar`, senão o ambiente desligado continua gerando o aviso diário
+  // que a variável existe para calar — e nunca pode virar "sem configuração,
+  // sem backup e sem aviso", que é como um backup de produção some sem
+  // ninguém perceber.
+  const rotinas = ['backupDiario', 'copiaSemanalPorEmail'];
+
+  it.each(rotinas)('%s desiste antes de vigiar quando o ambiente está desligado', (nome) => {
+    const inicio = index.indexOf(`exports.${nome} = onSchedule(`);
+    const proxima = index.indexOf('exports.', inicio + 10);
+    const corpo = index.slice(inicio, proxima === -1 ? undefined : proxima);
+
+    expect(corpo).toContain('backupDesligado()');
+    expect(corpo.indexOf('backupDesligado()')).toBeLessThan(corpo.indexOf('vigiar('));
+  });
+});

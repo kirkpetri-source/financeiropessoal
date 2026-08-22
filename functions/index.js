@@ -11,6 +11,7 @@ const { gerarLancamentosDoDia } = require('./src/services/recurringBillService')
 const { fecharFaturasDoDia } = require('./src/services/invoiceService');
 const { exportarAgora } = require('./src/services/backupService');
 const { enviarCopia } = require('./src/services/backupEmailService');
+const { backupDesligado } = require('./src/services/backupDesligado');
 const { vigiar } = require('./src/services/alertaOperacionalService');
 
 // Chave da IA (Gemini) usada no fallback do parser de mensagens financeiras.
@@ -150,6 +151,10 @@ exports.copiaSemanalPorEmail = onSchedule(
     secrets: SEGREDOS,
   },
   async () => {
+    if (backupDesligado()) {
+      console.log('[CopiaSemanal] Backup desligado neste ambiente (BACKUP_ATIVO=false).');
+      return;
+    }
     await vigiar('CopiaSemanal', () => enviarCopia());
   }
 );
@@ -157,6 +162,10 @@ exports.copiaSemanalPorEmail = onSchedule(
 exports.backupDiario = onSchedule(
   { schedule: 'every day 02:00', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 120, memory: '256MiB' },
   async () => {
+    if (backupDesligado()) {
+      console.log('[Backup] Backup desligado neste ambiente (BACKUP_ATIVO=false).');
+      return;
+    }
     await vigiar('Backup', () => exportarAgora(new Date()));
   }
 );
