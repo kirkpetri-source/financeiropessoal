@@ -25,13 +25,19 @@ if (process.env.VITEST && !process.env.FIRESTORE_EMULATOR_HOST) {
 // comando existente mudar de comportamento. Com ALVO=staging, é a chave do
 // projeto de staging, e a FALTA dela é erro fatal: cair de volta em produção
 // em silêncio seria a pior falha possível deste arquivo.
+function caminhoDaChaveLocal() {
+  const path = require('path');
+  const ehStaging = String(process.env.ALVO || '').toLowerCase() === 'staging';
+  const arquivo = ehStaging ? 'serviceAccountKey.staging.json' : 'serviceAccountKey.json';
+  return path.join(__dirname, '..', '..', arquivo);
+}
+
 function credencialLocal() {
   const fs = require('fs');
-  const path = require('path');
 
   const ehStaging = String(process.env.ALVO || '').toLowerCase() === 'staging';
   const arquivo = ehStaging ? 'serviceAccountKey.staging.json' : 'serviceAccountKey.json';
-  const caminho = path.join(__dirname, '..', '..', arquivo);
+  const caminho = caminhoDaChaveLocal();
 
   if (ehStaging && !fs.existsSync(caminho)) {
     throw new Error(
@@ -53,17 +59,47 @@ function credencialLocal() {
   return credencial;
 }
 
+// Qual projeto estamos usando, de verdade.
+//
+// `admin.app().options.projectId` vem VAZIO quando o app é inicializado com
+// `cert()` — ou seja, em todo script de tools/. Dentro de Cloud Functions o
+// ambiente define GCLOUD_PROJECT e tudo funciona, o que faz a diferença passar
+// despercebida até alguém precisar do id fora dali (foi o que aconteceu com o
+// backup: `databasePath(undefined, ...)` estourava com um erro sem relação
+// aparente, "Cannot read properties of undefined").
+let projectId = null;
+
+// Caminho do arquivo de chave em uso, quando existe (só fora de Functions).
+//
+// Clientes do Google Cloud que NÃO passam pelo firebase-admin — o
+// `FirestoreAdminClient` do backup é o caso — não enxergam a credencial que o
+// `initializeApp` recebeu e vão procurar as "default credentials" do ambiente,
+// que numa máquina de desenvolvimento não existem. Exportar o caminho deixa
+// esses clientes apontarem para a MESMA chave, e portanto para o mesmo
+// projeto que o anúncio de ambiente acabou de imprimir.
+let caminhoDaCredencial = null;
+
 if (!admin.apps.length) {
   // Em produção (Firebase Functions) usa credenciais automáticas do ambiente
   // Em desenvolvimento usa o arquivo de chave local
   if (process.env.NODE_ENV !== 'production') {
-    admin.initializeApp({ credential: admin.credential.cert(credencialLocal()) });
+    const credencial = credencialLocal();
+    projectId = credencial.project_id;
+    caminhoDaCredencial = caminhoDaChaveLocal();
+    admin.initializeApp({ credential: admin.credential.cert(credencial) });
   } else {
     admin.initializeApp();
   }
 }
 
+if (!projectId) {
+  projectId = admin.app().options.projectId
+    || process.env.GCLOUD_PROJECT
+    || process.env.GOOGLE_CLOUD_PROJECT
+    || null;
+}
+
 const db = admin.firestore();
 db.settings({ ignoreUndefinedProperties: true });
 
-module.exports = { admin, db };
+module.exports = { admin, db, projectId, caminhoDaCredencial };

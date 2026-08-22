@@ -58,11 +58,51 @@ describe('executarExclusoes faz as duas tarefas, isoladas', () => {
     expect(corpo).toContain('resolverInativos(');
   });
 
-  it('cada tarefa tem o próprio try/catch', () => {
-    // Duas tentativas e dois catch: uma varredura falhando não pode levar a
-    // outra junto. Com um try só, um erro na LGPD deixaria chamado inativo
-    // acumulando na fila sem ninguém entender por quê.
-    expect((corpo.match(/try \{/g) || []).length).toBe(2);
-    expect((corpo.match(/catch \(err\)/g) || []).length).toBe(2);
+  it('cada tarefa é vigiada por si — uma falhando não leva a outra junto', () => {
+    // Duas chamadas independentes a `vigiar`, que engole o erro de cada uma e
+    // registra o aviso. Numa chamada só (ou num try compartilhado), um erro na
+    // LGPD deixaria chamado inativo acumulando na fila sem ninguém entender
+    // por quê.
+    expect((corpo.match(/await vigiar\(/g) || []).length).toBe(2);
+  });
+});
+
+describe('toda agendada é vigiada — erro em rotina não pode virar só log', () => {
+  // O `vigiar` é o que transforma falha de rotina em aviso na tela do
+  // operador (services/alertaOperacionalService.js). Uma agendada nova que
+  // esqueça dele volta ao mundo em que a varredura quebra em silêncio.
+  const AGENDADAS = [
+    'executarExclusoes',
+    'gerarContasRecorrentes',
+    'fecharFaturas',
+    'backupDiario',
+  ];
+
+  it.each(AGENDADAS)('%s chama vigiar', (nome) => {
+    const inicio = index.indexOf(`exports.${nome} = onSchedule(`);
+    expect(inicio).toBeGreaterThan(-1);
+
+    const proxima = index.indexOf('exports.', inicio + 10);
+    const corpo = index.slice(inicio, proxima === -1 ? undefined : proxima);
+
+    expect(corpo).toContain('vigiar(');
+  });
+});
+
+describe('backup diário', () => {
+  const corpo = index.slice(index.indexOf('exports.backupDiario'));
+
+  it('roda ANTES da varredura de exclusões da LGPD', () => {
+    // Backup às 02:00, exclusões às 03:00: o backup do dia sempre contém o que
+    // a varredura vai apagar em seguida. Invertido, o que foi apagado nunca
+    // esteve num backup.
+    expect(corpo).toContain("schedule: 'every day 02:00'");
+
+    const lgpd = index.slice(index.indexOf('exports.executarExclusoes'));
+    expect(lgpd).toContain("schedule: 'every day 03:00'");
+  });
+
+  it('usa o export nativo do Firestore, não um dump pela memória da function', () => {
+    expect(corpo).toContain('exportarAgora(');
   });
 });

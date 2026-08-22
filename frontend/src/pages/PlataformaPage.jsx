@@ -158,7 +158,9 @@ export default function PlataformaPage() {
           <LogOut className="w-3.5 h-3.5" /> Sair
         </button>
       </header>
-      <main className="p-6 max-w-6xl mx-auto">
+      {/* Largura maior que a do painel do cliente: aqui cabem uma coluna de
+          navegação e uma tabela de clientes lado a lado. */}
+      <main className="p-4 sm:p-6 max-w-[1400px] mx-auto">
         <AdminPage />
       </main>
     </div>

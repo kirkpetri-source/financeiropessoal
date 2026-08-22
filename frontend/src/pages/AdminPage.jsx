@@ -1,41 +1,62 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Lock, BarChart3, Users, MessagesSquare, LifeBuoy } from 'lucide-react';
+import {
+  Loader2, Lock, BarChart3, Users, MessagesSquare, LifeBuoy, UserCog, Server,
+} from 'lucide-react';
 import api from '../services/api';
 import DashboardTab from './plataforma/DashboardTab';
 import ClientesTab from './plataforma/ClientesTab';
 import ComunicacaoTab from './plataforma/ComunicacaoTab';
 import ChamadosTab from './plataforma/ChamadosTab';
+import OperadoresTab from './plataforma/OperadoresTab';
+import SistemaTab from './plataforma/SistemaTab';
 
 /**
- * CRM do operador do RevelaCash — três abas:
+ * CRM do operador do RevelaCash.
  *
  *   Dashboard    — MRR, churn, conversão e os gráficos de tendência.
- *   Clientes     — a lista de famílias (ações administrativas, notas do CRM,
- *                  histórico de WhatsApp) — era a tela inteira antes desta
- *                  reforma, agora é uma aba.
- *   Comunicação  — templates e envio em massa de avisos/novidades/dicas pelo
- *                  WhatsApp, por segmento de família.
+ *   Clientes     — a lista de famílias: ações administrativas, notas do CRM,
+ *                  histórico de WhatsApp.
+ *   Chamados     — a fila do suporte.
+ *   Comunicação  — templates e envio em massa por segmento de família.
+ *   Equipe       — criar operador, papel e permissões (etapa 2 da Fase 4).
+ *   Sistema      — custo de IA, backup e saúde da operação.
  *
- * Nada das ações administrativas por família mudou de rota nem de
- * comportamento — só ganharam um lugar (aba "Clientes") e vizinhos (Notas,
- * Mensagens) dentro do mesmo drawer que já existia.
+ * NAVEGAÇÃO LATERAL, e não abas em linha. Com seis seções, abas empilhavam no
+ * notebook e o rótulo virava a única pista do que era cada uma; a coluna deixa
+ * o conjunto inteiro visível e sobra largura para tabela de cliente, que é o
+ * conteúdo mais apertado daqui.
+ *
+ * `soAdmin` separa o que é do DONO do negócio do que é de quem ATENDE. Sem
+ * essa distinção o painel desfaria, na tela, a separação que o backend faz:
+ * um ATENDENTE tem permissão para a fila de chamados e não tem para métricas,
+ * clientes e cobrança.
  */
 
-/**
- * `soAdmin` separa o que é do DONO do negócio do que é de quem ATENDE.
- *
- * Sem essa distinção o painel desfaria, na tela, a separação que o backend faz:
- * um ATENDENTE tem permissão para a fila de chamados e NÃO tem para métricas,
- * clientes e cobrança. A versão anterior liberava a tela inteira testando
- * `/plataforma/metricas` — ou seja, um atendente veria "Acesso restrito" e a
- * coleção `operadores` não serviria para nada.
- */
-const ABAS = [
-  { chave: 'dashboard', rotulo: 'Dashboard', icon: BarChart3, Componente: DashboardTab, soAdmin: true },
-  { chave: 'clientes', rotulo: 'Clientes', icon: Users, Componente: ClientesTab, soAdmin: true },
-  { chave: 'comunicacao', rotulo: 'Comunicação', icon: MessagesSquare, Componente: ComunicacaoTab, soAdmin: true },
-  { chave: 'chamados', rotulo: 'Chamados', icon: LifeBuoy, Componente: ChamadosTab, soAdmin: false },
+const SECOES = [
+  {
+    grupo: 'Negócio',
+    itens: [
+      { chave: 'dashboard', rotulo: 'Dashboard', icon: BarChart3, Componente: DashboardTab, soAdmin: true },
+      { chave: 'clientes', rotulo: 'Clientes', icon: Users, Componente: ClientesTab, soAdmin: true },
+    ],
+  },
+  {
+    grupo: 'Atendimento',
+    itens: [
+      { chave: 'chamados', rotulo: 'Chamados', icon: LifeBuoy, Componente: ChamadosTab, soAdmin: false },
+      { chave: 'comunicacao', rotulo: 'Comunicação', icon: MessagesSquare, Componente: ComunicacaoTab, soAdmin: true },
+    ],
+  },
+  {
+    grupo: 'Administração',
+    itens: [
+      { chave: 'equipe', rotulo: 'Equipe', icon: UserCog, Componente: OperadoresTab, soAdmin: true },
+      { chave: 'sistema', rotulo: 'Sistema', icon: Server, Componente: SistemaTab, soAdmin: true },
+    ],
+  },
 ];
+
+const TODOS_OS_ITENS = SECOES.flatMap((s) => s.itens);
 
 export default function AdminPage() {
   const [carregando, setCarregando] = useState(true);
@@ -69,37 +90,55 @@ export default function AdminPage() {
         <p className="text-xs text-muted">
           Este painel é da operação do serviço. Para o painel completo, o e-mail
           precisa estar em ADMIN_EMAILS; para atender chamados, basta um registro
-          ativo em `operadores` (tools/criar-login-operador.js).
+          ativo em `operadores`.
         </p>
       </div>
     );
   }
 
-  const abasVisiveis = ABAS.filter((a) => ehAdmin || !a.soAdmin);
-  const abaAtual = aba && abasVisiveis.some((a) => a.chave === aba) ? aba : abasVisiveis[0].chave;
-  const AbaAtiva = abasVisiveis.find((a) => a.chave === abaAtual).Componente;
+  const disponiveis = TODOS_OS_ITENS.filter((i) => ehAdmin || !i.soAdmin);
+  const atual = aba && disponiveis.some((i) => i.chave === aba) ? aba : disponiveis[0].chave;
+  const Ativa = disponiveis.find((i) => i.chave === atual).Componente;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-ink">CRM RevelaCash</h1>
-        <p className="text-sm text-muted">Operação, clientes e comunicação — tudo num lugar só.</p>
-      </div>
+    <div className="flex flex-col lg:flex-row gap-6 items-start">
+      <nav className="w-full lg:w-52 lg:shrink-0 lg:sticky lg:top-6" aria-label="Seções do painel">
+        {SECOES.map((secao) => {
+          const itens = secao.itens.filter((i) => ehAdmin || !i.soAdmin);
+          if (!itens.length) return null;
 
-      <div className="flex gap-1 border-b border-border">
-        {abasVisiveis.map((a) => (
-          <button
-            key={a.chave}
-            type="button"
-            onClick={() => setAba(a.chave)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${abaAtual === a.chave ? 'border-brand-700 text-brand-700' : 'border-transparent text-muted hover:text-ink'}`}
-          >
-            <a.icon className="w-4 h-4" /> {a.rotulo}
-          </button>
-        ))}
-      </div>
+          return (
+            <div key={secao.grupo} className="mb-4 last:mb-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-faint px-3 mb-1.5">
+                {secao.grupo}
+              </p>
+              <ul className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible">
+                {itens.map((item) => (
+                  <li key={item.chave}>
+                    <button
+                      type="button"
+                      onClick={() => setAba(item.chave)}
+                      aria-current={atual === item.chave ? 'page' : undefined}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
+                                  transition-colors whitespace-nowrap
+                                  ${atual === item.chave
+                        ? 'bg-brand-light text-brand-dark font-medium'
+                        : 'text-muted hover:text-ink hover:bg-surface-alt'}`}
+                    >
+                      <item.icon className="w-4 h-4 flex-shrink-0" />
+                      {item.rotulo}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </nav>
 
-      <AbaAtiva />
+      <div className="flex-1 min-w-0 w-full">
+        <Ativa />
+      </div>
     </div>
   );
 }

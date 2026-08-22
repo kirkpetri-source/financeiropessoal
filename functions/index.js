@@ -9,6 +9,8 @@ const { executarExclusoesPendentes } = require('./src/services/lgpdService');
 const { resolverInativos } = require('./src/services/chamadosPlataformaService');
 const { gerarLancamentosDoDia } = require('./src/services/recurringBillService');
 const { fecharFaturasDoDia } = require('./src/services/invoiceService');
+const { exportarAgora } = require('./src/services/backupService');
+const { vigiar } = require('./src/services/alertaOperacionalService');
 
 // Chave da IA (Gemini) usada no fallback do parser de mensagens financeiras.
 // Configure com: firebase functions:secrets:set GEMINI_API_KEY
@@ -78,19 +80,12 @@ exports.pollWhatsapp = onSchedule(
 exports.executarExclusoes = onSchedule(
   { schedule: 'every day 03:00', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 540, memory: '256MiB' },
   async () => {
-    try {
-      const resultado = await executarExclusoesPendentes(new Date());
-      console.log('[LGPD] Concluído:', JSON.stringify(resultado));
-    } catch (err) {
-      console.error('[LGPD] Varredura falhou por inteiro:', err.message);
-    }
-
-    try {
-      const resultado = await resolverInativos(new Date());
-      console.log('[Chamados] Concluído:', JSON.stringify(resultado));
-    } catch (err) {
-      console.error('[Chamados] Varredura falhou por inteiro:', err.message);
-    }
+    // `vigiar` engole o erro e registra um aviso que aparece no topo da aba
+    // Chamados do /plataforma — antes isso era só um console.error que
+    // ninguém veria. As duas rodam independentes: uma falhar não cancela a
+    // outra.
+    await vigiar('LGPD', () => executarExclusoesPendentes(new Date()));
+    await vigiar('Chamados', () => resolverInativos(new Date()));
   }
 );
 
@@ -100,8 +95,7 @@ exports.executarExclusoes = onSchedule(
 exports.gerarContasRecorrentes = onSchedule(
   { schedule: 'every day 04:00', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 300, memory: '256MiB' },
   async () => {
-    const resultado = await gerarLancamentosDoDia(new Date());
-    console.log('[ContasRecorrentes] Concluído:', JSON.stringify(resultado));
+    await vigiar('ContasRecorrentes', () => gerarLancamentosDoDia(new Date()));
   }
 );
 
@@ -110,7 +104,23 @@ exports.gerarContasRecorrentes = onSchedule(
 exports.fecharFaturas = onSchedule(
   { schedule: 'every day 04:30', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 300, memory: '256MiB' },
   async () => {
-    const resultado = await fecharFaturasDoDia(new Date());
-    console.log('[Faturas] Concluído:', JSON.stringify(resultado));
+    await vigiar('Faturas', () => fecharFaturasDoDia(new Date()));
+  }
+);
+
+// Backup automático do Firestore, todo dia de madrugada.
+//
+// Dispara o export NATIVO do Firestore para o bucket de BACKUP_BUCKET e sai —
+// quem faz o trabalho pesado é a infraestrutura do Google, não esta function
+// (ver src/services/backupService.js). Às 02:00 de propósito: antes das
+// exclusões da LGPD (03:00), então o backup do dia sempre contém o que a
+// varredura vai apagar em seguida.
+//
+// Sem BACKUP_BUCKET no ambiente, o serviço lança e o `vigiar` transforma isso
+// num aviso visível — backup desligado precisa doer, não passar batido.
+exports.backupDiario = onSchedule(
+  { schedule: 'every day 02:00', timeZone: 'America/Sao_Paulo', region: 'southamerica-east1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    await vigiar('Backup', () => exportarAgora(new Date()));
   }
 );

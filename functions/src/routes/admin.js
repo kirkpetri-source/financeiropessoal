@@ -13,6 +13,10 @@ const adminCrmService = require('../services/adminCrmService');
 const adminMensagensService = require('../services/adminMensagensService');
 const whatsappLogService = require('../services/whatsappLogService');
 const lgpdService = require('../services/lgpdService');
+const operadorService = require('../services/operadorService');
+const custoIAService = require('../services/custoIAService');
+const backupService = require('../services/backupService');
+const { PAPEIS, TODAS, ROTULOS, DESCRICAO, MATRIZ } = require('../operadores/permissoes');
 const validate = require('../middlewares/validate');
 const { escopoDe } = require('../data/escopo');
 
@@ -421,6 +425,135 @@ router.post('/familias/:id/apagar-agora', validate(apagarAgoraSchema), async (re
     });
 
     res.json({ apagada: true, ...resultado });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// Operadores — a etapa 2 da Fase 4.
+//
+// Criar operador exigia `tools/criar-login-operador.js` com quatro flags, o
+// que o Kirk classificou como confuso (e a regra 8 do projeto diz que era
+// para eu ter executado, não ensinado). Agora é tela.
+//
+// Tudo aqui está atrás do `apenasAdmin` do topo do arquivo: quem administra
+// gente é o dono do negócio, nunca o atendente — senão o atendente se promove.
+// ---------------------------------------------------------------------------
+
+const operadorSchema = z.object({
+  usuario: z.string().min(3).max(32),
+  nome: z.string().min(1).max(120),
+  email: z.string().email('E-mail inválido.').optional().nullable(),
+  papel: z.nativeEnum(PAPEIS),
+  senha: z.string().min(10, 'A senha do operador precisa de pelo menos 10 caracteres.'),
+});
+
+// Sem `.default()` em nada (regra 10): campo ausente não pode sobrescrever o
+// que está gravado. Um formulário que manda só o papel não apaga o e-mail.
+const operadorUpdateSchema = z.object({
+  nome: z.string().min(1).max(120).optional(),
+  email: z.string().email('E-mail inválido.').nullable().optional(),
+  papel: z.nativeEnum(PAPEIS).optional(),
+  ativo: z.boolean().optional(),
+  permissoesExtras: z.array(z.string()).optional(),
+});
+
+const senhaSchema = z.object({
+  senha: z.string().min(10, 'A senha precisa de pelo menos 10 caracteres.'),
+});
+
+/** O catálogo de papéis e permissões, para a tela montar a matriz sozinha. */
+router.get('/operadores/papeis', (req, res) => {
+  res.json({
+    papeis: Object.values(PAPEIS).map((papel) => ({
+      papel,
+      descricao: DESCRICAO[papel],
+      capacidades: MATRIZ[papel],
+    })),
+    capacidades: TODAS.map((c) => ({ chave: c, rotulo: ROTULOS[c] })),
+  });
+});
+
+router.get('/operadores', async (req, res, next) => {
+  try {
+    res.json(await operadorService.listar());
+  } catch (err) { next(err); }
+});
+
+router.post('/operadores', validate(operadorSchema), async (req, res, next) => {
+  try {
+    const criado = await operadorService.criar(req.body, { uid: req.userId });
+
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'operador_criado',
+      householdId: null,
+      detalhes: { uid: criado.uid, usuario: criado.usuario, papel: criado.papel },
+    });
+
+    res.status(201).json(criado);
+  } catch (err) { next(err); }
+});
+
+router.put('/operadores/:uid', validate(operadorUpdateSchema), async (req, res, next) => {
+  try {
+    const atualizado = await operadorService.atualizar(req.params.uid, req.body, { uid: req.userId });
+
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'operador_atualizado',
+      householdId: null,
+      detalhes: { uid: req.params.uid, mudancas: Object.keys(req.body) },
+    });
+
+    res.json(atualizado);
+  } catch (err) { next(err); }
+});
+
+router.post('/operadores/:uid/senha', validate(senhaSchema), async (req, res, next) => {
+  try {
+    const r = await operadorService.redefinirSenha(req.params.uid, req.body.senha);
+
+    // A senha NUNCA entra no rastro — só o fato de ter sido trocada.
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'operador_senha_redefinida',
+      householdId: null, detalhes: { uid: req.params.uid },
+    });
+
+    res.json(r);
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// Custo de IA — o gasto que o produto tem para funcionar.
+// ---------------------------------------------------------------------------
+
+router.get('/custos/ia', async (req, res, next) => {
+  try {
+    const dias = Math.min(Math.max(Number(req.query.dias) || 30, 1), 90);
+    const [resumo, familias] = await Promise.all([
+      custoIAService.ultimosDias(dias),
+      custoIAService.porFamilia(dias),
+    ]);
+    res.json({ ...resumo, familias });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// Backup sob demanda.
+//
+// A agendada roda às 02:00, mas "vou mexer em algo agora" precisa de um botão.
+// Dispara o export nativo e responde na hora — o Firestore continua o trabalho
+// sozinho, sem prender esta requisição.
+// ---------------------------------------------------------------------------
+
+router.post('/backup', async (req, res, next) => {
+  try {
+    const r = await backupService.exportarAgora(new Date());
+
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'backup_manual',
+      householdId: null, detalhes: { destino: r.destino },
+    });
+
+    res.json(r);
   } catch (err) { next(err); }
 });
 

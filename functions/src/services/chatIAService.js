@@ -467,6 +467,26 @@ function criarChatIA({ consulta, acoes, chamarModelo, sessoes, agora = () => new
         + `saida=${uso.saida} (pensamento=${uso.pensamento}) `
         + `custo=R$${uso.custoBRL.toFixed(4)}`
         + (resultado.erro ? ` erro=${resultado.erro}` : ''));
+
+      // Além do log, soma no acumulado do dia — é o que o painel gestor lê
+      // para mostrar o gasto de IA. Sem isto, o custo existia só em texto no
+      // Cloud Logging e sumia junto com ele. `require` aqui dentro (e não no
+      // topo) porque o serviço toca o firebaseAdmin, e este arquivo é
+      // carregado sob teste.
+      try {
+        require('./custoIAService').registrar({
+          // O escopo carrega a família (data/escopo.js) — é a única fonte do
+          // householdId aqui dentro, e de propósito: este serviço nunca
+          // recebe a família por parâmetro solto.
+          householdId: dados?.householdId || null,
+          origem: 'chat',
+          modelo: MODELO,
+          custoBRL: uso.custoBRL,
+          entrada: uso.entrada,
+          saida: uso.saida,
+        });
+      } catch { /* contabilidade nunca derruba a resposta */ }
+
       return { ...resultado, uso };
     }
 
