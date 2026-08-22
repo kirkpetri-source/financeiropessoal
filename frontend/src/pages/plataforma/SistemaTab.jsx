@@ -2,12 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import {
-  Loader2, DatabaseBackup, Cpu, TrendingUp, RefreshCw, AlertTriangle, CheckCircle2,
-} from 'lucide-react';
+import { Loader2, Cpu, TrendingUp, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
+import BackupPainel from './BackupPainel';
 
 /**
  * O CUSTO de manter o produto de pé, e as ferramentas de operação.
@@ -41,8 +40,6 @@ export default function SistemaTab() {
   const [dias, setDias] = useState(30);
   const [custos, setCustos] = useState(null);
   const [carregando, setCarregando] = useState(true);
-  const [rodandoBackup, setRodandoBackup] = useState(false);
-  const [ultimoBackup, setUltimoBackup] = useState(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -57,19 +54,6 @@ export default function SistemaTab() {
   }, [dias]);
 
   useEffect(() => { carregar(); }, [carregar]);
-
-  async function dispararBackup() {
-    setRodandoBackup(true);
-    try {
-      const { data } = await api.post('/plataforma/backup');
-      setUltimoBackup(data);
-      toast.success('Backup iniciado.');
-    } catch (erro) {
-      toast.error(erro.response?.data?.error || 'Não consegui iniciar o backup.');
-    } finally {
-      setRodandoBackup(false);
-    }
-  }
 
   if (carregando && !custos) {
     return <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-faint" /></div>;
@@ -208,11 +192,7 @@ export default function SistemaTab() {
         </div>
       )}
 
-      <Backup
-        onDisparar={dispararBackup}
-        rodando={rodandoBackup}
-        ultimo={ultimoBackup}
-      />
+      <BackupPainel />
     </div>
   );
 }
@@ -236,63 +216,6 @@ function TooltipCusto({ active, payload, label }) {
       <p className="text-xs font-medium text-ink">{dataCurta(label)}</p>
       <p className="text-xs text-brand-700">{formatCurrency(d.custo)}</p>
       <p className="text-xs text-muted">{d.chamadas} chamadas</p>
-    </div>
-  );
-}
-
-/**
- * Backup sob demanda.
- *
- * A agendada roda às 02:00 (antes da varredura de exclusões da LGPD, às 03:00,
- * para que o backup do dia sempre contenha o que vai ser apagado). Este botão
- * é o "vou mexer em algo agora" — a regra 1 do projeto exige backup antes de
- * qualquer script que escreva no Firestore, e ela já salvou o projeto uma vez.
- */
-function Backup({ onDisparar, rodando, ultimo }) {
-  return (
-    <div className="card">
-      <div className="flex items-start gap-3">
-        <div className="w-9 h-9 rounded-lg bg-brand-light flex items-center justify-center flex-shrink-0">
-          <DatabaseBackup className="w-4 h-4 text-brand-dark" />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-ink">Backup do banco</p>
-          <p className="text-xs text-muted mt-0.5">
-            Export nativo do Firestore para bucket privado em São Paulo, com retenção de 30 dias.
-            Automático todo dia às 02:00 — este botão é para antes de mexer em algo.
-          </p>
-
-          {ultimo && (
-            <div className="mt-3 text-xs bg-emerald-50 border border-emerald-200 rounded-card px-3 py-2 flex items-start gap-2">
-              <CheckCircle2 className="w-3.5 h-3.5 text-income flex-shrink-0 mt-px" />
-              <div className="min-w-0">
-                <p className="text-emerald-900 font-medium">Backup iniciado.</p>
-                <p className="text-emerald-800 font-mono truncate">{ultimo.destino}</p>
-                <p className="text-emerald-700 mt-0.5">
-                  O Firestore continua o trabalho sozinho — pode levar alguns minutos.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={onDisparar}
-          disabled={rodando}
-          className="btn-secondary text-sm flex items-center gap-2 flex-shrink-0"
-        >
-          {rodando ? <Loader2 className="w-4 h-4 animate-spin" /> : <DatabaseBackup className="w-4 h-4" />}
-          {rodando ? 'Iniciando...' : 'Fazer backup agora'}
-        </button>
-      </div>
-
-      <p className="mt-3 pt-3 border-t border-border text-xs text-faint flex items-start gap-1.5">
-        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-        Falha de rotina automática (backup, exclusões da LGPD, faturas) aparece como aviso no topo
-        da aba Chamados.
-      </p>
     </div>
   );
 }

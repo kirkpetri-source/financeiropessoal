@@ -457,6 +457,14 @@ const operadorUpdateSchema = z.object({
   permissoesExtras: z.array(z.string()).optional(),
 });
 
+// Sem `.default()` (regra 10). `senha` é conferida no serviço, em tempo
+// constante — aqui só se garante que veio algo.
+const restauracaoSchema = z.object({
+  backup: z.string().min(1, 'Escolha um backup.'),
+  senha: z.string().min(1, 'Informe a senha de restauração.'),
+  confirmacao: z.string().min(1, 'Repita a identificação do backup.'),
+});
+
 const senhaSchema = z.object({
   senha: z.string().min(10, 'A senha precisa de pelo menos 10 caracteres.'),
 });
@@ -555,6 +563,96 @@ router.post('/backup', async (req, res, next) => {
 
     res.json(r);
   } catch (err) { next(err); }
+});
+
+/**
+ * O rastro das ações de backup e restauração.
+ *
+ * Lista separada da auditoria por família porque a pergunta é outra: ali é
+ * "o que fizeram NESTE cliente", aqui é "quem mexeu no banco inteiro".
+ */
+const ACOES_DE_BACKUP = [
+  'backup_manual', 'backup_baixado',
+  'restauracao_tentada', 'restauracao_executada', 'restauracao_recusada',
+];
+
+router.get('/backups/auditoria', async (req, res, next) => {
+  try {
+    res.json(await adminAuditService.listarRecentes({ acoes: ACOES_DE_BACKUP, limite: 30 }));
+  } catch (err) { next(err); }
+});
+
+/** Histórico de backups. Sem isto a tela só mostrava o da sessão atual. */
+router.get('/backups', async (req, res, next) => {
+  try {
+    res.json({
+      backups: await backupService.listar(),
+      restauracaoDisponivel: backupService.restauracaoConfigurada(),
+    });
+  } catch (err) { next(err); }
+});
+
+/**
+ * Baixa o backup em .zip, para guardar fora do Google.
+ *
+ * A id vem no caminho e tem barra dentro (`diario/2026-...`), por isso o
+ * `(*)` — com `:id` o Express cortaria no primeiro separador e nunca acharia
+ * a pasta.
+ */
+router.get('/backups/*', async (req, res, next) => {
+  try {
+    const id = req.params[0];
+    const arquivo = await backupService.baixar(id);
+
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'backup_baixado',
+      householdId: null, detalhes: { backup: id },
+    });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Length', arquivo.conteudo.length);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `attachment; filename="${arquivo.nome}"`);
+    res.send(arquivo.conteudo);
+  } catch (err) { next(err); }
+});
+
+/**
+ * RESTAURA um backup por cima do banco. A ação mais perigosa do sistema.
+ *
+ * Exige a senha de restauração (segredo `BACKUP_RESTORE_SENHA`, separado do
+ * login) e a repetição da id. O serviço ainda tira um backup de segurança do
+ * estado atual antes de sobrescrever — ver `backupService.restaurar`.
+ *
+ * O rastro é gravado ANTES e DEPOIS: antes para que uma tentativa que falhe
+ * no meio deixe registro, depois com o resultado. Senha nunca entra no log.
+ */
+router.post('/backups/restaurar', validate(restauracaoSchema), async (req, res, next) => {
+  const { backup: id, confirmacao } = req.body;
+
+  try {
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'restauracao_tentada',
+      householdId: null, detalhes: { backup: id },
+    });
+
+    const r = await backupService.restaurar(id, { senha: req.body.senha, confirmacao });
+
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'restauracao_executada',
+      householdId: null,
+      detalhes: { backup: id, backupDeSeguranca: r.backupDeSeguranca, operacao: r.operacao },
+    });
+
+    res.json(r);
+  } catch (err) {
+    await adminAuditService.registrar({
+      adminUid: req.userId, adminEmail: req.userEmail, acao: 'restauracao_recusada',
+      householdId: null, detalhes: { backup: id, motivo: err.codigo || 'ERRO' },
+    }).catch(() => {});
+
+    next(err);
+  }
 });
 
 module.exports = router;

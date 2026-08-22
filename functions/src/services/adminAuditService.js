@@ -46,4 +46,29 @@ async function listarPorFamilia(householdId, limite = 50) {
     .map((a) => ({ ...a, createdAt: a.createdAt?.toDate?.()?.toISOString() || null }));
 }
 
-module.exports = { registrar, listarPorFamilia };
+/**
+ * As ações mais recentes de TODAS as famílias — o log que o painel mostra.
+ *
+ * `orderBy` sozinho, sem `where`, NÃO exige índice composto (regra 12): é a
+ * ordenação natural de um campo só. O `where` é que forçaria o índice, e por
+ * isso o filtro por ação é aplicado em memória, sobre uma janela já limitada.
+ *
+ * `acoes` filtra por tipo — a tela de backup só quer ver backup e restauração,
+ * não pagamento manual de assinatura.
+ */
+async function listarRecentes({ acoes = null, limite = 50 } = {}) {
+  const janela = acoes ? Math.max(limite * 6, 200) : limite;
+
+  const snap = await db.collection('adminAuditLog')
+    .orderBy('createdAt', 'desc')
+    .limit(janela)
+    .get();
+
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((a) => !acoes || acoes.includes(a.acao))
+    .slice(0, limite)
+    .map((a) => ({ ...a, createdAt: a.createdAt?.toDate?.()?.toISOString() || null }));
+}
+
+module.exports = { registrar, listarPorFamilia, listarRecentes };

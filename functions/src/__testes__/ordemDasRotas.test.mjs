@@ -102,3 +102,21 @@ describe('ordem das rotas dentro do router do operador', () => {
     expect(operadores).toBeLessThan(porNumero);
   });
 });
+
+describe('rotas de backup — o curinga não pode engolir as irmãs', () => {
+  const admin = readFileSync(
+    new URL('../routes/admin.js', import.meta.url), 'utf8',
+  );
+
+  it('/backups/auditoria é registrada ANTES de /backups/*', () => {
+    // O Express casa na ordem de registro. Com o curinga primeiro, um GET em
+    // /backups/auditoria viraria "baixe o backup chamado auditoria" e voltaria
+    // 404 — sem erro nenhum aparecer no servidor, só a tela sem histórico.
+    const auditoria = admin.indexOf("router.get('/backups/auditoria'");
+    const curinga = admin.indexOf("router.get('/backups/*'");
+
+    expect(auditoria).toBeGreaterThan(-1);
+    expect(curinga).toBeGreaterThan(-1);
+    expect(auditoria).toBeLessThan(curinga);
+  });
+});
