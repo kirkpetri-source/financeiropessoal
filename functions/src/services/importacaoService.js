@@ -47,6 +47,14 @@ function normalizarNome(texto) {
     .trim();
 }
 
+/**
+ * Quanto tempo um rascunho não confirmado continua de pé.
+ *
+ * 24h cobre o caso real de deixar para conferir o extrato no dia seguinte, sem
+ * deixar o documento (que carrega o extrato inteiro) parado para sempre.
+ */
+const VALIDADE_DO_RASCUNHO_MS = 24 * 60 * 60 * 1000;
+
 function criarServicoDeImportacao({ escopoDe, admin, categorizarComIA = null, consumirCreditoDeIA = null }) {
   /**
    * Lê o arquivo e monta o preview, SEM gravar lançamento nenhum. O único
@@ -56,6 +64,8 @@ function criarServicoDeImportacao({ escopoDe, admin, categorizarComIA = null, co
    */
   async function analisar({ householdId, conteudo, nomeArquivo = null, criadoPor = null, agora = new Date() }) {
     const dados = escopoDe(householdId);
+
+    await descartarRascunhosAbandonados(dados, agora);
 
     const lido = lerExtrato(conteudo);
     const { aceitas, recusadas } = filtrarRetroativas(lido.transacoes, { agora });
@@ -282,6 +292,45 @@ function criarServicoDeImportacao({ escopoDe, admin, categorizarComIA = null, co
   }
 
   // ---------------------------------------------------------------- internos
+
+  /**
+   * Apaga rascunhos que a família começou e nunca terminou.
+   *
+   * Rascunho é uma etapa, não um registro: ele existe entre o "subi o arquivo"
+   * e o "confirmei". Quem fecha a aba no meio deixa para trás um documento com
+   * o extrato bancário INTEIRO dentro (50 linhas de dado financeiro, com nome
+   * de contraparte e conta), que nunca vira lançamento e nunca some sozinho.
+   *
+   * Dois problemas de uma vez: a tela de importações passa a listar
+   * "Não concluída" para sempre, sem nenhum jeito de a pessoa limpar; e o
+   * sistema guarda dado pessoal que já não tem finalidade, que é exatamente o
+   * que a LGPD manda não fazer.
+   *
+   * A limpeza é aqui, no começo de uma importação NOVA, e não numa rotina
+   * agendada, por dois motivos: começar outra importação é a prova de que a
+   * anterior foi abandonada (a agendada teria que adivinhar), e uma varredura
+   * diária precisaria varrer todas as famílias — leitura cross-tenant e mais
+   * uma agendada para vigiar, para resolver um caso que acontece raramente.
+   *
+   * A janela de 24h protege quem deixou a aba aberta e volta para confirmar
+   * mais tarde: esse rascunho continua válido enquanto a pessoa não recomeçar.
+   * Falha aqui nunca derruba a importação — limpeza é higiene, não requisito.
+   */
+  async function descartarRascunhosAbandonados(dados, agora) {
+    const limite = new Date(agora.getTime() - VALIDADE_DO_RASCUNHO_MS);
+
+    try {
+      const snap = await dados.consultar('importBatches').where('status', '==', 'rascunho').get();
+
+      for (const doc of snap.docs) {
+        const criadoEm = doc.data()?.createdAt?.toDate?.();
+        if (criadoEm && criadoEm > limite) continue;
+        await dados.remover('importBatches', doc.id);
+      }
+    } catch (err) {
+      console.error('[Importação] Falhou ao limpar rascunhos antigos:', err.message);
+    }
+  }
 
   /** Uma query por mês: igualdade simples, sem exigir índice composto novo. */
   async function lancamentosDosMeses(dados, meses) {

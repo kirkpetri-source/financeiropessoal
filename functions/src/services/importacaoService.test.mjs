@@ -416,3 +416,59 @@ describe('categorização', () => {
     expect(chamouIA).not.toHaveBeenCalled();
   });
 });
+
+describe('rascunho abandonado', () => {
+  /** Rascunho velho, plantado direto no banco com a data que o teste precisa. */
+  function plantarRascunho(colecoes, { id, criadoEm, householdId = 'fam-1', status = 'rascunho' }) {
+    colecoes.importBatches.set(id, {
+      householdId,
+      status,
+      linhas: [],
+      createdAt: { toDate: () => criadoEm },
+    });
+  }
+
+  it('some quando a família começa outra importação', async () => {
+    const { servico, colecoes } = criarServico();
+    plantarRascunho(colecoes, { id: 'velho', criadoEm: new Date('2026-08-14T10:00:00Z') });
+
+    await servico.analisar({ householdId: 'fam-1', conteudo: OFX_JULHO, agora: AGORA });
+
+    expect(colecoes.importBatches.has('velho')).toBe(false);
+  });
+
+  it('rascunho de menos de 24h sobrevive — a aba pode estar aberta', async () => {
+    const { servico, colecoes } = criarServico();
+    plantarRascunho(colecoes, { id: 'recente', criadoEm: new Date('2026-08-16T09:00:00Z') });
+
+    await servico.analisar({ householdId: 'fam-1', conteudo: OFX_JULHO, agora: AGORA });
+
+    expect(colecoes.importBatches.has('recente')).toBe(true);
+  });
+
+  it('não encosta em lote confirmado, por mais antigo que seja', async () => {
+    const { servico, colecoes } = criarServico();
+    plantarRascunho(colecoes, {
+      id: 'confirmado-antigo',
+      criadoEm: new Date('2026-01-02T10:00:00Z'),
+      status: 'confirmado',
+    });
+
+    await servico.analisar({ householdId: 'fam-1', conteudo: OFX_JULHO, agora: AGORA });
+
+    expect(colecoes.importBatches.has('confirmado-antigo')).toBe(true);
+  });
+
+  it('não apaga rascunho velho de OUTRA família', async () => {
+    const { servico, colecoes } = criarServico();
+    plantarRascunho(colecoes, {
+      id: 'da-outra-casa',
+      criadoEm: new Date('2026-01-02T10:00:00Z'),
+      householdId: 'fam-2',
+    });
+
+    await servico.analisar({ householdId: 'fam-1', conteudo: OFX_JULHO, agora: AGORA });
+
+    expect(colecoes.importBatches.has('da-outra-casa')).toBe(true);
+  });
+});
