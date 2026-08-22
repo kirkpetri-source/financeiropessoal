@@ -107,6 +107,68 @@ Depois vem a etapa 3, a central de ajuda.
 - **Substituição de texto por script falha em silêncio.** Duas correções que dei
   como feitas não tinham aplicado. Para editar código, usar o editor.
 
+## 22/08 (madrugada) — CRM, jurídico, senha e o bug das sessões
+
+**O bug que o Kirk fotografou está corrigido.** Logar no `/plataforma` fazia a
+aba da família exibir "Olá, Operador" no F5 seguinte — os dois lados dividiam a
+MESMA sessão do Firebase Auth. Agora o portal autentica num app Firebase
+**nomeado** (`authPlataforma`, em `config/firebase.js`) e guarda o token em
+chave própria do localStorage; `services/api.js` escolhe a chave pela URL da
+requisição. Provado no navegador: as duas contas ficam abertas lado a lado.
+
+**Senha forte** (`frontend/src/utils/politicaDeSenha.js`): mínimo 10
+caracteres, letra + número, lista do que é óbvio demais, medidor de força no
+cadastro. Vale no cadastro e na troca, **nunca no login** — quem tem senha
+antiga e curta continua entrando. O cadastro passou a disparar
+`sendEmailVerification` (não bloqueia o uso).
+
+**CRM do `/plataforma` reformulado** — navegação lateral em três grupos, com
+duas seções novas:
+
+- **Equipe**: cria, edita e desativa operador pela TELA, com matriz de
+  permissões servida pelo backend (`/plataforma/operadores/papeis`). Papéis:
+  ATENDENTE, SUPORTE_SENIOR, FINANCEIRO, ADMIN, mais permissões extras
+  avulsas que acrescentam sem promover. Ninguém muda o próprio papel nem se
+  autodesativa (um admin rebaixado trancaria o painel). Campo de e-mail REAL,
+  que era a lacuna do aviso de encaminhamento. **Isto é a etapa 2 da Fase 4.**
+- **Sistema**: custo de IA por dia e por família, com projeção mensal — antes
+  esse número existia só em `console.log`, ou seja, não existia para efeito de
+  decisão. Mais o botão de backup sob demanda.
+
+**Backup automático** (`backupDiario`, 02:00 BRT, antes da varredura da LGPD
+das 03:00 de propósito) usando o export NATIVO do Firestore para
+`gs://revelacash-backups` (São Paulo, privado, NEARLINE, 30 dias). E **toda
+agendada agora passa por `vigiar`** (`alertaOperacionalService`), que
+transforma falha de rotina em aviso no topo da aba Chamados — antes era
+`console.error` que ninguém leria.
+
+**PENDENTE E BLOQUEADO: o backup responde `PERMISSION_DENIED`.** Testado pelo
+botão do painel em homologação. A conta de serviço das Functions
+(`<numero>-compute@developer.gserviceaccount.com`) precisa de
+`roles/datastore.importExportAdmin` no projeto e escrita no bucket. A chave
+`firebase-adminsdk` não tem poder de alterar IAM, então **isto exige a conta
+Google do Kirk** — é a mesma classe de exceção da regra 8 que o reCAPTCHA/App
+Check já tinha. Enquanto não for concedido, a agendada falha todo dia e o
+aviso aparece na aba Chamados (que é exatamente o que o `vigiar` existe para
+fazer).
+
+**Jurídico reescrito** — termos com 18 cláusulas, privacidade com 14, índice
+lateral, numeração hierárquica (`4.2`) e versão/vigência no cabeçalho. O que
+faltava e agora está lá: propriedade do conteúdo e licença, uso aceitável,
+suspensão, **transferência internacional** (o texto anterior afirmava "dados
+no Brasil" e listava o Gemini ao mesmo tempo), base legal por finalidade em
+tabela, retenção por tipo de dado, cookies, e o **direito à revisão de decisão
+automatizada** (art. 20 da LGPD) — a categorização por IA é exatamente isso.
+
+### Varredura de segurança do mesmo dia
+
+11 provas dinâmicas contra a produção, todas verdes: App Check exigido, CORS
+recusando origem estranha, webhook do Mercado Pago recusando id sem assinatura
+válida, headers/CSP servidos. `npm audit fix` não destrutivo aplicado nos dois
+pacotes. Sobra uma **high** (`undici`, dentro do SDK do Firebase no frontend)
+que só sai atualizando o pacote `firebase` — merece sessão própria com teste de
+login/App Check.
+
 ## 22/08 (noite) — assistente liberada para TODOS + anexo do operador
 
 **A Nina está no ar para as 13 famílias desde 22/08/2026.** O teste do Kirk

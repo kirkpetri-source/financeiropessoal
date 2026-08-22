@@ -218,8 +218,11 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     `PrivateRoute`/`AuthContext` da família de propósito — não pode voltar a
     "misturar" com o menu de nenhuma família (foi assim que nasceu: o Kirk
     via o painel dentro do próprio Sidebar da conta dele). Limitação aceita:
-    Firebase Auth mantém uma sessão só por navegador, então logar no portal
-    troca a sessão ativa em qualquer aba do mesmo navegador.
+    **Desde 22/08/2026 a sessão é SEPARADA**: o portal autentica num app
+    Firebase nomeado (`authPlataforma`) e guarda o token em chave própria do
+    localStorage; `services/api.js` escolhe a chave pela URL. Antes os dois
+    dividiam a mesma sessão e entrar no portal fazia a aba da família exibir
+    "Olá, Operador" no F5 seguinte.
 12. **Consulta com `where` + `orderBy` em campos diferentes exige índice
     composto no Firestore** (`firestore.indexes.json`), e o dublê de banco
     dos testes automatizados NÃO reproduz essa exigência — passa limpo local
@@ -353,6 +356,41 @@ Estão no `.gitignore` e precisam continuar assim: `functions/serviceAccountKey.
     verificações ponta a ponta (webhook 28, áudio 19, consulta direta 21,
     conta fixa 15). O que nenhuma delas julga é o TOM do conselho; isso é
     leitura humana.
+
+25. **Senha nova obedece `utils/politicaDeSenha.js`; senha antiga nunca é
+    barrada no login.** Mínimo 10 caracteres com letra e número, lista curta
+    do que é óbvio demais. A regra vale no CADASTRO e na TROCA — aplicar no
+    login expulsaria cliente pagante por uma regra que mudou depois. A
+    validação existe nas duas pontas de propósito: o formulário para avisar
+    cedo, o `AuthContext` porque mais de uma tela usa o contexto e regra que
+    só existe na tela é regra que não existe.
+
+26. **Rotina agendada que falha precisa VIRAR AVISO, não linha de log.** Toda
+    agendada passa por `alertaOperacionalService.vigiar`, que engole o erro e
+    grava em `notificacoesNaoEntregues` — a mesma coleção que a aba Chamados
+    já mostra no topo. O id é `rotina__<nome>__<dia>`, então falhar dez vezes
+    no mesmo dia conta ocorrências em vez de encher a tela. Agendada nova sem
+    `vigiar` volta ao mundo em que a varredura quebra em silêncio; há teste em
+    `__testes__/agendadas.test.mjs` que cobre cada uma pelo nome.
+
+27. **Permissão de operador tem UMA fonte: `src/operadores/permissoes.js`.** O
+    backend lê para autorizar e o frontend recebe pela rota
+    `/plataforma/operadores/papeis` para montar a tela. Duas listas
+    divergiriam, e a que divergisse a favor do usuário viraria brecha. Papel
+    desconhecido cai em ATENDENTE (menor privilégio), nunca em ADMIN.
+    Permissão extra só ACRESCENTA — uma exceção que TIRA permissão viraria
+    uma segunda matriz escondida.
+
+28. **`admin.app().options.projectId` vem VAZIO fora de Cloud Functions.** Com
+    `cert()` (todo script de tools/) o campo não é preenchido, e dentro de
+    Functions o ambiente define `GCLOUD_PROJECT`, então a diferença passa
+    despercebida até alguém precisar do id fora dali — foi o que quebrou o
+    backup com "Cannot read properties of undefined", erro sem relação
+    aparente. Use `projectId` exportado por `config/firebaseAdmin.js`.
+    Pela mesma razão, cliente do Google Cloud que NÃO passa pelo
+    firebase-admin (o `FirestoreAdminClient` do backup) não enxerga a
+    credencial do `initializeApp` e procura as "default credentials" do
+    ambiente: passe `keyFilename: caminhoDaCredencial`, também exportado de lá.
 
 ## Armadilhas já pagas (não repetir)
 
